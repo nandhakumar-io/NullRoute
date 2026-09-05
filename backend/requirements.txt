@@ -1,0 +1,61 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+sqlalchemy==2.0.35
+alembic==1.13.3
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+python-multipart==0.0.9
+nats-py==2.7.2
+httpx==0.27.2
+reportlab==4.2.5
+minio==7.2.9
+pgvector==0.3.4
+numpy==1.26.4
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+tenacity==9.0.0
+python-dotenv==1.0.1
+pybatfish==2024.7.22.1569
+pandas==2.2.3
+pytest==8.3.3
+pytest-asyncio==0.24.0
+respx==0.21.1
+
+# Phase 1 trained-AI pipeline (DistilBERT classifier + all-MiniLM-L6-v2
+# embeddings). Optional at runtime: app/ai/classifier.py and
+# app/ai/embeddings.py detect their absence and fall back to deterministic
+# heuristics so the API still boots/tests without these installed.
+transformers==4.44.2
+sentence-transformers==3.1.1
+torch==2.4.1
+
+# Phase 7 live device collection. Optional at runtime: each collector in
+# app/services/collectors/ detects the absence of its library and returns
+# a clean CollectionResult(success=False) instead of failing to import,
+# same pattern as the Phase 1 AI libraries above.
+netmiko==4.3.0
+ncclient==0.6.15
+pysnmp==4.4.12
+
+# Phase 17 observability. Optional at runtime: app/telemetry.py detects
+# their absence (or OTEL_ENABLED=false) and no-ops instead of failing to
+# import, same pattern as every other optional dependency in this file.
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp-proto-grpc==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+
+# Optional OpenConfig/gNMI config-injection (spec 22-28). Optional at
+# runtime: app/services/config_injection/gnmi.py detects its absence and
+# returns a clean GNMI_UNAVAILABLE result instead of failing to import,
+# same pattern as every other optional dependency in this file.
+pygnmi==0.8.13
+
+# Optional pyATS/Genie post-deployment verification, Cisco-only (spec
+# 29-34). Optional at runtime: app/services/verification/pyats_genie.py
+# detects its absence and returns a clean PYATS_UNAVAILABLE result instead
+# of failing to import.
+pyats==24.9
+genie==24.9

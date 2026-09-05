@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+.card {
+  @apply bg-soc-panel border border-soc-border rounded-xl p-5 shadow-lg shadow-black/20;
+}
+
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wide;
+}
+
+.badge-critical { @apply bg-red-950 text-red-300 border border-red-800; }
+.badge-high { @apply bg-orange-950 text-orange-300 border border-orange-800; }
+.badge-medium { @apply bg-amber-950 text-amber-300 border border-amber-800; }
+.badge-low { @apply bg-emerald-950 text-emerald-300 border border-emerald-800; }
+.badge-pass { @apply bg-emerald-950 text-emerald-300 border border-emerald-800; }
+.badge-fail { @apply bg-red-950 text-red-300 border border-red-800; }
+.badge-na { @apply bg-slate-800 text-slate-400 border border-slate-700; }
+
+.btn-primary {
+  @apply bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-2 rounded-lg transition-colors;
+}
+.btn-secondary {
+  @apply bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-4 py-2 rounded-lg transition-colors border border-soc-border;
+}
+.select {
+  @apply bg-slate-800 border border-soc-border text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-700;
+}

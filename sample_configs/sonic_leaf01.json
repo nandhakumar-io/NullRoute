@@ -1,0 +1,6 @@
+{
+  "DEVICE_METADATA": {"localhost": {"hostname": "SONIC-LEAF-01"}},
+  "SYSLOG_SERVER": {"10.60.60.5": {}},
+  "AAA": {"authentication": {"login": "local"}},
+  "MGMT_INTERFACE": {"eth0": {"ssh": {"enabled": "true"}}}
+}

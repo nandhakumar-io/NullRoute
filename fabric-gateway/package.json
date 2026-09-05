@@ -1,0 +1,24 @@
+{
+  "name": "fabric-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Internal HTTP-to-Fabric-Gateway bridge for the compliance-evidence chaincode (problem-statement sections 14, 18-19). Never exposed to the browser.",
+  "type": "commonjs",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.9",
+    "@hyperledger/fabric-gateway": "^1.5.1",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.2"
+  }
+}

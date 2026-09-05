@@ -1,0 +1,232 @@
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+import anyio
+
+from app.db import get_db
+from app.services import observability
+from app.models.db import Device, DeviceCredentialRef, DriftEvent, Finding, Scan, Tenant
+from app.schemas import DeviceCreate, DeviceOut, ScanDetailOut, ScanOut
+from app.services import alert_service, drift_service, openbao_service
+from app.services.collectors.registry import get_collector
+from app.services.pipeline import run_pipeline
+
+from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user, require_role
+
+router = APIRouter(prefix="/api/devices", tags=["devices"], dependencies=[Depends(get_current_user)])
+
+DEMO_TENANT_NAME = "SIH-Demo"
+
+
+def get_or_create_demo_tenant(db: Session) -> Tenant:
+    """Retained only for the explicit AUTH_ENABLED=false local/offline demo
+    mode (see app/auth/dependencies.py). Every authenticated code path uses
+    get_current_tenant() instead -- tenant_id must come from the validated
+    identity, never be derived here."""
+    tenant = db.query(Tenant).filter(Tenant.name == DEMO_TENANT_NAME).first()
+    if not tenant:
+        tenant = Tenant(name=DEMO_TENANT_NAME)
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+    return tenant
+
+
+@router.get("", response_model=List[DeviceOut])
+def list_devices(db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+    return (
+        db.query(Device)
+        .filter(Device.tenant_id == tenant_id)
+        .order_by(Device.created_at.desc())
+        .all()
+    )
+
+
+@router.post("", response_model=DeviceOut)
+def create_device(
+    payload: DeviceCreate,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    device = Device(tenant_id=tenant_id, **payload.model_dump())
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+@router.get("/{device_id}", response_model=DeviceOut)
+def get_device(
+    device_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    # Filtering by tenant_id in the same query (rather than fetching by id
+    # and checking after) means another tenant's device is indistinguishable
+    # from a nonexistent one -- 404, never 403, so ids can't be enumerated.
+    device = db.query(Device).filter(Device.id == device_id, Device.tenant_id == tenant_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    return device
+
+
+# ---------------------------------------------------------------------------
+# Phase 11 -- configuration drift. Tenant-scoped the same way as
+# get_device(): device must belong to this tenant or it's a 404, never a
+# lookup-then-403 that would let ids be enumerated across tenants.
+@router.get("/{device_id}/drift")
+def get_device_drift(
+    device_id: str,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    device = db.query(Device).filter(Device.id == device_id, Device.tenant_id == tenant_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    events = (
+        db.query(DriftEvent)
+        .filter(DriftEvent.device_id == device_id, DriftEvent.tenant_id == tenant_id)
+        .order_by(DriftEvent.created_at.desc())
+        .limit(min(limit, 200))
+        .all()
+    )
+    return {"device_id": device_id, "count": len(events), "events": [drift_service.to_dict(e) for e in events]}
+
+
+# ---------------------------------------------------------------------------
+# Phase 7 -- live device collection. Both /collect and /scan resolve a
+# credential reference (Phase 6), pull the actual secret from OpenBao ONLY
+# for the duration of this call, run the collector, and record the outcome
+# on the Device row. Neither endpoint's response ever contains secret
+# material or the raw collected configuration text -- /scan feeds it
+# straight into the SAME run_pipeline() used by file uploads and returns
+# only the resulting scan (RULE 11: no second compliance implementation).
+# ---------------------------------------------------------------------------
+
+class CollectionStatusOut(BaseModel):
+    success: bool
+    transport: str
+    duration_ms: float
+    config_hash: Optional[str] = None
+    error: Optional[str] = None
+
+
+class CollectRequest(BaseModel):
+    credential_ref_id: Optional[str] = None  # defaults to the device's most recently created ref
+    transport: Optional[str] = None  # ssh/netconf/restconf; defaults to the vendor's preferred transport
+
+
+def _resolve_credentials(db: Session, device: Device, tenant_id: str, credential_ref_id: Optional[str]):
+    query = db.query(DeviceCredentialRef).filter(
+        DeviceCredentialRef.device_id == device.id, DeviceCredentialRef.tenant_id == tenant_id
+    )
+    if credential_ref_id:
+        ref_row = query.filter(DeviceCredentialRef.id == credential_ref_id).first()
+    else:
+        ref_row = query.order_by(DeviceCredentialRef.created_at.desc()).first()
+    if not ref_row:
+        raise HTTPException(400, "No credential reference on file for this device (see /api/devices/{id}/credentials)")
+
+    try:
+        return ref_row, openbao_service.get_device_credentials(tenant_id, ref_row.credential_ref)
+    except openbao_service.OpenBaoError as e:
+        raise HTTPException(502, f"Could not resolve device credentials from OpenBao: {e}") from e
+
+
+async def _run_collection(db: Session, device: Device, tenant_id: str, payload: CollectRequest):
+    ref_row, credentials = _resolve_credentials(db, device, tenant_id, payload.credential_ref_id if payload else None)
+    collector = get_collector(device.vendor, transport=payload.transport if payload else None)
+
+    device.collection_status = "IN_PROGRESS"
+    db.commit()
+
+    # Collectors are blocking (paramiko/netmiko/ncclient/httpx sync client);
+    # run off the event loop so one slow/unreachable device doesn't stall
+    # the whole API process.
+    result = await anyio.to_thread.run_sync(collector.collect_config, device, credentials)
+    # `credentials` (and the closure holding it) goes out of scope here --
+    # nothing beyond this point has access to the secret.
+
+    device.collection_status = "SUCCESS" if result.success else "FAILED"
+    device.last_collected_at = result.collected_at
+    device.last_collection_error = result.error
+    device.last_collection_transport = result.transport
+    if result.success and result.vendor:
+        device.vendor = device.vendor or result.vendor
+    db.commit()
+    db.refresh(device)
+    observability.record_collection_result(success=result.success)
+    if not result.success:
+        try:
+            await alert_service.alert_collection_failure(db, tenant_id, device.id, result.error)
+        except Exception:  # noqa: BLE001 - alerting must never fail the collection response
+            pass
+    return result
+
+
+@router.post("/{device_id}/collect", response_model=CollectionStatusOut)
+async def collect_device_config(
+    device_id: str,
+    payload: CollectRequest = CollectRequest(),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    device = _get_device_or_404_local(db, device_id, tenant_id)
+    result = await _run_collection(db, device, tenant_id, payload)
+    return CollectionStatusOut(
+        success=result.success,
+        transport=result.transport,
+        duration_ms=result.duration_ms,
+        config_hash=result.config_hash,
+        error=result.error,
+    )
+
+
+@router.post("/{device_id}/scan", response_model=ScanDetailOut)
+async def collect_and_scan_device(
+    device_id: str,
+    payload: CollectRequest = CollectRequest(),
+    framework: str = "ALL",
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    device = _get_device_or_404_local(db, device_id, tenant_id)
+    result = await _run_collection(db, device, tenant_id, payload)
+    if not result.success or not result.raw_config:
+        raise HTTPException(502, f"Device collection failed: {result.error or 'no configuration returned'}")
+
+    scan = Scan(tenant_id=tenant_id, device_id=device.id, framework=framework, status="uploaded")
+    db.add(scan)
+    db.commit()
+    db.refresh(scan)
+
+    await run_pipeline(db, scan, result.raw_config, framework=framework)
+
+    db.refresh(scan)
+    findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
+    return ScanDetailOut(
+        **ScanOut.model_validate(scan).model_dump(),
+        baseline_json=scan.baseline_json,
+        findings=findings,
+    )
+
+
+@router.get("/{device_id}/collection-status", response_model=DeviceOut)
+def get_collection_status(
+    device_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    return _get_device_or_404_local(db, device_id, tenant_id)
+
+
+def _get_device_or_404_local(db: Session, device_id: str, tenant_id: str) -> Device:
+    device = db.query(Device).filter(Device.id == device_id, Device.tenant_id == tenant_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    return device

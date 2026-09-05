@@ -1,0 +1,83 @@
+"""Base collector interface (Phase 7).
+
+Every transport-specific collector (ssh.py, netconf.py, restconf.py,
+snmp.py) implements `collect_config(device, credentials) -> CollectionResult`.
+Collection output feeds the SAME pipeline used by file uploads
+(services/pipeline.run_pipeline) -- there is no second compliance
+implementation for live-collected configs (RULE 11 / Phase 7 rule).
+
+`credentials` is an app.services.openbao_service.DeviceCredentials instance
+resolved by the caller (router) immediately before the call and allowed to
+go out of scope immediately after -- collectors must never log, cache, or
+return it (RULE 6).
+"""
+from __future__ import annotations
+
+import hashlib
+import time
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Optional
+
+from app.models.db import Device
+from app.services.openbao_service import DeviceCredentials, redact_secret_values
+
+
+@dataclass
+class CollectionResult:
+    success: bool
+    vendor: Optional[str] = None
+    hostname: Optional[str] = None
+    raw_config: Optional[str] = None
+    collected_at: datetime = field(default_factory=datetime.utcnow)
+    transport: str = "unknown"
+    duration_ms: float = 0.0
+    error: Optional[str] = None
+    config_hash: Optional[str] = None
+
+    def __post_init__(self):
+        if self.success and self.raw_config and not self.config_hash:
+            self.config_hash = hashlib.sha256(self.raw_config.encode()).hexdigest()
+
+
+class BaseCollector(ABC):
+    transport: str = "unknown"
+
+    @abstractmethod
+    def collect_config(self, device: Device, credentials: DeviceCredentials) -> CollectionResult:
+        """Connect to the device, retrieve the running configuration as
+        text, and return a CollectionResult. Must never raise for expected
+        failure modes (auth failure, timeout, unreachable) -- catch and
+        return success=False with `error` set, so callers can persist a
+        collection-status row instead of a 500."""
+        raise NotImplementedError
+
+
+def timed(fn):
+    """Decorator: wraps a collector's inner logic, converting exceptions
+    into a failed CollectionResult and always recording duration_ms."""
+
+    def _wrapped(self, device: Device, credentials: DeviceCredentials) -> CollectionResult:
+        start = time.perf_counter()
+        try:
+            result = fn(self, device, credentials)
+            result.duration_ms = round((time.perf_counter() - start) * 1000.0, 2)
+            result.transport = self.transport
+            return result
+        except Exception as e:  # noqa: BLE001 -- collectors must never crash the request handler
+            return CollectionResult(
+                success=False,
+                vendor=device.vendor,
+                hostname=device.hostname,
+                transport=self.transport,
+                duration_ms=round((time.perf_counter() - start) * 1000.0, 2),
+                # Defense-in-depth (RULE 6): scrub any credential value that
+                # ended up verbatim in a third-party exception message
+                # before it's ever persisted/returned. `credentials.secret`
+                # is still in scope here even though this generic handler
+                # doesn't otherwise touch it.
+                error=redact_secret_values(f"{type(e).__name__}: {e}", getattr(credentials, "secret", None) or {}),
+            )
+
+    return _wrapped

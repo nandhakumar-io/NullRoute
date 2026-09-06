@@ -68,13 +68,9 @@ policy_version := metadata.version
 # up, in change_validation_service.py — OPA only ever speaks to what it can
 # actually verify from the static config.)
 decision = "BLOCK" {
-	some v
-	v := violations[_]
-	v.severity == "CRITICAL"
+	violations[_].severity == "CRITICAL"
 } else = "REVIEW" {
-	some v
-	v := violations[_]
-	v.severity == "HIGH"
+	violations[_].severity == "HIGH"
 } else = "REVIEW" {
 	count([v | v := violations[_]; v.severity == "MEDIUM"]) >= 3
 } else = "PASS" {

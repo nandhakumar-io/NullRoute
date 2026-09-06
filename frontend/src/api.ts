@@ -1,11 +1,36 @@
 import axios from "axios";
 
+export interface ConfigSearchDeviceMatch {
+  device_id: string;
+  hostname: string | null;
+  vendor: string | null;
+  scan_id: string | null;
+  final_decision: string | null;
+  compliant: boolean | null;
+  match_source: "finding" | "raw_config" | "finding+raw_config";
+  match_count: number;
+  matched_controls: string[];
+  context_lines: string[];
+}
+
+export interface ConfigSearchResult {
+  query: string;
+  total_devices_searched: number;
+  total_matches: number;
+  compliant_count: number;
+  non_compliant_count: number;
+  unscanned_count: number;
+  raw_config_search_truncated: boolean;
+  devices: ConfigSearchDeviceMatch[];
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000",
 });
 
 export interface Device {
   id: string;
+  name?: string | null;
   hostname: string | null;
   vendor: string | null;
   model: string | null;
@@ -13,12 +38,74 @@ export interface Device {
   version: string | null;
   serial_number: string | null;
   management_address?: string | null;
+  site?: string | null;
+  environment?: string | null;
+  protocol?: string | null;
+  description?: string | null;
+  tags?: string[] | null;
+  enabled: boolean;
   collection_status?: string | null;
   last_collected_at?: string | null;
   last_collection_error?: string | null;
   last_collection_transport?: string | null;
   last_scan_at: string | null;
   last_compliance_score: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DeviceListResponse {
+  items: Device[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DeviceListParams {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  vendor?: string;
+  site?: string;
+  environment?: string;
+  protocol?: string;
+  enabled?: boolean;
+  collection_status?: string;
+  sort_by?: string;
+  sort_dir?: "asc" | "desc";
+}
+
+export interface DeviceCreatePayload {
+  name?: string | null;
+  hostname?: string | null;
+  vendor?: string | null;
+  model?: string | null;
+  os?: string | null;
+  version?: string | null;
+  serial_number?: string | null;
+  management_address?: string | null;
+  site?: string | null;
+  environment?: string | null;
+  protocol?: string | null;
+  description?: string | null;
+  tags?: string[] | null;
+  enabled?: boolean;
+}
+
+export type DeviceUpdatePayload = Partial<DeviceCreatePayload>;
+
+export interface CollectionStatusResult {
+  success: boolean;
+  transport: string;
+  duration_ms: number;
+  config_hash: string | null;
+  error: string | null;
+}
+
+export interface BulkDeviceResult {
+  requested: number;
+  affected: number;
+  device_ids: string[];
 }
 
 export interface Finding {
@@ -239,6 +326,23 @@ export interface AIHealth {
   reference_examples: number;
 }
 
+export interface ServiceHealthEntry {
+  name: string;
+  category: "core" | "optional";
+  status: "HEALTHY" | "DEGRADED" | "UNAVAILABLE" | "DISABLED" | "ERROR";
+  latency_ms: number | null;
+  detail: string | null;
+  error: string | null;
+  [key: string]: unknown;
+}
+
+export interface SystemHealth {
+  overall_status: "HEALTHY" | "DEGRADED" | "UNAVAILABLE";
+  core_services: ServiceHealthEntry[];
+  optional_integrations: ServiceHealthEntry[];
+  checked_at: number;
+}
+
 export interface AIModelInfo {
   component: string;
   path: string | null;
@@ -322,6 +426,62 @@ export interface DriftEvent {
   security_impacting: boolean;
   affected_controls: string[] | null;
   created_at: string;
+}
+
+export interface ConfigSnapshot {
+  snapshot_id: string;
+  scan_id: string;
+  tenant_id: string;
+  device_id: string;
+  vendor: string | null;
+  platform: string | null;
+  collected_at: string | null;
+  source: string;
+  configuration_hash: string | null;
+  raw_config_reference: string | null;
+  parser_version: string;
+  normalization_version: string;
+  compliance_score: number | null;
+  final_decision: string | null;
+  is_approved_baseline?: boolean;
+}
+
+export interface ConfigSnapshotDetail extends ConfigSnapshot {
+  baseline: Record<string, unknown> | null;
+  approval?: { approved_by: string; approved_at: string | null; approval_reason: string | null };
+}
+
+export interface SecurityDriftFinding {
+  drift_id: string;
+  tenant_id: string;
+  device_id: string;
+  previous_scan_id: string | null;
+  current_scan_id: string;
+  baseline_parameter: string;
+  previous_value: unknown;
+  current_value: unknown;
+  drift_type: "NO_CHANGE" | "CONFIGURATION_CHANGE" | "SECURITY_IMPROVEMENT" | "SECURITY_DEGRADATION" | "COMPLIANCE_IMPACT" | "UNKNOWN_IMPACT";
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
+  compliance_controls: string[];
+  evidence_reference: string | null;
+  detected_at: string | null;
+  status: "OPEN" | "ACKNOWLEDGED" | "REVIEWED" | "RESOLVED" | "ACCEPTED_RISK" | "FALSE_POSITIVE";
+}
+
+export interface CompliancePosturePoint {
+  scan_id: string;
+  scanned_at: string | null;
+  compliance_score: number | null;
+  final_decision: string | null;
+  counts: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
+}
+
+export interface CompliancePostureHistory {
+  device_id: string;
+  count: number;
+  history: CompliancePosturePoint[];
+  summary: string | null;
+  correlated_drift: SecurityDriftFinding[];
 }
 
 export interface AuditSchedule {
@@ -412,6 +572,105 @@ export interface DeploymentRecord {
   verification_metadata: Record<string, unknown> | null;
 }
 
+export interface DiscoveredHost {
+  ip: string;
+  hostname: string | null;
+  state: string;
+  open_ports: number[];
+  transport_hints: string[];
+  vendor_guess: string | null;
+  banner: string | null;
+  os_guess: string | null;
+}
+
+export interface DiscoverResponse {
+  cidr: string;
+  host_count: number;
+  hosts: DiscoveredHost[];
+}
+
+export interface DiscoverImportPayload {
+  hosts: { ip: string; hostname?: string | null; vendor_guess?: string | null }[];
+}
+
+export interface NetworkScanJobCreate {
+  name?: string;
+  device_ids?: string[];
+  run_discovery?: boolean;
+  target_cidr?: string;
+  discovery_ports?: string;
+  framework?: string;
+  include_batfish?: boolean;
+}
+
+export interface NetworkScanJob {
+  id: string;
+  tenant_id: string;
+  name: string | null;
+  target_cidr: string | null;
+  run_discovery: boolean;
+  framework: string;
+  include_batfish: boolean;
+  status: string;
+  stages: Record<string, { status: string; detail?: string }>;
+  discovered_hosts?: Record<string, any>[] | null;
+  resolved_device_ids?: string[] | null;
+  scan_ids?: string[] | null;
+  device_results?: Record<string, any>[] | null;
+  error?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface DatasetVersion {
+  id: string;
+  version: string;
+  tenant_id: string | null;
+  created_by: string;
+  created_at: string;
+  example_count: number;
+  label_distribution: Record<string, number>;
+  vendor_distribution: Record<string, number>;
+  source_distribution: Record<string, number>;
+  validation_status: string | null;
+  training_status: string | null;
+  is_immutable: boolean;
+}
+
+export interface TrainingJob {
+  id: string;
+  tenant_id: string | null;
+  dataset_version_id: string;
+  base_model_version: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  status: string;
+  artifact_path: string | null;
+  metrics: Record<string, any> | null;
+  error: string | null;
+  created_by: string;
+}
+
+export interface ModelRegistryEntry {
+  id: string;
+  model_name: string;
+  model_type: string;
+  dataset_version: string;
+  base_model_version: string | null;
+  artifact_path: string | null;
+  model_hash: string | null;
+  metrics: Record<string, any> | null;
+  training_timestamp: string | null;
+  status: string;
+  created_by: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  training_job_id: string | null;
+}
+
 export const endpoints = {
   dashboard: () => api.get<DashboardStats>("/api/dashboard"),
   dashboardMetrics: (range: DashboardRange) =>
@@ -420,7 +679,46 @@ export const endpoints = {
     action?: string; object_type?: string; object_id?: string;
     username?: string; result?: string; limit?: number; offset?: number;
   }) => api.get<AuditLogEntry[]>("/api/audit-log", { params }),
-  devices: () => api.get<Device[]>("/api/devices"),
+  devices: (params?: DeviceListParams) => api.get<DeviceListResponse>("/api/devices", { params }),
+  createDevice: (payload: DeviceCreatePayload) => api.post<Device>("/api/devices", payload),
+  updateDevice: (id: string, payload: DeviceUpdatePayload) => api.patch<Device>(`/api/devices/${id}`, payload),
+  deleteDevice: (id: string) => api.delete(`/api/devices/${id}`),
+  enableDevice: (id: string) => api.post(`/api/devices/bulk/enable`, { device_ids: [id] }),
+  disableDevice: (id: string) => api.post(`/api/devices/bulk/disable`, { device_ids: [id] }),
+
+  // Credentials
+  storeCredentials: (deviceId: string, credentialType: string, secret: Record<string, any>) =>
+    api.post(`/api/devices/${deviceId}/credentials`, { credential_type: credentialType, secret }),
+
+  bulkEnableDevices: (deviceIds: string[]) => api.post<BulkDeviceResult>("/api/devices/bulk/enable", { device_ids: deviceIds }),
+  bulkDisableDevices: (deviceIds: string[]) => api.post<BulkDeviceResult>("/api/devices/bulk/disable", { device_ids: deviceIds }),
+  bulkDeleteDevices: (deviceIds: string[]) => api.post<BulkDeviceResult>("/api/devices/bulk/delete", { device_ids: deviceIds }),
+  testDeviceConnection: (id: string, transport?: string, credentialRefId?: string) =>
+    api.post<CollectionStatusResult>(`/api/devices/${id}/test-connection`, {
+      credential_ref_id: credentialRefId, transport: transport || undefined,
+    }),
+  collectDeviceConfig: (id: string, transport?: string, credentialRefId?: string) =>
+    api.post<CollectionStatusResult>(`/api/devices/${id}/collect`, {
+      credential_ref_id: credentialRefId, transport: transport || undefined,
+    }),
+  collectAndScanDevice: (id: string, framework = "ALL", transport?: string) =>
+    api.post<ScanDetail>(`/api/devices/${id}/scan`, { transport: transport || undefined }, { params: { framework } }),
+
+  // Network Discovery
+  discoverNetwork: (cidr: string, ports?: string, serviceDetection = true) =>
+    api.post<DiscoverResponse>("/api/devices/discover", { cidr, ports, service_detection: serviceDetection }),
+  importDiscoveredDevices: (payload: DiscoverImportPayload) =>
+    api.post<Device[]>("/api/devices/discover/import", payload),
+  discover: (payload: { cidr: string; ports?: string; service_detection?: boolean; os_detection?: boolean }) =>
+    api.post<DiscoverResponse>("/api/devices/discover", payload),
+  discoverImport: (payload: DiscoverImportPayload) =>
+    api.post<Device[]>("/api/devices/discover/import", payload),
+
+  // Network Scan jobs
+  networkScans: () => api.get<NetworkScanJob[]>("/api/network-scans"),
+  getNetworkScan: (id: string) => api.get<NetworkScanJob>(`/api/network-scans/${id}`),
+  createNetworkScan: (payload: NetworkScanJobCreate) =>
+    api.post<NetworkScanJob>("/api/network-scans", payload),
   scans: () => api.get<Scan[]>("/api/scans"),
   scan: (id: string) => api.get<ScanDetail>(`/api/scans/${id}`),
   rerunScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/rerun`),
@@ -429,6 +727,7 @@ export const endpoints = {
   opaAnalysis: (scanId: string) => api.get<OpaAnalysis>(`/api/scans/${scanId}/opa`),
   aiAnalysis: (scanId: string) => api.get<ScanAIAnalysis>(`/api/scans/${scanId}/ai`),
   aiHealth: () => api.get<AIHealth>("/api/ai/health"),
+  systemHealth: () => api.get<SystemHealth>("/api/system/health"),
   findings: (params?: { scan_id?: string; severity?: string; result?: string }) =>
     api.get<Finding[]>("/api/findings", { params }),
   uploadConfig: (file: File, framework: string, hostname?: string) => {
@@ -440,10 +739,23 @@ export const endpoints = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+  
+  // Training Center Layer 3+
   pendingMappings: () => api.get<CommandMapping[]>("/api/training/pending"),
   approvedMappings: () => api.get<CommandMapping[]>("/api/training/approved"),
-  reviewMapping: (id: string, action: "approve" | "reject", normalized_parameter?: string) =>
-    api.post(`/api/training/${id}/review`, { action, normalized_parameter, reviewer: "admin" }),
+  reviewMapping: (id: string, payload: { action: "approve" | "correct" | "reject", normalized_facts?: Record<string, any>, correction_reason?: string }) =>
+    api.post(`/api/training/${id}/review`, payload),
+  datasets: () => api.get<DatasetVersion[]>("/api/ai/datasets"),
+  createDataset: (versionLabel: string) => api.post<DatasetVersion>(`/api/ai/datasets?version_label=${encodeURIComponent(versionLabel)}`),
+  trainingJobs: () => api.get<TrainingJob[]>("/api/ai/training/jobs"),
+  createTrainingJob: (datasetVersionId: string) => api.post<TrainingJob>("/api/ai/training/jobs", { dataset_version_id: datasetVersionId }),
+  runTrainingJob: (id: string) => api.post<TrainingJob>(`/api/ai/training/jobs/${id}/run`),
+  registryModels: () => api.get<ModelRegistryEntry[]>("/api/ai/registry/models"),
+  approveModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/approve`),
+  rejectModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/reject`),
+  promoteModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/promote`),
+  rollbackModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/rollback`),
+
   reportUrl: (scanId: string, fmt: "pdf" | "json" | "csv") =>
     `${api.defaults.baseURL}/api/reports/${scanId}/${fmt}`,
   evidenceList: (scanId?: string) => api.get<EvidenceRecord[]>("/api/evidence", { params: scanId ? { scan_id: scanId } : undefined }),
@@ -455,13 +767,30 @@ export const endpoints = {
   deviceInterfaces: (deviceId: string) => api.get<NetworkInterface[]>(`/api/devices/${deviceId}/interfaces`),
   deviceRoutes: (deviceId: string) => api.get<NetworkRoute[]>(`/api/devices/${deviceId}/routes`),
 
-  // Phase 11 -- configuration drift
   drift: (params?: { security_impacting?: boolean }) =>
     api.get<{ count: number; events: DriftEvent[] }>("/api/drift", { params }),
   deviceDrift: (deviceId: string) =>
     api.get<{ count: number; events: DriftEvent[] }>(`/api/devices/${deviceId}/drift`),
 
-  // Phase 12 -- scheduled audits
+  deviceSnapshots: (deviceId: string) =>
+    api.get<{ device_id: string; count: number; snapshots: ConfigSnapshot[] }>(`/api/devices/${deviceId}/snapshots`),
+  deviceSnapshot: (deviceId: string, snapshotId: string) =>
+    api.get<ConfigSnapshotDetail>(`/api/devices/${deviceId}/snapshots/${snapshotId}`),
+  approveBaseline: (deviceId: string, snapshotId: string, approvalReason?: string) =>
+    api.post(`/api/devices/${deviceId}/baselines/${snapshotId}/approve`, { approval_reason: approvalReason }),
+  deviceDriftHistory: (deviceId: string, params?: { drift_type?: string; status?: string }) =>
+    api.get<{ device_id: string; count: number; findings: SecurityDriftFinding[] }>(
+      `/api/devices/${deviceId}/drift/history`, { params },
+    ),
+  deviceComplianceHistory: (deviceId: string) =>
+    api.get<CompliancePostureHistory>(`/api/devices/${deviceId}/compliance/history`),
+  auditDeviceViaGateway: (deviceId: string) => api.post(`/api/devices/${deviceId}/audit`),
+  gatewayGetFacts: (deviceId: string, protocol?: string) =>
+    api.post(`/api/devices/${deviceId}/gateway-get-facts`, { protocol }),
+  gatewayGetInterfaces: (deviceId: string, protocol?: string) =>
+    api.post(`/api/devices/${deviceId}/gateway-get-interfaces`, { protocol }),
+  gatewaySupportedOperations: () => api.get<{ read_only_operations: string[] }>("/api/devices/gateway/operations"),
+
   schedules: () => api.get<AuditSchedule[]>("/api/schedules"),
   createSchedule: (payload: {
     name: string;
@@ -473,19 +802,19 @@ export const endpoints = {
   updateSchedule: (id: string, payload: Partial<{ name: string; enabled: boolean; frequency: string; scope: unknown; framework: string }>) =>
     api.patch<AuditSchedule>(`/api/schedules/${id}`, payload),
   deleteSchedule: (id: string) => api.delete(`/api/schedules/${id}`),
+
+  configSearch: (q: string, deep = true) =>
+    api.get<ConfigSearchResult>("/api/config-search", { params: { q, deep } }),
   runScheduleNow: (id: string) => api.post(`/api/schedules/${id}/run`),
 
-  // Phase 13 -- alerts
   alerts: (params?: { status?: string; severity?: string; category?: string }) =>
     api.get<{ count: number; alerts: Alert[] }>("/api/alerts", { params }),
   acknowledgeAlert: (id: string) => api.post<Alert>(`/api/alerts/${id}/acknowledge`),
 
-  // AI Analysis page -- Phase 1/2/19
   aiModels: () => api.get<AIModelsInfo>("/api/ai/models"),
   device: (id: string) => api.get<Device>(`/api/devices/${id}`),
   deviceScans: (deviceId: string) => api.get<Scan[]>("/api/scans", { params: { device_id: deviceId } }),
 
-  // Phase 14 -- change requests
   changeRequests: (params?: { status?: string; device_id?: string }) =>
     api.get<{ count: number; change_requests: ChangeRequest[] }>("/api/change-requests", { params }),
   changeRequest: (id: string) => api.get<ChangeRequest>(`/api/change-requests/${id}`),

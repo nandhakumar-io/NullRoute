@@ -48,6 +48,35 @@ _COLLECTORS: Dict[str, BaseCollector] = {
     "gnmi": GNMICollector(),
 }
 
+# DeviceCredentialRef.credential_type prefixes that are valid for each
+# transport (e.g. "ssh_password"/"ssh_key" for ssh, "snmp_community"/
+# "snmp_v3" for snmp). Used by credential-resolution code (routers/devices.py,
+# gateway/worker.py) so a device with BOTH SSH and SNMP credentials on file
+# doesn't accidentally hand the SNMP community string to the SSH collector
+# (or vice versa) just because it happens to be the most-recently-created
+# credential ref -- that mismatch previously surfaced as a confusing
+# "paramiko: No authentication methods available" error when SNMP was
+# selected but SSH crendentials didn't exist / weren't picked.
+TRANSPORT_CREDENTIAL_PREFIXES: Dict[str, tuple] = {
+    "ssh": ("ssh_", "ssh"),
+    "netconf": ("netconf", "ssh_"),  # NETCONF devices are commonly onboarded with ssh_password creds too
+    "restconf": ("restconf", "restconf_token"),
+    "snmp": ("snmp_", "snmp"),
+    "gnmi": ("gnmi",),
+}
+
+
+def credential_type_matches_transport(credential_type: Optional[str], transport: Optional[str]) -> bool:
+    """True if `credential_type` (e.g. "snmp_community") is an accepted
+    credential kind for `transport` (e.g. "snmp")."""
+    if not credential_type or not transport:
+        return False
+    prefixes = TRANSPORT_CREDENTIAL_PREFIXES.get(transport.lower())
+    if not prefixes:
+        return False
+    ct = credential_type.lower()
+    return any(ct.startswith(p) for p in prefixes)
+
 
 def preferred_transport(vendor: Optional[str]) -> str:
     vendor_key = (vendor or "").lower().replace(" ", "_")

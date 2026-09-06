@@ -93,6 +93,61 @@ def _try_load_minilm(model_path: str, dataset_path: str, embeddings_path: Option
         return None
 
 
+def _try_load_huggingface_minilm(dataset_path: str, embeddings_path: Optional[str]) -> Optional[LoadedEmbedder]:
+    """Load the real fine-tuned MiniLM checkpoint from a private Hugging
+    Face repo using HF_MINILM_MODEL / HF_TOKEN / HF_MODEL_REVISION -- these
+    env vars have existed in .env since day one but nothing here ever read
+    them, so AI_EMBEDDING_MODEL_PATH being blank meant this backend was
+    never actually reachable and the pipeline fell straight to the
+    zero-examples token-overlap fallback (similarity always 0.0).
+
+    Still requires AI_REFERENCE_DATASET to point at a populated reference
+    set -- a model with nothing to compare against can't produce a
+    meaningful nearest-neighbor match no matter how it's loaded.
+    """
+    repo_id = os.getenv("HF_MINILM_MODEL", "")
+    if not repo_id:
+        return None
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ImportError:
+        return None
+
+    examples = _load_reference_dataset(dataset_path)
+    if not examples:
+        return None
+
+    token = os.getenv("HF_TOKEN") or None
+    revision = os.getenv("HF_MODEL_REVISION") or None
+    try:
+        model = SentenceTransformer(repo_id, token=token, revision=revision)
+
+        if embeddings_path and os.path.isfile(embeddings_path):
+            import numpy as np
+            vectors = np.load(embeddings_path)
+            for ex, vec in zip(examples, vectors):
+                ex.vector = vec.tolist()
+        else:
+            vectors = model.encode([e.text for e in examples], normalize_embeddings=True)
+            for ex, vec in zip(examples, vectors):
+                ex.vector = vec.tolist() if hasattr(vec, "tolist") else list(vec)
+
+        def encode(text: str) -> List[float]:
+            vec = model.encode([text], normalize_embeddings=True)[0]
+            return vec.tolist() if hasattr(vec, "tolist") else list(vec)
+
+        version = f"{repo_id}@{revision}" if revision else repo_id
+        return LoadedEmbedder(
+            backend_name="minilm",
+            model_version=version,
+            reference_dataset_path=dataset_path,
+            examples=examples,
+            encode_fn=encode,
+        )
+    except Exception:
+        return None
+
+
 def _try_load_remote_minilm(remote_url: str, dataset_path: str, embeddings_path: Optional[str]) -> Optional[LoadedEmbedder]:
     """Optional remote inference mode for MiniLM: instead of loading
     sentence-transformers into this process, call an HTTP embedding
@@ -157,10 +212,19 @@ def _try_load_remote_minilm(remote_url: str, dataset_path: str, embeddings_path:
 
 
 def load_embedder() -> LoadedEmbedder:
+    """Resolution order: HF_MINILM_MODEL (real fine-tuned checkpoint) ->
+    AI_EMBEDDING_REMOTE_URL (remote HTTP inference) -> AI_EMBEDDING_MODEL_PATH
+    (local SentenceTransformer checkpoint) -> deterministic token-overlap
+    fallback. Same priority reasoning as classifier.load_classifier(): HF
+    is the one path that actually points at the real trained model."""
     model_path = os.getenv("AI_EMBEDDING_MODEL_PATH", "")
     dataset_path = os.getenv("AI_REFERENCE_DATASET", "")
     embeddings_path = os.getenv("AI_REFERENCE_EMBEDDINGS") or None
     remote_url = os.getenv("AI_EMBEDDING_REMOTE_URL", "")
+
+    hf_loaded = _try_load_huggingface_minilm(dataset_path, embeddings_path)
+    if hf_loaded is not None:
+        return hf_loaded
 
     remote = _try_load_remote_minilm(remote_url, dataset_path, embeddings_path)
     if remote is not None:

@@ -14,7 +14,7 @@ from app.schemas import DashboardMetricsOut, DashboardMetricPoint, DashboardStat
 from app.services import audit_service, evidence_service, exception_service, minio_service
 from app.services.reports import (build_csv_report, build_json_report,
                                    build_pdf_report)
-from app.rbac import Permission
+from app.auth.rbac import Permission
 
 from app.auth.dependencies import get_current_tenant, get_current_user, require_permission
 

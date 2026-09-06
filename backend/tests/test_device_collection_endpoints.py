@@ -37,6 +37,7 @@ def _no_real_network(monkeypatch):
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("AI_ENABLED", "false")
+    monkeypatch.setattr("app.services.batfish_service.BATFISH_ENABLED", False)
     from app.main import app
 
     with TestClient(app) as c:
@@ -126,7 +127,7 @@ def test_scan_endpoint_feeds_pipeline(client, monkeypatch):
                 json={"data": {"data": {"credential_type": "ssh_password", "username": "admin", "password": "x"}}},
             )
         )
-        respx.post("http://opa.test/v1/data/compliance/evaluate").mock(
+        respx.post("http://opa:8181/v1/data/compliance/evaluate").mock(
             return_value=httpx.Response(200, json={"result": {"decision": "PASS", "decision_id": "d1", "findings": []}})
         )
         resp = client.post(f"/api/devices/{device_id}/scan", json={})

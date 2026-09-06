@@ -72,7 +72,11 @@ result_for(control, actual) = "PASS" {
 result_for(control, actual) = "FAIL" {
 	actual != null
 	control.operator == "in"
-	not actual == control.expected[_]
+	not _is_in_array(actual, control.expected)
+}
+
+_is_in_array(item, arr) {
+	item == arr[_]
 }
 
 result_for(control, actual) = "PASS" {

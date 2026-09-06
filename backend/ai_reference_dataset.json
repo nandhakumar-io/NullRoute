@@ -1,0 +1,50 @@
+[
+  {
+    "intent": "AAA_AUTHENTICATION",
+    "text": "aaa authentication login default group radius local"
+  },
+  {
+    "intent": "SECURITY_MANAGEMENT",
+    "text": "ip ssh version 2"
+  },
+  {
+    "intent": "LOGGING",
+    "text": "logging host 10.10.10.10"
+  },
+  {
+    "intent": "NTP",
+    "text": "ntp server 10.10.10.20"
+  },
+  {
+    "intent": "SNMP",
+    "text": "snmp-server community readonly ro"
+  },
+  {
+    "intent": "INTERFACE_VLAN",
+    "text": "switchport access vlan 20"
+  },
+  {
+    "intent": "INTERFACE_MANAGEMENT",
+    "text": "shutdown"
+  },
+  {
+    "intent": "VLAN",
+    "text": "vlan 20"
+  },
+  {
+    "intent": "ROUTING",
+    "text": "router ospf 1"
+  },
+  {
+    "intent": "SECURITY",
+    "text": "ip access-group BLOCK_EXTERNAL in"
+  },
+  {
+    "intent": "AAA_MANAGEMENT",
+    "text": "username admin privilege 15 secret <SECRET>"
+  },
+  {
+    "intent": "AUTHENTICATION_MANAGEMENT",
+    "text": "login authentication ADMIN"
+  }
+]

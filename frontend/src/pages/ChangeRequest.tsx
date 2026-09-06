@@ -42,9 +42,10 @@ function explicitCodeIn(text: string | null): string | null {
 
 const TRANSPORTS = [
   { value: "ssh", label: "SSH" },
-  { value: "netconf", label: "NETCONF (not yet implemented)" },
+  { value: "netconf", label: "NETCONF" },
   { value: "gnmi", label: "OpenConfig / gNMI (optional)" },
 ];
+
 
 function DeploymentCard({ d }: { d: DeploymentRecord }) {
   const code = explicitCodeIn(d.error);

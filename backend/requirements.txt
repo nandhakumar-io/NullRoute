@@ -17,6 +17,7 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 tenacity==9.0.0
 python-dotenv==1.0.1
+setuptools==75.1.0
 pybatfish==2024.7.22.1569
 pandas==2.2.3
 pytest==8.3.3
@@ -27,9 +28,9 @@ respx==0.21.1
 # embeddings). Optional at runtime: app/ai/classifier.py and
 # app/ai/embeddings.py detect their absence and fall back to deterministic
 # heuristics so the API still boots/tests without these installed.
-# transformers==4.44.2
-# sentence-transformers==3.1.1
-# torch==2.4.1
+transformers==4.44.2
+sentence-transformers==3.1.1
+torch==2.4.1
 
 # Phase 7 live device collection. Optional at runtime: each collector in
 # app/services/collectors/ detects the absence of its library and returns
@@ -37,7 +38,7 @@ respx==0.21.1
 # same pattern as the Phase 1 AI libraries above.
 netmiko==4.3.0
 ncclient==0.6.15
-pysnmp==4.4.12
+pysnmp>=6.0.0,<8.0.0
 
 # Nmap-based network discovery (finds candidate devices + open management
 # ports before they're turned into Device rows). Optional at runtime:

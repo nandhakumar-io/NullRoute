@@ -7,6 +7,9 @@ os.environ.setdefault("OPA_FAIL_MODE", "block")
 os.environ.setdefault("FABRIC_GATEWAY_URL", "http://fabric-gateway.test")
 os.environ.setdefault("FABRIC_MAX_RETRIES", "2")
 os.environ.setdefault("FABRIC_RETRY_BASE_SECONDS", "0.01")
+os.environ.setdefault("JOB_SIGNING_SECRET", "test-signing-secret")
+os.environ.setdefault("GATEWAY_MOCK_CONNECTOR", "true")
+os.environ.setdefault("JOB_TTL_SECONDS", "120")
 
 # KNOWN ISSUE (not fixed here -- see chat writeup): app/db.py builds its
 # SQLAlchemy engine once at import time from os.environ["DATABASE_URL"].

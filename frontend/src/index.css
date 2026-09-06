@@ -6,6 +6,45 @@ body {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* -----------------------------------------------------------------------
+ * Light / dark theme
+ * -----------------------------------------------------------------------
+ * The app is built almost entirely on hardcoded Tailwind slate/soc-* dark
+ * palette classes spread across every page, not CSS variables. Rewriting
+ * every className in every page to a variable-driven scheme is a much
+ * bigger change than a theme toggle warrants. Instead, `html.light`
+ * remaps the small set of color utilities actually used throughout the
+ * app so the toggle works everywhere immediately. Dark mode (no class) is
+ * unchanged from today.
+ * --------------------------------------------------------------------- */
+html.light body {
+  background-color: #f4f6fb;
+  color: #0f172a;
+}
+
+html.light .bg-soc-bg { background-color: #f4f6fb !important; }
+html.light .bg-soc-panel { background-color: #ffffff !important; }
+html.light .border-soc-border { border-color: #e2e8f0 !important; }
+
+html.light [class*="bg-slate-9"],
+html.light [class*="bg-slate-8"] { background-color: #f1f5f9 !important; }
+html.light [class*="bg-slate-800/30"],
+html.light [class*="bg-slate-800/40"],
+html.light [class*="bg-slate-800/60"] { background-color: #eef2f7 !important; }
+
+html.light [class*="border-slate-7"],
+html.light [class*="border-slate-8"] { border-color: #e2e8f0 !important; }
+
+html.light [class*="text-slate-1"],
+html.light [class*="text-slate-2"],
+html.light [class*="text-slate-3"] { color: #0f172a !important; }
+html.light [class*="text-slate-4"],
+html.light [class*="text-slate-5"] { color: #475569 !important; }
+html.light [class*="text-slate-6"] { color: #94a3b8 !important; }
+
+html.light .shadow-black\/20 { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06); }
+html.light ::placeholder { color: #94a3b8 !important; }
+
 .card {
   @apply bg-soc-panel border border-soc-border rounded-xl p-5 shadow-lg shadow-black/20;
 }

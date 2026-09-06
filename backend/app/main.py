@@ -8,8 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.ai.model_registry import initialize as init_ai_registry
 from app.db import init_db
 from app.services.telemetry import instrument_app
-from app.routers import (ai, alerts, audit, change_request, compliance, credentials, devices,
-                          drift, evidence, exceptions, knowledge, scans, schedules, topology, training)
+from app.routers import (ai, alerts, audit, change_request, compliance, config_search, credentials, device_gateway,
+                          devices, drift, evidence, exceptions, knowledge, network_scan, scans, schedules,
+                          system_health, topology, training, datasets, training_jobs)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -84,8 +85,12 @@ app.add_middleware(
 )
 
 app.include_router(devices.router)
+app.include_router(device_gateway.router)
 app.include_router(scans.router)
+app.include_router(config_search.router)
 app.include_router(training.router)
+app.include_router(datasets.router)
+app.include_router(training_jobs.router)
 app.include_router(compliance.router)
 app.include_router(knowledge.router)
 app.include_router(evidence.router)
@@ -94,10 +99,12 @@ app.include_router(credentials.router)
 app.include_router(topology.router)
 app.include_router(drift.router)
 app.include_router(schedules.router)
+app.include_router(network_scan.router)
 app.include_router(alerts.router)
 app.include_router(change_request.router)
 app.include_router(exceptions.router)
 app.include_router(audit.router)
+app.include_router(system_health.router)
 
 
 @app.get("/health")

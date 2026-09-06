@@ -152,6 +152,40 @@ def record_drift(
     return event
 
 
+def record_hash_only_drift(
+    db: Session,
+    tenant_id: str,
+    device_id: str,
+    current_scan: Scan,
+    previous_scan: Scan,
+) -> Optional[DriftEvent]:
+    """Used when the raw config hash changed but the previous scan's raw
+    text could not be recovered from object storage (e.g. a MinIO outage at
+    collection time). Records that drift occurred without fabricating a
+    line-level diff against an empty string, which would otherwise flag
+    every line of the current config as "added" -- a false full-rewrite
+    drift event. Conservatively marked security_impacting=True since the
+    actual change can't be inspected."""
+    event = DriftEvent(
+        tenant_id=tenant_id,
+        device_id=device_id,
+        previous_scan_id=previous_scan.id,
+        current_scan_id=current_scan.id,
+        previous_config_hash=previous_scan.raw_config_hash,
+        current_config_hash=current_scan.raw_config_hash,
+        added_lines=[],
+        removed_lines=[],
+        changed_sections=["hash-only: previous raw config unrecoverable, diff not computed"],
+        security_impacting=True,
+        affected_controls=[],
+        pipeline_rerun_triggered=True,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
 def to_dict(event: DriftEvent) -> dict:
     return {
         "id": event.id,

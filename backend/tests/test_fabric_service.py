@@ -106,3 +106,16 @@ async def test_get_history_returns_list(monkeypatch):
     history = await fabric_service.get_history("ev-1")
     assert isinstance(history, list)
     assert history[0]["txId"] == "tx-1"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_anchor_evidence_idempotency_violation_raises(monkeypatch):
+    """Section 16: Idempotent anchor but DIFFERENT hash must be rejected."""
+    monkeypatch.setattr(fabric_service, "FABRIC_ENABLED", True)
+    monkeypatch.setattr(fabric_service, "FABRIC_MAX_RETRIES", 1)
+    respx.post(EVIDENCE_URL).mock(
+        return_value=httpx.Response(500, json={"error": "idempotency violation: evidenceId ev-1 already exists with different hash deadbeef"})
+    )
+    with pytest.raises(FabricUnavailableError, match="idempotency violation"):
+        await fabric_service.anchor_evidence("ev-1", "cafebabe")

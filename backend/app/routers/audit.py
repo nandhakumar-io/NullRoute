@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models.db import AuditLog
 from app.schemas import AuditLogOut
-from app.rbac import Permission
+from app.auth.rbac import Permission
 
 from app.auth.dependencies import get_current_tenant, get_current_user, require_permission
 

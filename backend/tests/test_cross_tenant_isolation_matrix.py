@@ -71,7 +71,7 @@ def test_list_devices_excludes_other_tenant(client):
     device_id = _make_other_tenant_device(client)
     resp = client.get("/api/devices")
     assert resp.status_code == 200
-    assert device_id not in [d["id"] for d in resp.json()]
+    assert device_id not in [d["id"] for d in resp.json()["items"]]
 
 
 def test_get_device_404s_for_other_tenant(client):

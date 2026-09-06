@@ -18,7 +18,7 @@ from app.auth.dependencies import (CurrentUser, get_current_tenant,
 from app.db import get_db
 from app.models.db import ComplianceException, Device
 from app.services import audit_service, exception_service
-from app.rbac import Permission
+from app.auth.rbac import Permission
 
 router = APIRouter(prefix="/api/exceptions", tags=["exceptions"],
                     dependencies=[Depends(get_current_user)])

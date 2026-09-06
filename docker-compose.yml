@@ -4,6 +4,17 @@ x-common-env: &common-env
   # ---------------------------------------------------------------- data ---
   DATABASE_URL: "${DATABASE_URL:-postgresql+psycopg2://compliance:compliance@postgres:5432/compliance}"
   NATS_URL: "${NATS_URL:-nats://nats:4222}"
+  # Shared HMAC secret between the API (signs job envelopes) and the
+  # Device Gateway (verifies them). Override with a real secret in any
+  # non-local deployment. The default here is for local dev ONLY.
+  JOB_SIGNING_SECRET: "${JOB_SIGNING_SECRET:-change-me-in-production}"
+
+  # ----------------------------------------------------------- auth / CORS --
+  # AUTH_ENABLED=false enables demo mode (all requests treated as demo-admin).
+  # Set to true and configure KEYCLOAK_ISSUER for production.
+  AUTH_ENABLED: "${AUTH_ENABLED:-false}"
+  # Allow the Vite dev server to make cross-origin requests to the backend.
+  CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:5173}"
 
   # ---------------------------------------------------------- compliance ---
   OPA_URL: "${OPA_URL:-http://opa:8181}"
@@ -23,7 +34,7 @@ x-common-env: &common-env
   AI_ENABLED: "${AI_ENABLED:-true}"
 
   # Private Hugging Face model registry
-  HF_TOKEN: "${HF_TOKEN:-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}"
+  HF_TOKEN: "${HF_TOKEN:-}"
   HF_DISTILBERT_MODEL: "${HF_DISTILBERT_MODEL:-kenpachi-zaraki36/netsecauditor-distilbert-v3}"
   HF_MINILM_MODEL: "${HF_MINILM_MODEL:-kenpachi-zaraki36/netsecauditor-minilm-v3}"
   HF_MODEL_REVISION: "${HF_MODEL_REVISION:-main}"
@@ -32,7 +43,7 @@ x-common-env: &common-env
   # These remain empty because the approved models are retrieved from HF.
   AI_CLASSIFIER_MODEL_PATH: "${AI_CLASSIFIER_MODEL_PATH:-}"
   AI_EMBEDDING_MODEL_PATH: "${AI_EMBEDDING_MODEL_PATH:-}"
-  AI_REFERENCE_DATASET: "${AI_REFERENCE_DATASET:-}"
+  AI_REFERENCE_DATASET: "${AI_REFERENCE_DATASET:-/app/ai_reference_dataset.json}"
   AI_REFERENCE_EMBEDDINGS: "${AI_REFERENCE_EMBEDDINGS:-}"
 
   # Remote inference (optional) -- run DistilBERT/MiniLM on another host
@@ -72,7 +83,6 @@ x-common-env: &common-env
   FABRIC_MAX_RETRIES: "${FABRIC_MAX_RETRIES:-5}"
 
   # --------------------------------------------------------- Identity ------
-  AUTH_ENABLED: "${AUTH_ENABLED:-true}"
   KEYCLOAK_URL: "${KEYCLOAK_URL:-http://keycloak:8080}"
   KEYCLOAK_ISSUER: "${KEYCLOAK_ISSUER:-http://keycloak:8080/realms/netsecauditor}"
   KEYCLOAK_AUDIENCE: "${KEYCLOAK_AUDIENCE:-netsecauditor-backend}"
@@ -85,8 +95,9 @@ x-common-env: &common-env
   # ------------------------------------------------------------ MinIO ------
   EVIDENCE_BUCKET: "${EVIDENCE_BUCKET:-compliance-artifacts}"
   MINIO_ENDPOINT: "${MINIO_ENDPOINT:-minio:9000}"
+  MINIO_REGION: "${MINIO_REGION:-us-east-1}"
   MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:-compliance}"
-  MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-change-me-in-real-env}"
+  MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:-compliance123}"
 
   # ---------------------------------------------------- OpenConfig / gNMI --
   OPENCONFIG_ENABLED: "${OPENCONFIG_ENABLED:-false}"
@@ -133,8 +144,8 @@ services:
     container_name: compliance-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: compliance
-      MINIO_ROOT_PASSWORD: compliance123
+      MINIO_ROOT_USER: "${MINIO_ACCESS_KEY:-compliance}"
+      MINIO_ROOT_PASSWORD: "${MINIO_SECRET_KEY:-compliance123}"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -189,22 +200,19 @@ services:
       - "run"
       - "--server"
       - "--addr=0.0.0.0:8181"
-      - "/policies/baseline.rego"
+      # Load the WHOLE policy bundle, not just baseline.rego. baseline.rego
+      # imports data.compliance.common.controls, .metadata, .security.*, and
+      # .network.segmentation from the other files under policies/ (see
+      # policies/baseline.rego's import block) -- passing only the single
+      # file here meant every one of those imports was undefined at
+      # evaluation time, silently making the policy engine authoritative
+      # over nothing. `opa run` accepts a directory and recursively loads
+      # every .rego file beneath it.
+      - "/policies"
     volumes:
       - ./policies:/policies:ro
     ports:
       - "8181:8181"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "-qO-",
-          "http://localhost:8181/health"
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 10
 
   batfish:
     image: "${BATFISH_IMAGE_VERSION:-batfish/allinone:test-2024.07.22.1569}"
@@ -249,11 +257,20 @@ services:
     container_name: compliance-openbao
     cap_add:
       - IPC_LOCK
+    command: server -dev
     environment:
       BAO_DEV_ROOT_TOKEN_ID: dev-root-token-change-me
       BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      # Vault-compatible alias — ncclient and the backend use the VAULT_ prefix
+      VAULT_DEV_ROOT_TOKEN_ID: dev-root-token-change-me
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
     ports:
       - "8200:8200"
+    healthcheck:
+      test: ["CMD-SHELL", "bao status || vault status || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # ========================================================================
   # HYPERLEDGER FABRIC
@@ -309,6 +326,8 @@ services:
         condition: service_healthy
       batfish:
         condition: service_healthy
+      opa:
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:
@@ -362,6 +381,58 @@ services:
     volumes:
       - ./policies:/app/policies:ro
       - batfishdata:/tmp/batfish
+    restart: unless-stopped
+
+  network-scan-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-network-scan-worker
+    command:
+      - "python"
+      - "-m"
+      - "app.workers.network_scan_worker"
+    environment:
+      <<: *common-env
+      NETWORK_SCAN_POLL_INTERVAL_SECONDS: "${NETWORK_SCAN_POLL_INTERVAL_SECONDS:-5}"
+      NETWORK_SCAN_WORKER_ENABLED: "${NETWORK_SCAN_WORKER_ENABLED:-true}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      batfish:
+        condition: service_healthy
+      opa:
+        condition: service_started
+    volumes:
+      - ./policies:/app/policies:ro
+      - batfishdata:/tmp/batfish
+    restart: unless-stopped
+
+  device-gateway:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-device-gateway
+    command:
+      - "python"
+      - "-m"
+      - "app.gateway.consumer"
+    environment:
+      <<: *common-env
+      JOB_TTL_SECONDS: "${JOB_TTL_SECONDS:-120}"
+      GATEWAY_CONNECT_TIMEOUT_SECONDS: "${GATEWAY_CONNECT_TIMEOUT_SECONDS:-10}"
+      GATEWAY_COMMAND_TIMEOUT_SECONDS: "${GATEWAY_COMMAND_TIMEOUT_SECONDS:-30}"
+      GATEWAY_MAX_DELIVER: "${GATEWAY_MAX_DELIVER:-3}"
+      GATEWAY_MOCK_CONNECTOR: "${GATEWAY_MOCK_CONNECTOR:-false}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    volumes:
+      - ./policies:/app/policies:ro
     restart: unless-stopped
 
   # ========================================================================

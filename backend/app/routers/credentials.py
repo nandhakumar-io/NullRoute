@@ -20,7 +20,7 @@ from app.auth.dependencies import (CurrentUser, get_current_tenant, get_current_
 from app.db import get_db
 from app.models.db import Device, DeviceCredentialRef
 from app.services import audit_service, openbao_service
-from app.rbac import Permission
+from app.auth.rbac import Permission
 
 router = APIRouter(prefix="/api/devices", tags=["credentials"], dependencies=[Depends(get_current_user)])
 

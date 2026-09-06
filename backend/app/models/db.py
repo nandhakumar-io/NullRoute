@@ -3,7 +3,7 @@
 Runs against PostgreSQL + pgvector in production (docker-compose), but the
 same models work against SQLite for local/offline development, which is what
 the bundled `make dev` / `uvicorn app.main:app` path uses when POSTGRES is
-unreachable (see app/db.py).
+unreachable (see app/models/db.py).
 """
 from __future__ import annotations
 
@@ -46,6 +46,18 @@ class Device(Base):
     last_collection_error = Column(Text, nullable=True)
     last_collection_transport = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Device-management fields (enterprise inventory pass). All nullable so
+    # existing rows created before this migration remain valid without a
+    # backfill; the API layer supplies sensible defaults on create.
+    name = Column(String, nullable=True)  # display name, distinct from hostname
+    site = Column(String, nullable=True)  # site/location
+    environment = Column(String, nullable=True)  # e.g. production/staging/lab
+    protocol = Column(String, nullable=True)  # preferred management protocol: ssh/netconf/restconf/snmp/gnmi
+    description = Column(Text, nullable=True)
+    tags = Column(JSON, nullable=True)  # list[str]
+    enabled = Column(Boolean, nullable=False, default=True)
 
     scans = relationship("Scan", back_populates="device")
 
@@ -269,6 +281,36 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class GatewayJobRecord(Base):
+    """Device Gateway job ledger (Part 1/7/13).
+
+    One row per signed job envelope the gateway has EVER accepted for
+    validation, keyed by `job_id` (also unique, together with `nonce`,
+    which is what makes replay detection a DB constraint rather than an
+    in-memory set -- safe across gateway restarts/replicas). Never stores
+    credential material or raw device output; large output lives in MinIO
+    under `result_object_key` and this row only holds the reference.
+    """
+    __tablename__ = "gateway_jobs"
+    job_id = Column(String, primary_key=True)
+    nonce = Column(String, nullable=False, unique=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    requester_id = Column(String, nullable=False)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    operation = Column(String, nullable=False)
+    protocol = Column(String, nullable=False)
+    approval_id = Column(String, nullable=True)
+    status = Column(String, default="RECEIVED")  # RECEIVED/VALIDATED/REJECTED/RUNNING/SUCCEEDED/FAILED
+    error_code = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    result_object_key = Column(String, nullable=True)  # MinIO key for large raw output, if any
+    normalized_data = Column(JSON, nullable=True)
+    duration_ms = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    completed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
+
 class ReportArtifact(Base):
     """Reference row for a generated PDF/JSON/CSV report (Phase 8/20).
     Reports are built on demand (see routers/compliance.py::get_report) and
@@ -396,6 +438,100 @@ class AuditSchedule(Base):
     last_run_detail = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BaselineApproval(Base):
+    """Golden/approved security baseline (Part 6). Points at an existing
+    Scan row -- the Scan already carries `baseline_json` (SecurityBaseline
+    Model), `raw_config_path` (MinIO), and `raw_config_hash`, so it IS the
+    "snapshot" concept; this table adds nothing but the approval act
+    itself. Only one row per device should be the *current* approved
+    baseline at a time -- enforced by the service layer (most recent
+    `approved_at` wins), not a DB constraint, since history is kept.
+    """
+    __tablename__ = "baseline_approvals"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=False)  # the approved snapshot
+    approved_by = Column(String, nullable=False)
+    approved_at = Column(DateTime, default=datetime.utcnow)
+    approval_reason = Column(Text, nullable=True)
+
+
+class SecurityDriftFinding(Base):
+    """Persistent, per-parameter normalized security drift finding
+    (Part 7). Distinct from `DriftEvent` (Phase 11's per-scan-pair raw
+    line diff + keyword triage, still used for the raw-diff view) --
+    this is the normalized-baseline-level finding with its own status
+    workflow, one row per drifted SecurityBaselineModel parameter.
+    `compliance_controls`/severity/drift_type are the drift ENGINE's own
+    directional triage (see services/security_baseline_drift.py) and are
+    never a compliance verdict; the authoritative PASS/FAIL for any
+    control still lives on the Finding rows OPA produced for each scan.
+    """
+    __tablename__ = "security_drift_findings"
+    drift_id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    previous_scan_id = Column(String, ForeignKey("scans.id"), nullable=True)  # null when compared against a baseline with no prior scan
+    current_scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
+    baseline_parameter = Column(String, nullable=False, index=True)  # dotted path, e.g. management.ssh.version
+    previous_value = Column(JSON, nullable=True)
+    current_value = Column(JSON, nullable=True)
+    drift_type = Column(String, nullable=False)  # NO_CHANGE/CONFIGURATION_CHANGE/SECURITY_IMPROVEMENT/SECURITY_DEGRADATION/COMPLIANCE_IMPACT/UNKNOWN_IMPACT
+    severity = Column(String, nullable=True)  # CRITICAL/HIGH/MEDIUM/LOW, from the matching control if any
+    compliance_controls = Column(JSON, nullable=True)  # list of control_ids from policies/controls.py this parameter maps to
+    evidence_reference = Column(String, nullable=True)  # MinIO raw_config_path of the current scan
+    detected_at = Column(DateTime, default=datetime.utcnow, index=True)
+    status = Column(String, default="OPEN")  # OPEN/ACKNOWLEDGED/REVIEWED/RESOLVED/ACCEPTED_RISK/FALSE_POSITIVE
+    status_updated_by = Column(String, nullable=True)
+    status_updated_at = Column(DateTime, nullable=True)
+
+
+class NetworkScanJob(Base):
+    """Phase 2 (enterprise UI pass) -- an orchestrated, multi-stage network
+    scan: optional discovery over a CIDR, then collection + the existing
+    compliance pipeline (see services/pipeline.run_pipeline, RULE 11 -- no
+    second compliance implementation) for every target device.
+
+    Execution never happens inside a FastAPI request handler: POST
+    /api/network-scans only inserts this row with status=PENDING; the
+    background worker (app/workers/network_scan_worker.py) polls for
+    PENDING rows and calls services/network_scan_service.execute_scan_job(),
+    the same pattern already used for AuditSchedule /
+    app/workers/scheduler_worker.py.
+
+    `stages` is the source of truth the UI polls for real (non-fabricated)
+    progress -- each key is only ever set to a value once that stage has
+    actually run against the real backend for at least one device.
+    """
+    __tablename__ = "network_scan_jobs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=True)
+    target_cidr = Column(String, nullable=True)  # set when run_discovery is true
+    run_discovery = Column(Boolean, default=False)
+    discovery_ports = Column(String, nullable=True)
+    requested_device_ids = Column(JSON, nullable=True)  # explicit device selection, if any
+    framework = Column(String, default="ALL")
+    include_batfish = Column(Boolean, default=True)
+
+    status = Column(String, default="PENDING", index=True)  # PENDING/RUNNING/COMPLETED/PARTIAL/FAILED
+    # Per-stage status: {"discovery": {"status": "...", "detail": "..."}, ...}
+    # status values: PENDING/RUNNING/DONE/SKIPPED/FAILED
+    stages = Column(JSON, nullable=False, default=dict)
+    discovered_hosts = Column(JSON, nullable=True)  # raw discovery output, for the review step
+    resolved_device_ids = Column(JSON, nullable=True)  # devices actually targeted for scan
+    scan_ids = Column(JSON, nullable=True)  # Scan rows created by this job
+    device_results = Column(JSON, nullable=True)  # per-device outcome summary
+    error = Column(Text, nullable=True)
+
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
 
 
 class Alert(Base):
@@ -543,3 +679,81 @@ class ComplianceException(Base):
     status = Column(String, default="PENDING", index=True)  # PENDING/APPROVED/REJECTED/EXPIRED
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainingExample(Base):
+    """Loop 1 / 2: Human-in-the-loop training example.
+    Captures the full normalized interpretation approved by a human, rather than
+    just a single field. Forms the basis for both immediate RAG mappings and
+    offline model training datasets."""
+    __tablename__ = "training_examples"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True, index=True)
+    source_scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
+    source_device_id = Column(String, ForeignKey("devices.id"), nullable=True)
+    source_mapping_id = Column(String, ForeignKey("command_mappings.id"), nullable=True)
+    raw_config_hash = Column(String, nullable=False)
+    raw_config_redacted = Column(Text, nullable=False)
+    vendor = Column(String, nullable=True)
+    intent = Column(String, nullable=True)
+    normalized_facts = Column(JSON, nullable=False, default=dict)
+    human_action = Column(String, nullable=False)  # APPROVED/CORRECTED/REJECTED
+    correction_reason = Column(Text, nullable=True)
+    created_by = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    dataset_version = Column(String, nullable=True)
+    embedding_id = Column(String, nullable=True)
+    validation_status = Column(String, default="PENDING")  # PENDING/VALIDATED/EXCLUDED
+
+
+class DatasetVersion(Base):
+    """Loop 2: Immutable dataset snapshot for training."""
+    __tablename__ = "dataset_versions"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    version = Column(String, nullable=False, unique=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True, index=True)
+    created_by = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    example_count = Column(Integer, nullable=False, default=0)
+    label_distribution = Column(JSON, nullable=False, default=dict)
+    vendor_distribution = Column(JSON, nullable=False, default=dict)
+    source_distribution = Column(JSON, nullable=False, default=dict)
+    validation_status = Column(String, nullable=True)
+    training_status = Column(String, nullable=True)
+    dataset_hash = Column(String, nullable=False)
+    is_immutable = Column(Boolean, default=True)
+
+
+class TrainingJob(Base):
+    """Loop 2: Training job abstraction."""
+    __tablename__ = "training_jobs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True, index=True)
+    dataset_version_id = Column(String, ForeignKey("dataset_versions.id"), nullable=False)
+    base_model_version = Column(String, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String, default="QUEUED", index=True)  # QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED
+    artifact_path = Column(String, nullable=True)
+    metrics = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_by = Column(String, nullable=False)
+
+
+class ModelRegistryEntry(Base):
+    """Loop 2: Production model lifecycle management."""
+    __tablename__ = "model_registry_entries"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    model_name = Column(String, nullable=False)
+    model_type = Column(String, nullable=False)  # classifier/embedder
+    dataset_version = Column(String, nullable=False)
+    base_model_version = Column(String, nullable=True)
+    artifact_path = Column(String, nullable=True)
+    model_hash = Column(String, nullable=True)
+    metrics = Column(JSON, nullable=True, default=dict)
+    training_timestamp = Column(DateTime, nullable=True)
+    status = Column(String, default="CANDIDATE", index=True)  # CANDIDATE/APPROVED/PRODUCTION/REJECTED/ARCHIVED
+    created_by = Column(String, nullable=False)
+    approved_by = Column(String, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    training_job_id = Column(String, ForeignKey("training_jobs.id"), nullable=True)

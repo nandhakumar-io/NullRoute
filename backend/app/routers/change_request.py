@@ -18,7 +18,7 @@ from app.auth.dependencies import (CurrentUser, get_current_tenant,
 from app.db import get_db
 from app.models.db import ChangeRequest, Device, DeploymentRecord
 from app.services import audit_service, change_request_service, deployment_service
-from app.rbac import Permission
+from app.auth.rbac import Permission
 
 router = APIRouter(prefix="/api/change-requests", tags=["change-requests"],
                     dependencies=[Depends(get_current_user)])

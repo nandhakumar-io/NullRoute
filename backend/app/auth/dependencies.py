@@ -25,7 +25,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.jwt import AUTH_ENABLED, AuthError, decode_and_validate
-from app.rbac import ALL_ROLE_NAMES, Permission, has_permission
+from app.auth.rbac import ALL_ROLE_NAMES, Permission, has_permission
 
 _bearer = HTTPBearer(auto_error=False)
 

@@ -62,6 +62,69 @@ back to a deterministic keyword-similarity heuristic (see
 useful for grading/demo environments without GPU access. Swap in Ollama at
 any time with zero code changes.
 
+## Normalization pipeline
+
+Every uploaded configuration goes through the same five stages before it
+becomes a normalized `SecurityBaselineModel` (`backend/app/models/baseline.py`):
+
+```
+raw configuration
+  -> vendor/section detection        (services/vendor_detect.py)
+  -> deterministic parsing            (services/parsers.py)
+  -> AI/RAG semantic normalization    (ai/normalize.py, block-based)
+  -> vendor-neutral SecurityBaselineModel
+  -> OPA/Rego compliance evaluation   (services/compliance.py, services/opa_service.py)
+```
+
+**Deterministic parsing runs first, always.** `services/parsers.py` matches
+known vendor syntax (flat single-value rules AND multi-field "structured"
+extractors for things like RADIUS/TACACS+ server stanzas, VLANs, ACLs,
+interfaces, and routing) directly into typed fields on the baseline, each
+with `confidence=1.0` and `source="parser"`. Any line a rule doesn't
+recognize is never guessed at here — it's classified as `unsupported`
+(well-formed, just unknown syntax) or `malformed` (structurally broken:
+unbalanced quotes, dangling continuations, control characters), and
+contiguous unsupported lines are grouped into **context blocks**
+(`_group_unknown_blocks`) rather than handed off as isolated single lines.
+
+**AI/RAG normalization is context-aware and multi-fact.** `ai/normalize.py`'s
+`interpret_block()` receives a whole block — not one line — plus any
+similar approved mappings retrieved from the `CommandMapping` knowledge base
+via pgvector cosine similarity (`services/vector_search.py`, tenant- and
+vendor-scoped). It asks the local Ollama/Qwen3 model to return **strict
+JSON** with a `facts` array (zero or more independent extracted facts, each
+with its own evidence quote and confidence) and an `unknown` array (lines it
+declined to interpret). Retrieved mappings are injected as advisory examples
+only — they can bias which known parameter a fact is proposed under, but
+never override or fabricate a value the block itself doesn't support. If
+Ollama is unreachable or returns something that doesn't parse as that
+schema, a deterministic offline heuristic takes over: it extracts typed
+primitives (IPs, ports, VLAN IDs, protocol versions, timeouts, AS numbers,
+boolean states) per line, proposes a parameter only when there's a real
+keyword signal, and caps confidence low enough that a bare keyword match
+alone is never treated as KNOWN — it stays flagged for human review.
+
+**Provenance is complete for every fact**, deterministic or AI-derived: raw
+evidence, source (`parser`/`ai`), confidence, model version, retrieved
+knowledge (if any), and human-validation state, recorded on
+`SecurityBaselineModel.provenance`. Nothing is ever silently discarded —
+lines the AI stage can't interpret are preserved verbatim as
+`extra_parameters.unknown_evidence`, and blocks beyond the per-scan AI
+processing cap are preserved in `extra_parameters._uncapped_unknown_blocks`
+rather than dropped. `ai.normalize.compute_coverage()` reports
+`input_lines` / `deterministic_facts` / `ai_facts` / `unknown_lines` /
+`normalized_facts` / `discarded_lines` for every scan — `discarded_lines`
+is a correctness invariant that must always read `0`. A debug/preview
+utility is exposed at `POST /api/normalize/preview` (raw config in, facts +
+unknown evidence + coverage out, nothing persisted) for reviewers and CI —
+see `backend/tests/test_normalization_pipeline.py`.
+
+**OPA/Rego remains the sole compliance authority.** The AI/RAG stage above
+only ever produces *interpretations* with a confidence score; it never
+computes PASS/FAIL. That is exclusively `services/compliance.py` +
+`policies/*.rego`, operating on the typed, provenance-complete baseline
+this pipeline produces.
+
 ## Local (non-Docker) backend dev
 
 ```bash
@@ -152,6 +215,83 @@ path, mirror it in `policies/baseline.rego`). It applies to every vendor
 immediately.
 
 ---
+
+## Device Gateway (Phase 1 of the device-connectivity rework)
+
+The FastAPI backend no longer connects to network devices directly for
+gateway-mediated operations. Instead:
+
+```
+Frontend / API caller
+        │  POST /api/devices/{id}/audit  (authenticated)
+        ▼
+FastAPI  ──build + HMAC-sign JobEnvelope──▶  NATS JetStream
+                                                  │
+                                                  ▼
+                                          Device Gateway
+                                    (independent re-validation:
+                                     signature, expiry, replay,
+                                     tenant, requester, device
+                                     ownership, operation, approval)
+                                                  │
+                                    ┌─────────────┼─────────────┬────────┐
+                                    ▼             ▼             ▼        ▼
+                                   SSH        NETCONF       RESTCONF   SNMP/gNMI
+                              (existing app/services/collectors/*, reused as-is)
+                                                  │
+                                                  ▼
+                                           Network Device
+```
+
+**Security model.** Every job is a `JobEnvelope`
+(`backend/app/gateway/envelope.py`): `job_id`, `tenant_id`, `requester_id`,
+`device_id`, `operation`, `protocol`, `payload`, `created_at`, `expires_at`,
+`nonce`, `approval_id`, `signature`. The signature is an HMAC-SHA256 over a
+canonical JSON encoding of every field above (never a `trusted=true` flag).
+Only the API holds `JOB_SIGNING_SECRET`; the gateway only ever verifies.
+`backend/app/gateway/validator.py` independently re-checks signature,
+expiration, replay (via the `gateway_jobs` table's `job_id`/`nonce`
+uniqueness — durable across gateway restarts, not an in-memory set),
+tenant existence, requester identity, operation whitelist, device
+tenant-ownership, and (for future privileged operations) approval
+requirements including self-approval rejection.
+
+**Supported operations (this phase):** `AUDIT`, `FETCH_CONFIG`,
+`GET_FACTS`, `GET_VERSION`, `GET_INTERFACES`, `GET_NEIGHBORS` — all
+read-only. `WRITE`/`REMEDIATE`/`DEPLOY` are defined in the validator's
+approval-enforcement path but are not reachable by any caller yet; nothing
+enables automatic remediation deployment by default.
+
+**Protocols:** ssh/netconf/restconf/gnmi/snmp, all served by the existing
+`app/services/collectors/*` implementations (no duplicate transport code).
+Credentials are resolved via the existing OpenBao `credential_ref`
+mechanism for the duration of one job only.
+
+**NATS subjects:** `netsec.device.audit.request` / `.result`,
+`netsec.device.config.request` / `.result`, `netsec.device.error`.
+
+**Deployment topology:** `docker-compose.yml` runs the gateway as its own
+`device-gateway` service (`python -m app.gateway.consumer`, a durable
+JetStream pull consumer), separate from the `backend` API container. For
+local/offline dev and the test suite, the API also executes a job directly
+in-process when it doesn't need the NATS hop (`app/gateway/publisher.py`) —
+the security checks and execution path are identical either way.
+
+**Environment variables:** `JOB_SIGNING_SECRET` (required, no default),
+`JOB_TTL_SECONDS` (default 120), `GATEWAY_CONNECT_TIMEOUT_SECONDS` (10),
+`GATEWAY_COMMAND_TIMEOUT_SECONDS` (30), `GATEWAY_MAX_DELIVER` (3),
+`GATEWAY_MOCK_CONNECTOR` (false; set true for offline dev/demo without
+real devices).
+
+**API endpoints:** `POST /api/devices/{device_id}/audit`,
+`POST /api/devices/{device_id}/gateway-fetch-config`,
+`GET /api/devices/gateway/metrics`, `GET /api/devices/gateway/operations`.
+
+**Known limitation:** per-device concurrency limiting and the replay
+nonce-lock use a single-process lock/DB-uniqueness check adequate for one
+gateway replica; a multi-replica deployment should add a Postgres advisory
+lock keyed by `device_id` for the concurrency limit specifically (replay
+protection itself is already replica-safe via the DB unique constraint).
 
 ## Project layout
 

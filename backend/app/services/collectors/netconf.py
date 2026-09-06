@@ -3,8 +3,23 @@
 Uses ncclient (open-source, MIT/Apache-licensed) when available. Offline-safe
 fallback mirrors ssh.py: no ImportError at module import time if ncclient
 isn't installed, only a failed CollectionResult at call time.
+
+Config text strategy
+--------------------
+The downstream pipeline (parsers.py, topology_extractor.py, Batfish) all
+expect vendor CLI text -- NOT raw XML.  We therefore retrieve the running
+configuration in the *display* / *set* format that each vendor supports via
+the ``execute-command`` RPC (Juniper Junos) or via a Netconf ``<rpc>`` that
+requests ``text`` output encoding.  If the text-format RPC fails, we fall
+back to stripping the XML tags so at least the value content flows through
+the AI/RAG normalization stage rather than being silently discarded.
 """
 from __future__ import annotations
+
+import re
+import time
+import xml.etree.ElementTree as ET
+from typing import Optional
 
 from app.models.db import Device
 from app.services.collectors.base import BaseCollector, CollectionResult, timed
@@ -18,6 +33,97 @@ except ImportError:  # pragma: no cover
     ncclient_manager = None
 
 _NETCONF_VENDORS = {"juniper", "cisco_xe", "cisco"}
+
+# ncclient device_params -> selects the vendor-specific handler that knows
+# how to parse that platform's <hello> capabilities / RPC quirks. Leaving
+# this as None (the previous behavior for every non-Juniper vendor) forces
+# ncclient to fall back to its generic/default handler, which is more
+# likely to mis-negotiate capabilities on IOS-XE and occasionally surface
+# as an intermittent "collection worked last time, fails this time" NETCONF
+# result -- one contributor to the reported flakiness.
+_DEVICE_PARAMS = {
+    "juniper": {"name": "junos"},
+    "cisco_xe": {"name": "iosxe"},
+    "cisco": {"name": "iosxe"},
+}
+
+# Transient/retryable ncclient-or-lower-level error substrings: devices
+# commonly cap concurrent NETCONF sessions (Juniper/IOS-XE default to a
+# small limit) and briefly refuse a new session while a previous one is
+# still tearing down, or a first SSH key-exchange attempt is dropped under
+# load. A single short-backoff retry resolves the vast majority of these
+# without masking a genuine, persistent failure (auth/unreachable/etc. are
+# not in this list and fail immediately).
+_RETRYABLE_ERROR_SUBSTRINGS = (
+    "session limit",
+    "too many sessions",
+    "resource temporarily unavailable",
+    "connection reset",
+    "eof",
+    "unable to open shell",
+)
+
+
+def _xml_to_cli_text(xml_string: str) -> str:
+    """Best-effort: strip XML tags, returning only whitespace-normalised content.
+
+    This is a last-resort fallback so that NETCONF-collected configs remain
+    partially useful even when the vendor-specific text-format RPC is not
+    available.  It is NOT a proper XML-to-CLI converter; the AI/RAG pipeline
+    will handle the unrecognised lines.
+    """
+    try:
+        # Remove XML namespaces so tags are simpler
+        clean = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", xml_string)
+        root = ET.fromstring(clean)
+        lines = []
+        for elem in root.iter():
+            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+            text = (elem.text or "").strip()
+            if text:
+                lines.append(f"{tag} {text}")
+        return "\n".join(lines)
+    except ET.ParseError:
+        # If XML is malformed strip tags with regex
+        return re.sub(r"<[^>]+>", " ", xml_string)
+
+
+def _get_juniper_cli_config(m) -> str:
+    """Execute ``show configuration | display set`` via ncclient's RPC
+    dispatch to obtain Junos set-format CLI text that the deterministic
+    parser understands.
+
+    Bug fixed here: this used to call
+    ``m.dispatch(ncclient_manager.make_rpc_request(rpc_xml) if hasattr(...) else _raw_rpc(m, rpc_xml))``.
+    `ncclient.manager` has no `make_rpc_request` attribute, so that
+    `hasattr` check always evaluated False, and the `else` branch
+    (`_raw_rpc`) itself already called `m._session.dispatch(rpc_xml)` and
+    returned the *completed reply* -- which was then fed straight back into
+    `m.dispatch(...)` a second time. Dispatching an already-built reply
+    object always raised, so this path silently failed on every single
+    call (caught by the bare `except` below) and every Juniper NETCONF
+    collection fell back to the slower/lossier `get_config` + XML-tag-
+    stripping path -- never the intended "display set" RPC. `Manager.
+    dispatch()` is ncclient's own public entry point for a raw/custom RPC;
+    call it directly, once.
+    """
+    rpc_xml = """
+    <command format="text">
+      <![CDATA[show configuration | display set]]>
+    </command>
+    """
+    try:
+        reply = m.dispatch(rpc_xml)
+        raw = reply.xml if hasattr(reply, "xml") else str(reply)
+        # Extract text content from the <output> wrapper Junos returns for
+        # a text-format command RPC.
+        match = re.search(r"<output[^>]*>(.*?)</output>", raw, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        # Strip all tags as fallback
+        return _xml_to_cli_text(raw)
+    except Exception:  # noqa: BLE001 -- fall back to get-config below
+        return ""
 
 
 class NetconfCollector(BaseCollector):
@@ -48,24 +154,56 @@ class NetconfCollector(BaseCollector):
             )
 
         secret = credentials.secret
-        device_params = {"name": "junos"} if vendor_key == "juniper" else None
+        device_params = _DEVICE_PARAMS.get(vendor_key)
+        connect_timeout = int(secret.get("timeout", 20))
 
-        try:
+        def _connect_and_collect():
             with ncclient_manager.connect(
                 host=management_address,
                 port=int(secret.get("port", 830)),
                 username=secret.get("username"),
                 password=secret.get("password"),
                 hostkey_verify=False,
+                # Never probe/wait on a local SSH agent or ~/.ssh/known_hosts
+                # -- in a containerized backend these are usually absent,
+                # but when present (or when the agent socket is
+                # transiently unresponsive) paramiko's agent handshake can
+                # add multi-second, inconsistent delays that look exactly
+                # like "NETCONF collection sometimes just doesn't work".
+                allow_agent=False,
+                look_for_keys=False,
                 device_params=device_params,
-                timeout=int(secret.get("timeout", 20)),
+                timeout=connect_timeout,
             ) as m:
+                # --- Juniper: prefer "display set" CLI text ---
+                if vendor_key == "juniper":
+                    cli_text = _get_juniper_cli_config(m)
+                    if cli_text:
+                        return cli_text
+                    # Fallback: get-config and convert XML -> text
+                    reply = m.get_config(source="running")
+                    return _xml_to_cli_text(reply.data_xml)
+                # Cisco / other: get-config returns XML; strip tags for parser
                 reply = m.get_config(source="running")
-                raw_config = reply.data_xml
-        except Exception as e:  # noqa: BLE001 -- ncclient raises many transport-specific errors
+                return _xml_to_cli_text(reply.data_xml)
+
+        last_error: Optional[Exception] = None
+        for attempt in range(2):  # one retry for transient session/limit errors
+            try:
+                raw_config = _connect_and_collect()
+                last_error = None
+                break
+            except Exception as e:  # noqa: BLE001 -- ncclient raises many transport-specific errors
+                last_error = e
+                if attempt == 0 and any(s in str(e).lower() for s in _RETRYABLE_ERROR_SUBSTRINGS):
+                    time.sleep(1.5)
+                    continue
+                break
+
+        if last_error is not None:
             return CollectionResult(
                 success=False, vendor=device.vendor, hostname=device.hostname,
-                error=redact_secret_values(f"{type(e).__name__}: {e}", secret),
+                error=redact_secret_values(f"{type(last_error).__name__}: {last_error}", secret),
             )
 
         return CollectionResult(

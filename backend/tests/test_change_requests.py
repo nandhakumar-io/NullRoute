@@ -44,6 +44,7 @@ def _demo_auth(monkeypatch):
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("AI_ENABLED", "false")
+    monkeypatch.setattr("app.services.batfish_service.BATFISH_ENABLED", False)
     from app.main import app
 
     with TestClient(app) as c:
@@ -68,6 +69,7 @@ def test_create_change_request_runs_existing_validator(client):
 
     assert resp.status_code == 200
     body = resp.json()
+    print(body)
     assert body["status"] == "PENDING_APPROVAL"
     assert body["opa_decision"] == "PASS"
     assert body["final_decision"] == "PASS"

@@ -25,6 +25,7 @@ from typing import Any, Dict, List
 from sqlalchemy.orm import Session
 
 from app.models.db import Device, Finding, Scan
+from app.services import remediation_templates
 
 
 def suggest_remediation_for_scan(db: Session, scan: Scan) -> Dict[str, Any]:
@@ -69,4 +70,98 @@ def suggest_remediation_for_scan(db: Session, scan: Scan) -> Dict[str, Any]:
             "proposed_config for a Change Request; AI never writes or "
             "deploys configuration directly."
         ),
+    }
+
+
+def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str, Any]:
+    """Phase 14+ -- vendor-specific remediation CLI generation.
+
+    Implements, per FAIL finding, the pipeline:
+
+        Finding -> control_id -> (vendor, os/version) -> validated template
+                -> step-by-step CLI -> human approval
+
+    Only `control_id`s with a hand-authored, reviewed entry in
+    `remediation_templates` produce CLI (`cli_available: true`). Every
+    other finding still returns its existing prose `remediation` text
+    (`cli_available: false`) rather than a guessed command sequence --
+    this function never asks an LLM to invent syntax (RULE 3/RULE 10,
+    same boundary `suggest_remediation_for_scan` already documents).
+
+    The response is a proposal, not an action: `requires_human_approval`
+    is always true, nothing here is sent to a device, and turning this
+    into something deployable still goes through the existing
+    ChangeRequest flow (services/change_request_service.py), which is the
+    only path with a human APPROVED gate before deployment_service runs.
+    """
+    device = db.query(Device).filter(Device.id == scan.device_id).first()
+    vendor = (device.vendor if device else None) or "Unknown"
+    os_family = (device.os if device else None) or "Unknown"
+
+    fails: List[Finding] = (
+        db.query(Finding)
+        .filter(Finding.scan_id == scan.id, Finding.result == "FAIL")
+        .order_by(Finding.severity)
+        .all()
+    )
+
+    remediations = []
+    for f in fails:
+        template = remediation_templates.get_template(f.control_id, vendor)
+        if template:
+            has_placeholder = any("<" in c and ">" in c for c in template.commands)
+            remediations.append({
+                "finding_id": f.id,
+                "control_id": f.control_id,
+                "title": f.title,
+                "severity": f.severity,
+                "vendor": template.vendor,
+                "os_family": template.os_family,
+                "cli_available": True,
+                "description": template.description,
+                "cli_steps": list(template.commands),
+                "save_commands": list(template.save_commands),
+                "reference": template.reference,
+                "requires_site_values": has_placeholder,
+                "requires_human_approval": True,
+                "note": (
+                    "Fill in any <PLACEHOLDER> values for this site before use. "
+                    "This is a validated template, not a device-specific fact -- "
+                    "a human must review and approve it (ideally via a "
+                    "ChangeRequest) before anything is applied to the device."
+                ),
+            })
+        else:
+            remediations.append({
+                "finding_id": f.id,
+                "control_id": f.control_id,
+                "title": f.title,
+                "severity": f.severity,
+                "vendor": vendor,
+                "os_family": os_family,
+                "cli_available": False,
+                "description": None,
+                "cli_steps": [],
+                "save_commands": [],
+                "reference": None,
+                "requires_site_values": None,
+                "requires_human_approval": True,
+                "guidance": f.remediation,
+                "note": (
+                    "No validated CLI template exists yet for this vendor/control "
+                    "pair -- showing prose guidance only. Add a reviewed template "
+                    "in app/services/remediation_templates.py to enable CLI "
+                    "generation for this control; never fabricate one at request time."
+                ),
+            })
+
+    return {
+        "scan_id": scan.id,
+        "device_id": scan.device_id,
+        "vendor": vendor,
+        "os_family": os_family,
+        "finding_count": len(remediations),
+        "cli_generated_count": sum(1 for r in remediations if r["cli_available"]),
+        "remediations": remediations,
+        "requires_human_approval": True,
     }

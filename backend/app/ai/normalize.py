@@ -107,29 +107,22 @@ def _offline_heuristic_interpret(line: str) -> AIInterpretation:
 
 
 async def retrieve_similar_mappings(db_session, tenant_id: str, vendor: str, line: str, top_k: int = 3) -> List[dict]:
-    """pgvector similarity search against the learned CommandMapping table,
-    scoped to the requesting tenant (Phase 5) — a mapping learned from one
-    tenant's fleet is never surfaced to another tenant's pipeline.
-    Falls back to substring match when running on SQLite (no vector index)."""
-    from app.models.db import CommandMapping  # local import to avoid cycles
+    """Real retrieval: line -> embedding -> pgvector cosine similarity ->
+    nearest approved CommandMapping rows for this tenant+vendor (see
+    services/vector_search.py). Scoped to the requesting tenant (Phase 5)
+    -- a mapping learned from one tenant's fleet is never surfaced to
+    another tenant's pipeline. Degrades to in-process cosine (SQLite / no
+    pgvector) or token overlap (rows with no stored embedding yet) rather
+    than silently claiming a vector search that didn't happen."""
+    from app.services import vector_search
 
-    q = db_session.query(CommandMapping).filter(
-        CommandMapping.tenant_id == tenant_id,
-        CommandMapping.vendor == vendor,
-        CommandMapping.status == "approved",
+    results = vector_search.find_similar_mappings(
+        db_session, tenant_id=tenant_id, vendor=vendor, query_text=line,
+        status="approved", top_k=top_k,
     )
-    candidates = q.all()
-    tokens = set(re.findall(r"[a-z]+", line.lower()))
-    scored = []
-    for c in candidates:
-        c_tokens = set(re.findall(r"[a-z]+", (c.raw_command_pattern or "").lower()))
-        overlap = len(tokens & c_tokens)
-        if overlap:
-            scored.append((overlap, c))
-    scored.sort(key=lambda t: t[0], reverse=True)
     return [
-        {"parameter": c.normalized_parameter, "example_value": c.example_value, "pattern": c.raw_command_pattern}
-        for _, c in scored[:top_k]
+        {"parameter": r["normalized_parameter"], "example_value": r["example_value"], "pattern": r["raw_command_pattern"]}
+        for r in results
     ]
 
 

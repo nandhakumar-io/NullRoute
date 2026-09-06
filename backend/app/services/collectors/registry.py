@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 from app.services.collectors.base import BaseCollector
+from app.services.collectors.gnmi import GNMICollector
 from app.services.collectors.netconf import NetconfCollector
 from app.services.collectors.restconf import RestconfCollector
 from app.services.collectors.snmp import SNMPCollector
@@ -40,6 +41,11 @@ _COLLECTORS: Dict[str, BaseCollector] = {
     "netconf": NetconfCollector(),
     "restconf": RestconfCollector(),
     "snmp": SNMPCollector(),
+    # gNMI is never in a vendor's default priority list above (its Get
+    # response is structured OpenConfig JSON, not CLI-equivalent running
+    # config -- see collectors/gnmi.py docstring), so it's only reachable
+    # via an explicit transport="gnmi" request, same opt-in pattern as SNMP.
+    "gnmi": GNMICollector(),
 }
 
 

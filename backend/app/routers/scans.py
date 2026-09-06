@@ -1,16 +1,16 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.db import BatfishAnalysis, Device, EvidenceRecord, Finding, ReportArtifact, Scan
 from app.schemas import ScanDetailOut, ScanOut
-from app.services import minio_service, network_snapshot_service, remediation_service
+from app.services import audit_service, minio_service, network_snapshot_service, remediation_service
 from app.services.pipeline import run_pipeline
 from app.services.vendor_detect import detect_vendor
 
-from app.auth.dependencies import get_current_tenant, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user, require_role
 
 router = APIRouter(prefix="/api/scans", tags=["scans"], dependencies=[Depends(get_current_user)])
 
@@ -30,18 +30,28 @@ def _get_owned_scan(db: Session, scan_id: str, tenant_id: str) -> Scan:
 
 @router.post("/upload", response_model=ScanDetailOut)
 async def upload_config(
+    request: Request,
     file: UploadFile = File(...),
     framework: str = Form("ALL"),
     hostname: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
 ):
     raw_bytes = await file.read()
     if len(raw_bytes) > MAX_UPLOAD_BYTES:
+        audit_service.record_from_user(
+            db, user, action="scan.upload", request=request, result="FAILURE",
+            object_type="scan", new_value={"filename": file.filename, "error": "file too large"},
+        )
         raise HTTPException(413, "Configuration file too large (max 5MB)")
     try:
         raw_text = raw_bytes.decode("utf-8", errors="replace")
     except Exception:
+        audit_service.record_from_user(
+            db, user, action="scan.upload", request=request, result="FAILURE",
+            object_type="scan", new_value={"filename": file.filename, "error": "undecodable"},
+        )
         raise HTTPException(400, "Unable to decode configuration file as text")
 
     guess = detect_vendor(raw_text)
@@ -64,6 +74,15 @@ async def upload_config(
     await run_pipeline(db, scan, raw_text, framework=framework)
 
     db.refresh(scan)
+    audit_service.record_from_user(
+        db, user, action="scan.upload", request=request, result="SUCCESS",
+        object_type="scan", object_id=scan.id,
+        new_value={
+            "filename": file.filename, "device_id": device.id, "vendor": guess.vendor,
+            "framework": framework, "config_hash": scan.raw_config_hash,
+            "final_decision": scan.final_decision,
+        },
+    )
     findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
     return ScanDetailOut(
         **ScanOut.model_validate(scan).model_dump(),
@@ -74,15 +93,21 @@ async def upload_config(
 
 @router.post("/bulk-upload", response_model=List[ScanDetailOut])
 async def bulk_upload(
+    request: Request,
     files: List[UploadFile] = File(...),
     framework: str = Form("ALL"),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
 ):
     results = []
     for file in files:
         raw_bytes = await file.read()
         if len(raw_bytes) > MAX_UPLOAD_BYTES:
+            audit_service.record_from_user(
+                db, user, action="scan.upload", request=request, result="FAILURE",
+                object_type="scan", new_value={"filename": file.filename, "error": "file too large"},
+            )
             continue
         raw_text = raw_bytes.decode("utf-8", errors="replace")
         guess = detect_vendor(raw_text)
@@ -96,6 +121,15 @@ async def bulk_upload(
         db.refresh(scan)
         await run_pipeline(db, scan, raw_text, framework=framework)
         db.refresh(scan)
+        audit_service.record_from_user(
+            db, user, action="scan.upload", request=request, result="SUCCESS",
+            object_type="scan", object_id=scan.id,
+            new_value={
+                "filename": file.filename, "device_id": device.id, "vendor": guess.vendor,
+                "framework": framework, "config_hash": scan.raw_config_hash,
+                "final_decision": scan.final_decision,
+            },
+        )
         findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
         results.append(ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings))
     return results
@@ -140,8 +174,22 @@ def get_remediation_suggestions(
     return remediation_service.suggest_remediation_for_scan(db, scan)
 
 
+@router.get("/{scan_id}/remediation-cli")
+def get_remediation_cli(
+    scan_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant),
+):
+    """Vendor-specific step-by-step CLI remediation for this scan's FAIL
+    findings: Finding -> control_id -> (vendor, os) -> validated template ->
+    CLI steps -> human approval. See services/remediation_service.py and
+    services/remediation_templates.py for the trust boundary (only
+    hand-reviewed templates are ever returned as CLI)."""
+    scan = _get_owned_scan(db, scan_id, tenant_id)
+    return remediation_service.generate_remediation_cli_for_scan(db, scan)
+
+
 @router.post("/{scan_id}/rerun", response_model=ScanDetailOut)
-async def rerun_scan(scan_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+async def rerun_scan(scan_id: str, request: Request, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant),
+                      user: CurrentUser = Depends(get_current_user)):
     """Re-evaluate a scan — used in the demo to show that after training an
     unknown command, re-running recognizes it via the pgvector-backed
     knowledge base.
@@ -162,6 +210,7 @@ async def rerun_scan(scan_id: str, db: Session = Depends(get_db), tenant_id: str
     if not scan:
         raise HTTPException(404, "Scan not found")
     device = db.query(Device).get(scan.device_id)
+    _prior_decision, _prior_reason = scan.final_decision, scan.final_reason
     db.query(Finding).filter(Finding.scan_id == scan_id).delete()
     db.commit()
 
@@ -228,6 +277,12 @@ async def rerun_scan(scan_id: str, db: Session = Depends(get_db), tenant_id: str
     scan.status = {"PASS": "completed", "REVIEW": "review", "BLOCK": "blocked"}[decision.decision]
     db.commit()
     db.refresh(scan)
+    audit_service.record_from_user(
+        db, user, action="scan.rerun", request=request, result="SUCCESS",
+        object_type="scan", object_id=scan.id,
+        old_value={"final_decision": _prior_decision, "final_reason": _prior_reason},
+        new_value={"final_decision": decision.decision, "final_reason": decision.reason, "compliance_score": score},
+    )
     findings_out = db.query(Finding).filter(Finding.scan_id == scan_id).all()
     return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings_out)
 
@@ -341,8 +396,10 @@ def list_scan_artifacts(
 def download_scan_artifact(
     scan_id: str,
     kind: str,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """kind: raw_config | evidence | report_pdf | report_json | report_csv"""
     scan = db.query(Scan).filter(Scan.id == scan_id, Scan.tenant_id == tenant_id).first()

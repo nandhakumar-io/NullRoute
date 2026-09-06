@@ -25,11 +25,16 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.jwt import AUTH_ENABLED, AuthError, decode_and_validate
+from app.rbac import ALL_ROLE_NAMES, Permission, has_permission
 
 _bearer = HTTPBearer(auto_error=False)
 
 DEMO_TENANT_NAME = "SIH-Demo"
-ALL_ROLES = ["admin", "security_analyst", "operator", "auditor", "viewer"]
+# Accepts both the canonical Section-11 role names (SUPER_ADMIN, TENANT_ADMIN,
+# SECURITY_ANALYST, AUDITOR, OPERATOR, VIEWER) and the legacy lowercase
+# Keycloak realm role names (admin, security_analyst, operator, auditor,
+# viewer) — see app/rbac.py for how the legacy names map onto the new ones.
+ALL_ROLES = ALL_ROLE_NAMES
 
 
 @dataclass
@@ -120,6 +125,25 @@ def require_role(*roles: str):
             raise HTTPException(
                 status_code=403,
                 detail=f"Requires one of roles: {', '.join(roles)}",
+            )
+        return user
+
+    return _check
+
+
+def require_permission(*permissions: Permission):
+    """Dependency factory: raises 403 unless the current user's roles grant
+    at least one of the given permissions. This is the RBAC enforcement
+    point (Section 11) — never rely on the frontend hiding a button; every
+    mutating/sensitive route should depend on this (or require_role, for
+    the small number of routes not yet migrated to the permission model).
+    """
+
+    async def _check(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if not has_permission(user.roles, *permissions):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Requires one of permissions: {', '.join(p.value for p in permissions)}",
             )
         return user
 

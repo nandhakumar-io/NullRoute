@@ -84,6 +84,46 @@ export interface DashboardStats {
   evidence_anchoring_status: Record<string, number>;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  tenant_id: string | null;
+  username: string | null;
+  user_id: string | null;
+  action: string | null;
+  object_type: string | null;
+  object_id: string | null;
+  source_ip: string | null;
+  old_value: Record<string, any> | null;
+  new_value: Record<string, any> | null;
+  result: string | null;
+  created_at: string;
+}
+
+export type DashboardRange = "24h" | "7d" | "30d" | "90d";
+
+export interface DashboardMetricPoint {
+  bucket: string;
+  compliance_score: number | null;
+  critical_findings: number;
+  high_findings: number;
+  medium_findings: number;
+  low_findings: number;
+  open_findings: number;
+  resolved_findings: number;
+}
+
+export interface DashboardMetrics {
+  range: DashboardRange;
+  compliance_score: number;
+  critical_findings: number;
+  high_findings: number;
+  medium_findings: number;
+  low_findings: number;
+  open_findings: number;
+  resolved_findings: number;
+  timeseries: DashboardMetricPoint[];
+}
+
 export interface CommandMapping {
   id: string;
   vendor: string;
@@ -372,7 +412,14 @@ export interface DeploymentRecord {
   verification_metadata: Record<string, unknown> | null;
 }
 
+export const endpoints = {
   dashboard: () => api.get<DashboardStats>("/api/dashboard"),
+  dashboardMetrics: (range: DashboardRange) =>
+    api.get<DashboardMetrics>("/api/dashboard/metrics", { params: { range } }),
+  auditLog: (params?: {
+    action?: string; object_type?: string; object_id?: string;
+    username?: string; result?: string; limit?: number; offset?: number;
+  }) => api.get<AuditLogEntry[]>("/api/audit-log", { params }),
   devices: () => api.get<Device[]>("/api/devices"),
   scans: () => api.get<Scan[]>("/api/scans"),
   scan: (id: string) => api.get<ScanDetail>(`/api/scans/${id}`),

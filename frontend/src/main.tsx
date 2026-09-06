@@ -22,6 +22,7 @@ import Drift from "./pages/Drift";
 import Schedules from "./pages/Schedules";
 import Alerts from "./pages/Alerts";
 import AIAnalysisOverview from "./pages/AIAnalysisOverview";
+import AuditLog from "./pages/AuditLog";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -47,6 +48,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="schedules" element={<Schedules />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="ai-analysis" element={<AIAnalysisOverview />} />
+          <Route path="audit-log" element={<AuditLog />} />
         </Route>
       </Routes>
     </BrowserRouter>

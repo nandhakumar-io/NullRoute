@@ -31,3 +31,6 @@ body {
 .select {
   @apply bg-slate-800 border border-soc-border text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-700;
 }
+.input {
+  @apply bg-slate-800 border border-soc-border text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-700 placeholder-slate-500;
+}

@@ -93,10 +93,78 @@ def _try_load_minilm(model_path: str, dataset_path: str, embeddings_path: Option
         return None
 
 
+def _try_load_remote_minilm(remote_url: str, dataset_path: str, embeddings_path: Optional[str]) -> Optional[LoadedEmbedder]:
+    """Optional remote inference mode for MiniLM: instead of loading
+    sentence-transformers into this process, call an HTTP embedding
+    endpoint (self-hosted text-embeddings-inference server, or a
+    teammate's GPU box) that returns {"embedding": [...]} for
+    POST {"text": ...}.
+
+    The reference dataset's vectors are still computed once at load time
+    (via the same remote endpoint if no precomputed AI_REFERENCE_EMBEDDINGS
+    file is given) and cached in memory for the life of the process --
+    this changes WHERE inference runs, not the load-once contract.
+    """
+    if not remote_url:
+        return None
+    import httpx
+
+    timeout = float(os.getenv("AI_REMOTE_TIMEOUT_SECONDS", "10"))
+    api_key = os.getenv("AI_REMOTE_API_KEY")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    def _remote_encode_raw(text_in: str) -> List[float]:
+        resp = httpx.post(remote_url, json={"text": text_in}, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return list(resp.json()["embedding"])
+
+    examples = _load_reference_dataset(dataset_path)
+    if not examples:
+        return None
+
+    if embeddings_path and os.path.isfile(embeddings_path):
+        import numpy as np
+        vectors = np.load(embeddings_path)
+        for ex, vec in zip(examples, vectors):
+            ex.vector = vec.tolist()
+    else:
+        try:
+            for ex in examples:
+                ex.vector = _remote_encode_raw(ex.text)
+        except Exception:
+            # Remote endpoint unreachable while building the reference set
+            # -- don't half-populate vectors; let the caller fall through
+            # to the offline token-overlap backend instead.
+            return None
+
+    def encode(text_in: str) -> List[float]:
+        try:
+            return _remote_encode_raw(text_in)
+        except Exception:
+            # Mirrors classifier.py's remote fallback: a network blip on a
+            # single query shouldn't fail the whole normalization pipeline.
+            # Returning a zero vector makes this query rank last rather
+            # than raising, which the caller (nearest()) handles gracefully.
+            return [0.0] * len(examples[0].vector or [1.0])
+
+    return LoadedEmbedder(
+        backend_name="minilm-remote",
+        model_version=remote_url,
+        reference_dataset_path=dataset_path,
+        examples=examples,
+        encode_fn=encode,
+    )
+
+
 def load_embedder() -> LoadedEmbedder:
     model_path = os.getenv("AI_EMBEDDING_MODEL_PATH", "")
     dataset_path = os.getenv("AI_REFERENCE_DATASET", "")
     embeddings_path = os.getenv("AI_REFERENCE_EMBEDDINGS") or None
+    remote_url = os.getenv("AI_EMBEDDING_REMOTE_URL", "")
+
+    remote = _try_load_remote_minilm(remote_url, dataset_path, embeddings_path)
+    if remote is not None:
+        return remote
 
     loaded = _try_load_minilm(model_path, dataset_path, embeddings_path)
     if loaded is not None:
@@ -132,7 +200,7 @@ def nearest(loaded: LoadedEmbedder, text: str) -> Tuple[EmbeddingMatch, float]:
         latency_ms = (time.perf_counter() - start) * 1000.0
         return EmbeddingMatch(nearest_intent=UNKNOWN_INTENT, nearest_vendor=None, similarity=0.0), latency_ms
 
-    if loaded.backend_name == "minilm" and loaded.encode_fn is not None:
+    if loaded.backend_name in ("minilm", "minilm-remote") and loaded.encode_fn is not None:
         query_vec = loaded.encode_fn(text)
         best = max(loaded.examples, key=lambda e: _cosine(query_vec, e.vector or []))
         similarity = _cosine(query_vec, best.vector or [])

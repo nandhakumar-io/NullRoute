@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.ai.model_registry import initialize as init_ai_registry
 from app.db import init_db
 from app.services.telemetry import instrument_app
-from app.routers import (ai, alerts, change_request, compliance, credentials, devices,
+from app.routers import (ai, alerts, audit, change_request, compliance, credentials, devices,
                           drift, evidence, exceptions, knowledge, scans, schedules, topology, training)
 
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +97,7 @@ app.include_router(schedules.router)
 app.include_router(alerts.router)
 app.include_router(change_request.router)
 app.include_router(exceptions.router)
+app.include_router(audit.router)
 
 
 @app.get("/health")

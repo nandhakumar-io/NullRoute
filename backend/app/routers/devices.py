@@ -35,11 +35,18 @@ def get_or_create_demo_tenant(db: Session) -> Tenant:
 
 
 @router.get("", response_model=List[DeviceOut])
-def list_devices(db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def list_devices(
+    limit: int = 500,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
     return (
         db.query(Device)
         .filter(Device.tenant_id == tenant_id)
         .order_by(Device.created_at.desc())
+        .offset(offset)
+        .limit(min(limit, 2000))
         .all()
     )
 
@@ -230,3 +237,118 @@ def _get_device_or_404_local(db: Session, device_id: str, tenant_id: str) -> Dev
     if not device:
         raise HTTPException(404, "Device not found")
     return device
+
+
+# ---------------------------------------------------------------------------
+# Nmap-based network discovery -- a pre-ingestion step alongside config
+# upload (Phase 1) and live SSH/NETCONF/RESTCONF/SNMP/gNMI collection
+# (Phase 7). /discover only probes the network and reports what it finds;
+# it never creates a Device or touches credentials. /discover/import is the
+# explicit, human-triggered step that turns selected discovered hosts into
+# Device rows -- same "no implicit trust of an unauthenticated scan
+# result" boundary as everywhere else in this router.
+# ---------------------------------------------------------------------------
+
+from app.services import network_discovery
+
+
+class DiscoverRequest(BaseModel):
+    cidr: str  # e.g. "10.0.0.0/24" or a single host "10.0.0.5"
+    ports: Optional[str] = None  # defaults to network_discovery.DEFAULT_PORTS
+    service_detection: bool = True
+
+
+class DiscoveredHostOut(BaseModel):
+    ip: str
+    hostname: Optional[str] = None
+    state: str
+    open_ports: List[int]
+    transport_hints: List[str]
+    vendor_guess: Optional[str] = None
+    banner: Optional[str] = None
+
+
+class DiscoverResponse(BaseModel):
+    cidr: str
+    host_count: int
+    hosts: List[DiscoveredHostOut]
+
+
+@router.post("/discover", response_model=DiscoverResponse)
+async def discover_devices(
+    payload: DiscoverRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Runs an nmap scan of `cidr` and reports responding hosts with any
+    management-protocol hints (SSH/Telnet/SNMP/NETCONF/RESTCONF/gNMI ports)
+    and a best-effort vendor guess from service-detection banners. Read-only
+    -- does not create devices or store anything."""
+    try:
+        hosts = await anyio.to_thread.run_sync(
+            lambda: network_discovery.scan_network(
+                payload.cidr,
+                ports=payload.ports or network_discovery.DEFAULT_PORTS,
+                service_detection=payload.service_detection,
+            )
+        )
+    except network_discovery.NmapUnavailableError as e:
+        raise HTTPException(503, str(e)) from e
+    except Exception as e:  # noqa: BLE001 -- malformed CIDR, nmap arg errors, etc.
+        raise HTTPException(400, f"Discovery scan failed: {e}") from e
+
+    return DiscoverResponse(
+        cidr=payload.cidr,
+        host_count=len(hosts),
+        hosts=[DiscoveredHostOut(**h.to_dict()) for h in hosts],
+    )
+
+
+class ImportDiscoveredHost(BaseModel):
+    ip: str
+    hostname: Optional[str] = None
+    vendor_guess: Optional[str] = None
+
+
+class ImportDiscoveredRequest(BaseModel):
+    hosts: List[ImportDiscoveredHost]
+
+
+@router.post("/discover/import", response_model=List[DeviceOut])
+def import_discovered_devices(
+    payload: ImportDiscoveredRequest,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Turns operator-selected discovery results into Device stubs
+    (management_address set, vendor pre-filled from the scan's guess if
+    any, collection_status left NEVER_COLLECTED). Skips any IP that is
+    already a device's management_address for this tenant, so re-running
+    discovery and re-importing is idempotent. A credential reference must
+    still be added (see /api/devices/{id}/credentials) before /collect or
+    /scan will work -- discovery never handles or infers credentials."""
+    existing = {
+        d.management_address
+        for d in db.query(Device).filter(Device.tenant_id == tenant_id).all()
+        if d.management_address
+    }
+    created: List[Device] = []
+    for h in payload.hosts:
+        if h.ip in existing:
+            continue
+        device = Device(
+            tenant_id=tenant_id,
+            hostname=h.hostname or h.ip,
+            management_address=h.ip,
+            vendor=h.vendor_guess,
+            collection_status="NEVER_COLLECTED",
+        )
+        db.add(device)
+        created.append(device)
+        existing.add(h.ip)
+    db.commit()
+    for d in created:
+        db.refresh(d)
+    return created

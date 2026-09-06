@@ -17,6 +17,7 @@ const NAV = [
   { to: "/knowledge-base", label: "Knowledge Base" },
   { to: "/observability", label: "Observability" },
   { to: "/evidence", label: "Evidence Ledger" },
+  { to: "/audit-log", label: "Audit Log" },
 ];
 
 export default function App() {

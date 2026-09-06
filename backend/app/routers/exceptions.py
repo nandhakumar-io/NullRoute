@@ -10,14 +10,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (CurrentUser, get_current_tenant,
-                                    get_current_user, require_role)
+                                    get_current_user, require_permission, require_role)
 from app.db import get_db
 from app.models.db import ComplianceException, Device
-from app.services import exception_service
+from app.services import audit_service, exception_service
+from app.rbac import Permission
 
 router = APIRouter(prefix="/api/exceptions", tags=["exceptions"],
                     dependencies=[Depends(get_current_user)])
@@ -51,6 +52,12 @@ def request_exception(
         db, tenant_id=tenant_id, device_id=device_id, control_id=control_id,
         reason=reason, expires_at=expires_at, created_by=user.username,
     )
+    audit_service.record_from_user(
+        db, user, action="compliance.exception.request", result="SUCCESS",
+        object_type="compliance_exception", object_id=exc.id,
+        new_value={"device_id": device_id, "control_id": control_id, "reason": reason,
+                   "expires_at": expires_at.isoformat()},
+    )
     return exception_service.to_dict(exc)
 
 
@@ -77,28 +84,52 @@ def list_exceptions(
 @router.post("/{exc_id}/approve")
 def approve(
     exc_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin", "security_analyst")),
+    user: CurrentUser = Depends(require_permission(Permission.MODIFY_BASELINE)),
 ):
     exc = _get_owned(db, tenant_id, exc_id)
+    prior_status = exc.status
     try:
         exc = exception_service.approve_exception(db, exc, approved_by=user.username)
     except ValueError as e:
+        audit_service.record_from_user(
+            db, user, action="compliance.exception.approve", request=request, result="FAILURE",
+            object_type="compliance_exception", object_id=exc_id,
+            old_value={"status": prior_status}, new_value={"error": str(e)},
+        )
         raise HTTPException(409, str(e))
+    audit_service.record_from_user(
+        db, user, action="compliance.exception.approve", request=request, result="SUCCESS",
+        object_type="compliance_exception", object_id=exc_id,
+        old_value={"status": prior_status}, new_value={"status": exc.status},
+    )
     return exception_service.to_dict(exc)
 
 
 @router.post("/{exc_id}/reject")
 def reject(
     exc_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin", "security_analyst")),
+    user: CurrentUser = Depends(require_permission(Permission.MODIFY_BASELINE)),
 ):
     exc = _get_owned(db, tenant_id, exc_id)
+    prior_status = exc.status
     try:
         exc = exception_service.reject_exception(db, exc, rejected_by=user.username)
     except ValueError as e:
+        audit_service.record_from_user(
+            db, user, action="compliance.exception.reject", request=request, result="FAILURE",
+            object_type="compliance_exception", object_id=exc_id,
+            old_value={"status": prior_status}, new_value={"error": str(e)},
+        )
         raise HTTPException(409, str(e))
+    audit_service.record_from_user(
+        db, user, action="compliance.exception.reject", request=request, result="SUCCESS",
+        object_type="compliance_exception", object_id=exc_id,
+        old_value={"status": prior_status}, new_value={"status": exc.status},
+    )
     return exception_service.to_dict(exc)

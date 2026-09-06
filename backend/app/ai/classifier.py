@@ -106,8 +106,56 @@ def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
         return None
 
 
+def _try_load_remote_classifier(remote_url: str) -> Optional[LoadedClassifier]:
+    """Optional remote inference mode: instead of loading DistilBERT into
+    this process, call an HTTP inference endpoint (self-hosted TGI/Triton/
+    text-classification server, or a teammate's GPU box) that returns
+    {"intent", "confidence", "model_version"} for POST {"text": ...}.
+
+    Loaded once (the predict_fn closure is reused for every request, same
+    as the local-model path) -- this only changes WHERE inference runs,
+    not the load-once contract. If the endpoint errors or times out at
+    call time, degrades to the same deterministic keyword fallback used
+    offline rather than failing the scan pipeline on a network blip.
+    """
+    if not remote_url:
+        return None
+    import httpx
+
+    timeout = float(os.getenv("AI_REMOTE_TIMEOUT_SECONDS", "10"))
+    api_key = os.getenv("AI_REMOTE_API_KEY")
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    fallback_version = os.getenv("AI_MODEL_VERSION", "keyword-fallback-v1")
+    fallback_predict = _keyword_predict(fallback_version)
+
+    def predict(text: str) -> ClassifierResult:
+        try:
+            resp = httpx.post(remote_url, json={"text": text}, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            return ClassifierResult(
+                intent=data.get("intent", UNKNOWN_INTENT),
+                confidence=round(float(data.get("confidence", 0.0)), 4),
+                model_version=data.get("model_version", remote_url),
+            )
+        except Exception:
+            return fallback_predict(text)
+
+    return LoadedClassifier(backend_name="distilbert-remote", model_version=remote_url, predict_fn=predict)
+
+
 def load_classifier() -> LoadedClassifier:
-    """Load once at application startup (see model_registry.py)."""
+    """Load once at application startup (see model_registry.py).
+
+    Resolution order: AI_CLASSIFIER_REMOTE_URL (remote HTTP inference) ->
+    AI_CLASSIFIER_MODEL_PATH (local DistilBERT checkpoint) -> deterministic
+    keyword fallback. Only one backend is ever active per process.
+    """
+    remote_url = os.getenv("AI_CLASSIFIER_REMOTE_URL", "")
+    remote = _try_load_remote_classifier(remote_url)
+    if remote is not None:
+        return remote
+
     model_path = os.getenv("AI_CLASSIFIER_MODEL_PATH", "")
     loaded = _try_load_distilbert(model_path)
     if loaded is not None:

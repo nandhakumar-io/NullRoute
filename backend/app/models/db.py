@@ -88,7 +88,7 @@ class Scan(Base):
 class Finding(Base):
     __tablename__ = "findings"
     id = Column(String, primary_key=True, default=gen_uuid)
-    scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=False, index=True)
     framework = Column(String)
     control_id = Column(String)
     title = Column(String)
@@ -115,13 +115,13 @@ class CommandMapping(Base):
     __tablename__ = "command_mappings"
     id = Column(String, primary_key=True, default=gen_uuid)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True, index=True)
-    vendor = Column(String)
+    vendor = Column(String, index=True)
     raw_command_pattern = Column(Text)
     normalized_parameter = Column(String)
     example_value = Column(String)
     ai_suggested_meaning = Column(Text)
     confidence = Column(Float)
-    status = Column(String, default="pending")  # pending/approved/rejected
+    status = Column(String, default="pending", index=True)  # pending/approved/rejected
     embedding = Column(JSON, nullable=True)  # stored as list[float]; pgvector column in real PG migration
     model_version = Column(String, nullable=True)
     reviewed_by = Column(String, nullable=True)
@@ -235,14 +235,38 @@ class AIAnalysis(Base):
 
 
 class AuditLog(Base):
+    """System-of-record for the Section 12 audit trail.
+
+    Every mutating / sensitive action in the app should produce exactly one
+    row here via `app.services.audit_service`, capturing the fields called
+    for by the spec: who, tenant, what, when, source IP, object, old value,
+    new value, result. `actor`/`action`/`resource`/`details` are the
+    original (pre-Section-12) columns, kept for backward compatibility with
+    any existing readers/writers (e.g. routers/training.py); new code should
+    populate the richer columns below via audit_service instead of writing
+    to this model directly.
+    """
     __tablename__ = "audit_log"
     id = Column(String, primary_key=True, default=gen_uuid)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True, index=True)
+
+    # --- legacy columns (pre-Section-12) ---
     actor = Column(String)
     action = Column(String)
     resource = Column(String)
     details = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # --- Section 12 columns ---
+    user_id = Column(String, nullable=True, index=True)       # who: token subject
+    username = Column(String, nullable=True)                   # who: human-readable
+    source_ip = Column(String, nullable=True)                  # source IP
+    object_type = Column(String, nullable=True, index=True)    # object: kind (scan, credential, ...)
+    object_id = Column(String, nullable=True, index=True)      # object: id
+    old_value = Column(JSON, nullable=True)                    # old value
+    new_value = Column(JSON, nullable=True)                    # new value
+    result = Column(String, nullable=True, index=True)         # SUCCESS / FAILURE / DENIED
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class ReportArtifact(Base):

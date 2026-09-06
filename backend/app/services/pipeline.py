@@ -348,6 +348,7 @@ def _apply_to_baseline(baseline: SecurityBaselineModel, norm_param) -> None:
 
 def _queue_for_training(db: Session, tenant_id: str, vendor: str, interp) -> None:
     from app.models.db import CommandMapping
+    from app.services import vector_search
     existing = (
         db.query(CommandMapping)
         .filter(
@@ -359,7 +360,7 @@ def _queue_for_training(db: Session, tenant_id: str, vendor: str, interp) -> Non
     )
     if existing:
         return
-    db.add(CommandMapping(
+    mapping = CommandMapping(
         tenant_id=tenant_id,
         vendor=vendor,
         raw_command_pattern=interp.raw_command,
@@ -369,5 +370,15 @@ def _queue_for_training(db: Session, tenant_id: str, vendor: str, interp) -> Non
         confidence=interp.confidence,
         status="pending",
         model_version=interp.model_version,
-    ))
+    )
+    db.add(mapping)
     db.commit()
+    db.refresh(mapping)
+    # Embed the raw command text now, once, so this row is retrievable via
+    # real pgvector cosine similarity search the next time an unknown
+    # command comes in (see services/vector_search.py) instead of only
+    # ever being reachable by exact-match/token-overlap. Best-effort: if no
+    # embedder is loaded (AI disabled, offline heuristic mode), this is a
+    # harmless no-op and the row is still usable via the token-overlap
+    # fallback in vector_search.find_similar_mappings.
+    vector_search.store_embedding(db, mapping.id, vector_search.embed_text(interp.raw_command))

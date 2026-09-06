@@ -11,14 +11,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user, require_role
+from app.auth.dependencies import (CurrentUser, get_current_tenant, get_current_user,
+                                    require_permission, require_role)
 from app.db import get_db
 from app.models.db import Device, DeviceCredentialRef
-from app.services import openbao_service
+from app.services import audit_service, openbao_service
+from app.rbac import Permission
 
 router = APIRouter(prefix="/api/devices", tags=["credentials"], dependencies=[Depends(get_current_user)])
 
@@ -74,9 +76,10 @@ def list_credential_refs(
 def create_credential_ref(
     device_id: str,
     payload: CredentialCreate,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin", "operator")),
+    user: CurrentUser = Depends(require_permission(Permission.MANAGE_CREDENTIALS)),
 ):
     _get_device_or_404(db, device_id, tenant_id)
     if payload.credential_type not in ALLOWED_CREDENTIAL_TYPES:
@@ -86,6 +89,11 @@ def create_credential_ref(
     try:
         openbao_service.store_device_credentials(tenant_id, ref, payload.credential_type, payload.secret)
     except openbao_service.OpenBaoError as e:
+        audit_service.record_from_user(
+            db, user, action="credential.create", request=request, result="FAILURE",
+            object_type="device_credential_ref", object_id=device_id,
+            new_value={"credential_type": payload.credential_type, "error": str(e)},
+        )
         raise HTTPException(502, f"OpenBao store failed: {e}") from e
 
     row = DeviceCredentialRef(
@@ -98,6 +106,12 @@ def create_credential_ref(
     db.add(row)
     db.commit()
     db.refresh(row)
+    # Never log the secret material itself -- only the non-secret reference metadata.
+    audit_service.record_from_user(
+        db, user, action="credential.create", request=request, result="SUCCESS",
+        object_type="device_credential_ref", object_id=row.id,
+        new_value={"device_id": device_id, "credential_type": payload.credential_type, "credential_ref": ref},
+    )
     return row
 
 
@@ -106,9 +120,10 @@ def rotate_credential_ref(
     device_id: str,
     ref_id: str,
     payload: CredentialRotate,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin", "operator")),
+    user: CurrentUser = Depends(require_permission(Permission.MANAGE_CREDENTIALS)),
 ):
     _get_device_or_404(db, device_id, tenant_id)
     row = (
@@ -123,14 +138,25 @@ def rotate_credential_ref(
     if not row:
         raise HTTPException(404, "Credential reference not found")
 
+    prior_rotated_at = row.rotated_at.isoformat() if row.rotated_at else None
     try:
         openbao_service.rotate_device_credentials(tenant_id, row.credential_ref, row.credential_type, payload.secret)
     except openbao_service.OpenBaoError as e:
+        audit_service.record_from_user(
+            db, user, action="credential.rotate", request=request, result="FAILURE",
+            object_type="device_credential_ref", object_id=ref_id,
+            old_value={"rotated_at": prior_rotated_at}, new_value={"error": str(e)},
+        )
         raise HTTPException(502, f"OpenBao rotate failed: {e}") from e
 
     row.rotated_at = datetime.utcnow()
     db.commit()
     db.refresh(row)
+    audit_service.record_from_user(
+        db, user, action="credential.rotate", request=request, result="SUCCESS",
+        object_type="device_credential_ref", object_id=ref_id,
+        old_value={"rotated_at": prior_rotated_at}, new_value={"rotated_at": row.rotated_at.isoformat()},
+    )
     return row
 
 
@@ -138,9 +164,10 @@ def rotate_credential_ref(
 def delete_credential_ref(
     device_id: str,
     ref_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin")),
+    user: CurrentUser = Depends(require_role("admin", "TENANT_ADMIN", "SUPER_ADMIN")),
 ):
     _get_device_or_404(db, device_id, tenant_id)
     row = (
@@ -158,8 +185,19 @@ def delete_credential_ref(
     try:
         openbao_service.delete_device_credentials(tenant_id, row.credential_ref)
     except openbao_service.OpenBaoError as e:
+        audit_service.record_from_user(
+            db, user, action="credential.delete", request=request, result="FAILURE",
+            object_type="device_credential_ref", object_id=ref_id,
+            old_value={"device_id": device_id, "credential_type": row.credential_type},
+            new_value={"error": str(e)},
+        )
         raise HTTPException(502, f"OpenBao delete failed: {e}") from e
 
     db.delete(row)
     db.commit()
+    audit_service.record_from_user(
+        db, user, action="credential.delete", request=request, result="SUCCESS",
+        object_type="device_credential_ref", object_id=ref_id,
+        old_value={"device_id": device_id, "credential_type": row.credential_type},
+    )
     return {"status": "deleted", "id": ref_id}

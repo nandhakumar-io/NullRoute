@@ -10,14 +10,15 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (CurrentUser, get_current_tenant,
-                                    get_current_user, require_role)
+                                    get_current_user, require_permission, require_role)
 from app.db import get_db
 from app.models.db import ChangeRequest, Device, DeploymentRecord
-from app.services import change_request_service, deployment_service
+from app.services import audit_service, change_request_service, deployment_service
+from app.rbac import Permission
 
 router = APIRouter(prefix="/api/change-requests", tags=["change-requests"],
                     dependencies=[Depends(get_current_user)])
@@ -74,31 +75,55 @@ def get_change_request(cr_id: str, db: Session = Depends(get_db), tenant_id: str
 @router.post("/{cr_id}/approve")
 def approve(
     cr_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin", "security_analyst")),
+    user: CurrentUser = Depends(require_permission(Permission.APPROVE_REMEDIATION)),
 ):
     cr = _get_owned(db, tenant_id, cr_id)
+    prior_status = cr.status
     try:
         cr = change_request_service.approve(db, cr, approved_by=user.username)
     except ValueError as e:
+        audit_service.record_from_user(
+            db, user, action="change_request.approve", request=request, result="FAILURE",
+            object_type="change_request", object_id=cr_id,
+            old_value={"status": prior_status}, new_value={"error": str(e)},
+        )
         raise HTTPException(409, str(e))
+    audit_service.record_from_user(
+        db, user, action="change_request.approve", request=request, result="SUCCESS",
+        object_type="change_request", object_id=cr_id,
+        old_value={"status": prior_status}, new_value={"status": cr.status},
+    )
     return change_request_service.to_dict(cr)
 
 
 @router.post("/{cr_id}/reject")
 def reject(
     cr_id: str,
+    request: Request,
     reason: str = Body(..., embed=True),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(require_role("admin", "security_analyst")),
+    user: CurrentUser = Depends(require_permission(Permission.APPROVE_REMEDIATION)),
 ):
     cr = _get_owned(db, tenant_id, cr_id)
+    prior_status = cr.status
     try:
         cr = change_request_service.reject(db, cr, rejected_by=user.username, reason=reason)
     except ValueError as e:
+        audit_service.record_from_user(
+            db, user, action="change_request.reject", request=request, result="FAILURE",
+            object_type="change_request", object_id=cr_id,
+            old_value={"status": prior_status}, new_value={"error": str(e)},
+        )
         raise HTTPException(409, str(e))
+    audit_service.record_from_user(
+        db, user, action="change_request.reject", request=request, result="SUCCESS",
+        object_type="change_request", object_id=cr_id,
+        old_value={"status": prior_status}, new_value={"status": cr.status, "reason": reason},
+    )
     return change_request_service.to_dict(cr)
 
 

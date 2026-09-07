@@ -60,6 +60,31 @@ def review_mapping(
         if payload.normalized_parameter:
             mapping.normalized_parameter = payload.normalized_parameter
         mapping.confidence = max(mapping.confidence, 0.95)  # human-confirmed
+        
+        import os, json
+        from app.ai import model_registry
+        dataset_path = "/home/kenpachi-zaraki/NetSecAuditor/backend/ai_reference_dataset.json"
+        
+        new_intent = mapping.normalized_parameter or mapping.ai_suggested_meaning
+        if new_intent and os.path.exists(dataset_path):
+            try:
+                with open(dataset_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                data.append({
+                    "text": mapping.raw_command_pattern,
+                    "intent": new_intent,
+                    "vendor": mapping.vendor
+                })
+                with open(dataset_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+                
+                reg = model_registry.initialize()
+                if reg.embedder and reg.embedder.reference_dataset_path:
+                    from app.ai.embeddings import _load_reference_dataset
+                    reg.embedder.examples = _load_reference_dataset(reg.embedder.reference_dataset_path)
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to inject training data: {e}")
     elif payload.action == "reject":
         mapping.status = "rejected"
     else:

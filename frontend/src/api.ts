@@ -758,7 +758,7 @@ export const endpoints = {
   // Training Center Layer 3+
   pendingMappings: () => api.get<CommandMapping[]>("/api/training/pending"),
   approvedMappings: () => api.get<CommandMapping[]>("/api/training/approved"),
-  reviewMapping: (id: string, payload: { action: "approve" | "correct" | "reject", normalized_facts?: Record<string, any>, correction_reason?: string }) =>
+  reviewMapping: (id: string, payload: { action: "approve" | "correct" | "reject", normalized_parameter?: string, normalized_facts?: Record<string, any>, correction_reason?: string }) =>
     api.post(`/api/training/${id}/review`, payload),
   datasets: () => api.get<DatasetVersion[]>("/api/ai/datasets"),
   createDataset: (versionLabel: string) => api.post<DatasetVersion>(`/api/ai/datasets?version_label=${encodeURIComponent(versionLabel)}`),

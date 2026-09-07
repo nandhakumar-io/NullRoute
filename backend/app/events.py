@@ -24,10 +24,12 @@ logger = logging.getLogger("events")
 NATS_URL = os.getenv("NATS_URL", "nats://nats:4222")
 
 _nc = None
-
+_nats_failed = False
 
 async def _get_conn():
-    global _nc
+    global _nc, _nats_failed
+    if _nats_failed:
+        return None
     if _nc is not None:
         return _nc
     try:
@@ -36,6 +38,7 @@ async def _get_conn():
         return _nc
     except Exception as e:
         logger.warning("NATS unavailable (%s) — events will be logged only.", e)
+        _nats_failed = True
         return None
 
 

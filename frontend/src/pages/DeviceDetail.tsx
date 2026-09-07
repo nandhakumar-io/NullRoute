@@ -50,24 +50,28 @@ export default function DeviceDetail() {
 
   function reload() {
     if (!deviceId) return;
+    
+    // Safely swallow 404s for optional telemetry endpoints
+    const safeGet = (fetcher: Promise<any>, fallback: any) => fetcher.catch((e) => ({ data: fallback }));
+    
     return Promise.all([
       endpoints.device(deviceId),
-      endpoints.deviceInterfaces(deviceId),
-      endpoints.deviceRoutes(deviceId),
-      endpoints.deviceScans(deviceId),
-      endpoints.deviceDrift(deviceId),
-      endpoints.deviceSnapshots(deviceId),
-      endpoints.deviceDriftHistory(deviceId),
-      endpoints.deviceComplianceHistory(deviceId),
-    ]).then(([d, ifaces, rts, sc, dr, snap, sdrift, hist]) => {
+      safeGet(endpoints.deviceInterfaces(deviceId), []),
+      safeGet(endpoints.deviceRoutes(deviceId), []),
+      safeGet(endpoints.deviceScans(deviceId), []),
+      safeGet(endpoints.deviceDrift(deviceId), { events: [] }),
+      safeGet(endpoints.deviceSnapshots(deviceId), { snapshots: [] }),
+      safeGet(endpoints.deviceDriftHistory(deviceId), { findings: [] }),
+      safeGet(endpoints.deviceComplianceHistory(deviceId), null),
+    ]).then(([d, i, r, s, dr, snap, sdrift, hist]) => {
       setDevice(d.data);
-      setInterfaces(ifaces.data);
-      setRoutes(rts.data);
-      setScans(sc.data);
+      setInterfaces(i.data);
+      setRoutes(r.data);
+      setScans(s.data);
       setDrift(dr.data.events);
       setSnapshots(snap.data.snapshots);
       setSecurityDrift(sdrift.data.findings);
-      setPosture(hist.data);
+      setPosture(hist?.data || null);
     });
   }
 

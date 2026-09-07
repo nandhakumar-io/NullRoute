@@ -47,6 +47,7 @@ export default function TrainingCenter() {
   async function review(id: string, action: "approve" | "correct" | "reject") {
     await endpoints.reviewMapping(id, { 
       action, 
+      normalized_parameter: edits[id] ? edits[id] : undefined,
       normalized_facts: edits[id] ? { [edits[id]]: "some_value" } : undefined, // simplified for ui
       correction_reason: correctionReasons[id]
     });

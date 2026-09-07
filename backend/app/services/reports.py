@@ -110,22 +110,36 @@ def build_pdf_report(scan: dict, device: dict, findings: List[dict], evidence: D
     story.append(Paragraph(f"Framework: {scan.get('framework', 'ALL')} &nbsp;|&nbsp; Scan ID: {scan.get('id', '-')}", normal))
     story.append(Spacer(1, 14))
 
+    from xml.sax.saxutils import escape
+
     story.append(Paragraph("Findings", h2))
-    header = ["Control", "Severity", "Result", "Expected", "Actual"]
+    header = [
+        Paragraph("<b>Control</b>", normal), 
+        Paragraph("<b>Severity</b>", normal), 
+        Paragraph("<b>Result</b>", normal), 
+        Paragraph("<b>Expected</b>", normal), 
+        Paragraph("<b>Actual</b>", normal)
+    ]
     rows = [header]
     for f in findings:
-        rows.append([f["control_id"], f["severity"], f["result"], f["expected_value"], f["actual_value"]])
-    tbl = Table(rows, colWidths=[90, 60, 60, 90, 90], repeatRows=1)
+        rows.append([
+            Paragraph(escape(str(f.get("control_id", ""))), normal),
+            Paragraph(escape(str(f.get("severity", ""))), normal),
+            Paragraph(f"<b>{escape(str(f.get('result', '')))}</b>", normal),
+            Paragraph(escape(str(f.get("expected_value", ""))), normal),
+            Paragraph(escape(str(f.get("actual_value", ""))), normal)
+        ])
+    tbl = Table(rows, colWidths=[90, 55, 55, 120, 120], repeatRows=1)
     style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
     ]
     for i, f in enumerate(findings, start=1):
-        if f["result"] == "FAIL":
-            style_cmds.append(("TEXTCOLOR", (2, i), (2, i), SEVERITY_COLORS.get(f["severity"], colors.red)))
-        elif f["result"] == "PASS":
+        if f.get("result") == "FAIL":
+            style_cmds.append(("TEXTCOLOR", (2, i), (2, i), SEVERITY_COLORS.get(f.get("severity", ""), colors.red)))
+        elif f.get("result") == "PASS":
             style_cmds.append(("TEXTCOLOR", (2, i), (2, i), colors.HexColor("#15803d")))
     tbl.setStyle(TableStyle(style_cmds))
     story.append(tbl)
@@ -133,11 +147,14 @@ def build_pdf_report(scan: dict, device: dict, findings: List[dict], evidence: D
 
     story.append(Paragraph("Evidence & Remediation Detail", h2))
     for f in findings:
-        if f["result"] != "FAIL":
+        if f.get("result") != "FAIL":
             continue
-        story.append(Paragraph(f"<b>{f['control_id']} — {f['title']}</b> ({f['severity']})", normal))
-        story.append(Paragraph(f"Evidence: <font face='Courier'>{f['evidence_line']}</font>", normal))
-        story.append(Paragraph(f"Suggested remediation (administrator approval required): {f['remediation']}", normal))
+        story.append(Paragraph(f"<b>{escape(str(f.get('control_id', '')))} — {escape(str(f.get('title', '')))}</b> ({escape(str(f.get('severity', '')))})", normal))
+        
+        safe_ev = escape(str(f.get('evidence_line', '')))
+        safe_rem = escape(str(f.get('remediation', '')))
+        story.append(Paragraph(f"Evidence: <font face='Courier'>{safe_ev}</font>", normal))
+        story.append(Paragraph(f"Suggested remediation (administrator approval required): {safe_rem}", normal))
         story.append(Spacer(1, 8))
 
     # --- Evidence & Fabric anchoring (sections 11, 17, 19, 31) -----------

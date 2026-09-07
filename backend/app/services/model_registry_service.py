@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.db import ModelRegistryEntry
 from app.services import audit_service
+from app.ai import model_registry as ai_model_registry
 
 
 # Configurable defaults for regression gates
@@ -125,8 +126,12 @@ def promote_to_production(db: Session, model_id: str, user: Any, request: Any = 
         old_value={"status": "APPROVED"},
         new_value={"status": "PRODUCTION"},
     )
-    
-    # In a real setup, we would trigger model_registry.reload_from_registry(db) here.
+
+    # Reload the in-process AI registry immediately so the next inference call
+    # uses the newly promoted PRODUCTION classifier/embedder rather than a
+    # stale in-memory model (spec section 11/12: production inference must
+    # resolve the exact production model from the registry).
+    ai_model_registry.reload_from_registry(db)
     return model
 
 
@@ -134,7 +139,18 @@ def rollback(db: Session, previous_model_id: str, user: Any, request: Any = None
     target = db.query(ModelRegistryEntry).filter(ModelRegistryEntry.id == previous_model_id).first()
     if not target or target.status not in ("ARCHIVED", "APPROVED"):
         raise ValueError("Can only rollback to an ARCHIVED or APPROVED model")
-        
+
+    # Capture old state BEFORE any mutation — a prior version of this function
+    # recorded target.status into old_value *after* setting it to PRODUCTION,
+    # which made the audit log always show old_value == new_value == PRODUCTION
+    # and lost the true previous production model's identity (spec section 13).
+    old_target_status = target.status
+    old_production_model = db.query(ModelRegistryEntry).filter(
+        ModelRegistryEntry.model_type == target.model_type,
+        ModelRegistryEntry.status == "PRODUCTION"
+    ).first()
+    old_production_model_id = old_production_model.id if old_production_model else None
+
     prods = db.query(ModelRegistryEntry).filter(
         ModelRegistryEntry.model_type == target.model_type,
         ModelRegistryEntry.status == "PRODUCTION"
@@ -142,15 +158,18 @@ def rollback(db: Session, previous_model_id: str, user: Any, request: Any = None
     for p in prods:
         # Currently production gets archived
         p.status = "ARCHIVED"
-        
+
     target.status = "PRODUCTION"
     db.commit()
-    
+
     audit_service.record_from_user(
         db, user, action="training.model.rollback", request=request, result="SUCCESS",
         object_type="model", object_id=target.id,
-        old_value={"status": target.status},
+        old_value={"status": old_target_status, "previous_production_model_id": old_production_model_id},
         new_value={"status": "PRODUCTION"},
     )
-    
+
+    # Reload the in-process AI registry so the very next inference call uses
+    # the rolled-back model, not the model that was production a moment ago.
+    ai_model_registry.reload_from_registry(db)
     return target

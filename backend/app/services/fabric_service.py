@@ -24,12 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-import time
 from typing import Any, Dict, List, Optional
 
 import httpx
-
-from app.services.telemetry import increment_counter, record_histogram
 
 FABRIC_ENABLED = os.getenv("FABRIC_ENABLED", "false").strip().lower() == "true"
 FABRIC_GATEWAY_URL = os.getenv("FABRIC_GATEWAY_URL", "http://fabric-gateway:8080").rstrip("/")
@@ -132,16 +129,7 @@ async def anchor_evidence(evidence_id: str, evidence_hash: str, **fields: Any) -
         "actor": camel(fields.get("actor")) or "system:pipeline",
         "schemaVersion": camel(fields.get("schema_version")) or "1.0",
     }
-    increment_counter("fabric_anchor_attempts")
-    start_time = time.perf_counter()
-    try:
-        data = await _request("POST", "/evidence", json_body=body)
-        latency_ms = (time.perf_counter() - start_time) * 1000.0
-        record_histogram("fabric_anchor_latency_ms", latency_ms)
-        increment_counter("fabric_anchor_success_count")
-    except FabricUnavailableError:
-        increment_counter("fabric_anchor_failure_count")
-        raise
+    data = await _request("POST", "/evidence", json_body=body)
     return {
         "status": "ANCHORED",
         "transaction_id": data.get("txId"),
@@ -166,12 +154,7 @@ async def verify_evidence(evidence_id: str, expected_hash: str) -> Dict[str, Any
     Returns {"match": bool, "status": "INTEGRITY_VERIFIED"|"INTEGRITY_FAILURE"}.
     """
     _require_enabled("verify_evidence")
-    result = await _request("POST", f"/evidence/{evidence_id}/verify", json_body={"evidenceHash": expected_hash})
-    if result.get("match"):
-        increment_counter("fabric_verification_success_count")
-    else:
-        increment_counter("fabric_verification_failure_count")
-    return result
+    return await _request("POST", f"/evidence/{evidence_id}/verify", json_body={"evidenceHash": expected_hash})
 
 
 async def get_history(evidence_id: str) -> List[Dict[str, Any]]:

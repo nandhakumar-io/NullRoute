@@ -1,8 +1,12 @@
 import { NavLink, Outlet } from "react-router-dom";
 import clsx from "clsx";
 import { useTheme } from "./theme";
+import { useAuth } from "./context/AuthContext";
 
-const NAV_GROUPS = [
+type NavItem = { to: string; label: string; end?: boolean; roles?: string[] };
+type NavGroup = { label: string; items: NavItem[] };
+
+const NAV_GROUPS: NavGroup[] = [
   {
     label: "Overview",
     items: [
@@ -13,8 +17,9 @@ const NAV_GROUPS = [
     label: "Operations",
     items: [
       { to: "/devices", label: "Devices" },
-      { to: "/network-scans", label: "Network Scans & Discovery" },
+      { to: "/network-scans", label: "Network Scans & Discovery", roles: ["admin", "security_analyst", "operator"] },
       { to: "/schedules", label: "Schedules" },
+      { to: "/gns3-integration", label: "GNS3 Virtual Sandbox", roles: ["admin", "security_analyst"] },
     ],
   },
   {
@@ -22,7 +27,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/compliance", label: "Findings" },
       { to: "/drift", label: "Drift" },
-      { to: "/validation", label: "Validation" },
+      { to: "/validation", label: "Validation", roles: ["admin", "security_analyst", "operator"] },
       { to: "/reports", label: "Reports" },
     ],
   },
@@ -38,24 +43,39 @@ const NAV_GROUPS = [
     label: "AI",
     items: [
       { to: "/ai-analysis", label: "AI Analysis" },
-      { to: "/training", label: "Training Center" },
+      { to: "/training", label: "Training Center", roles: ["admin", "security_analyst"] },
     ],
   },
   {
     label: "Administration",
     items: [
       { to: "/config-search", label: "Config Search" },
-      { to: "/ingestion", label: "Ingestion" },
-      { to: "/knowledge-base", label: "Knowledge Base" },
-      { to: "/system/health", label: "System Health" },
-      { to: "/observability", label: "Observability" },
-      { to: "/audit-log", label: "Audit Log" },
+      { to: "/ingestion", label: "Ingestion", roles: ["admin", "security_analyst"] },
+      { to: "/knowledge-base", label: "Knowledge Base", roles: ["admin", "security_analyst", "auditor"] },
+      { to: "/system/health", label: "System Health", roles: ["admin"] },
+      { to: "/observability", label: "Observability", roles: ["admin"] },
+      { to: "/audit-log", label: "Audit Log", roles: ["admin", "auditor"] },
     ],
   },
 ];
 
 export default function App() {
   const { theme, toggleTheme } = useTheme();
+  const { logout, role, username } = useAuth();
+  
+  // Filter Nav Groups based on current user role
+  const filteredNavGroups = NAV_GROUPS.map(group => {
+    return {
+      ...group,
+      items: group.items.filter(item => {
+        if (!item.roles) return true;
+        if (role === "admin") return true;
+        if (!role) return false;
+        return item.roles.includes(role);
+      })
+    };
+  }).filter(group => group.items.length > 0);
+
   return (
     <div className="min-h-screen flex">
       <aside className="w-64 shrink-0 bg-soc-panel border-r border-soc-border flex flex-col">
@@ -77,7 +97,7 @@ export default function App() {
           </button>
         </div>
         <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-4">
-          {NAV_GROUPS.map((group) => (
+          {filteredNavGroups.map((group) => (
             <div key={group.label}>
               <div className="px-3 mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
                 {group.label}
@@ -104,8 +124,24 @@ export default function App() {
             </div>
           ))}
         </nav>
-        <div className="px-5 py-4 border-t border-soc-border text-xs text-slate-500">
-          100% self-hosted stack · No paid cloud AI
+        
+        {/* User Identity / Logout Box */}
+        <div className="p-4 border-t border-soc-border bg-slate-900/30">
+           <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-bold text-slate-200">{username || "Unknown"}</div>
+                <div className="text-xs text-cyan-500 uppercase tracking-wider font-semibold">{role || "No Role"}</div>
+              </div>
+              <button 
+                onClick={logout}
+                className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-900/20 rounded-md transition-colors"
+                title="Logout"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+           </div>
         </div>
       </aside>
       <main className="flex-1 min-w-0">

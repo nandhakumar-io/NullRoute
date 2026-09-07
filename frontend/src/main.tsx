@@ -3,7 +3,11 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import "./index.css";
 import { ThemeProvider } from "./theme";
+import { ToastProvider } from "./lib/toast";
+import { ConfirmProvider } from "./lib/confirm";
 import App from "./App";
+import Login from "./pages/Login";
+import { AuthProvider, ProtectedRoute } from "./context/AuthContext";
 import Dashboard from "./pages/Dashboard";
 import Devices from "./pages/Devices";
 import DeviceDetail from "./pages/DeviceDetail";
@@ -23,26 +27,28 @@ import EvidenceLedger from "./pages/EvidenceLedger";
 import Drift from "./pages/Drift";
 import Schedules from "./pages/Schedules";
 import Alerts from "./pages/Alerts";
-import AIAnalysisOverview from "./pages/AIAnalysisOverview";
+import AiAnalysisOverview from "./pages/AiAnalysisOverview";
 import AuditLog from "./pages/AuditLog";
 import ConfigSearch from "./pages/ConfigSearch";
 import NetworkScans from "./pages/NetworkScans";
 import NetworkScanDetail from "./pages/NetworkScanDetail";
 import SystemHealth from "./pages/SystemHealth";
+import Gns3Integration from "./pages/Gns3Integration";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider>
+    <AuthProvider>
+    <ToastProvider>
+    <ConfirmProvider>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<App />}>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<ProtectedRoute><App /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="devices" element={<Devices />} />
           <Route path="devices/:deviceId" element={<DeviceDetail />} />
           <Route path="devices/:deviceId/compare" element={<SnapshotCompare />} />
-          {/* Discovery (ad-hoc nmap probe) and Network Scans (orchestrated
-              discovery+collection+compliance jobs) are now one page with
-              tabs -- /discovery redirects into the merged page. */}
           <Route path="discovery" element={<NetworkScans initialTab="discovery" />} />
           <Route path="network-scans" element={<NetworkScans />} />
           <Route path="network-scans/:scanJobId" element={<NetworkScanDetail />} />
@@ -63,11 +69,15 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="drift" element={<Drift />} />
           <Route path="schedules" element={<Schedules />} />
           <Route path="alerts" element={<Alerts />} />
-          <Route path="ai-analysis" element={<AIAnalysisOverview />} />
+          <Route path="ai-analysis" element={<AiAnalysisOverview />} />
           <Route path="audit-log" element={<AuditLog />} />
+          <Route path="gns3-integration" element={<Gns3Integration />} />
         </Route>
       </Routes>
     </BrowserRouter>
+    </ConfirmProvider>
+    </ToastProvider>
+    </AuthProvider>
     </ThemeProvider>
   </React.StrictMode>
 );

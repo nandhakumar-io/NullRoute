@@ -93,7 +93,6 @@ def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
         def predict(text: str) -> ClassifierResult:
             import torch as _torch
             inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=64)
-            inputs.pop("token_type_ids", None)
             with _torch.no_grad():
                 logits = model(**inputs).logits
                 probs = _torch.softmax(logits, dim=-1)[0]
@@ -107,120 +106,70 @@ def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
         return None
 
 
-def _try_load_huggingface_distilbert() -> Optional[LoadedClassifier]:
-    """Load the real fine-tuned checkpoint straight from a private Hugging
-    Face repo, using HF_DISTILBERT_MODEL / HF_TOKEN / HF_MODEL_REVISION.
-
-    These env vars have existed in .env since day one, but nothing in this
-    module ever read them -- AI_CLASSIFIER_MODEL_PATH only accepted a local
-    directory, so this path silently fell through to the remote-inference
-    URL (if set) or the keyword fallback, and the real trained model was
-    never actually loaded. `transformers.AutoTokenizer/AutoModel...
-    from_pretrained` accept a hub repo id directly (no separate
-    snapshot_download step needed), so this only needs the token/revision
-    threaded through.
-    """
-    repo_id = os.getenv("HF_DISTILBERT_MODEL", "")
-    if not repo_id:
+def _try_load_remote_classifier(url: str, api_key: str, timeout: float) -> Optional[LoadedClassifier]:
+    if not url:
         return None
-    try:
-        import torch  # noqa: F401
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    except ImportError:
-        return None
-
-    token = os.getenv("HF_TOKEN") or None
-    revision = os.getenv("HF_MODEL_REVISION") or None
-    try:
-        tokenizer = AutoTokenizer.from_pretrained(repo_id, token=token, revision=revision)
-        model = AutoModelForSequenceClassification.from_pretrained(repo_id, token=token, revision=revision)
-        model.eval()
-        id2label = model.config.id2label
-
-        def predict(text: str) -> ClassifierResult:
-            import torch as _torch
-            inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=64)
-            inputs.pop("token_type_ids", None)
-            with _torch.no_grad():
-                logits = model(**inputs).logits
-                probs = _torch.softmax(logits, dim=-1)[0]
-                top_idx = int(_torch.argmax(probs).item())
-                confidence = float(probs[top_idx].item())
-            label = id2label.get(top_idx, UNKNOWN_INTENT)
-            return ClassifierResult(intent=label, confidence=round(confidence, 4), model_version=repo_id)
-
-        version = f"{repo_id}@{revision}" if revision else repo_id
-        return LoadedClassifier(backend_name="distilbert", model_version=version, predict_fn=predict)
-    except Exception:
-        return None
-
-
-def _try_load_remote_classifier(remote_url: str) -> Optional[LoadedClassifier]:
-    """Optional remote inference mode: instead of loading DistilBERT into
-    this process, call an HTTP inference endpoint (self-hosted TGI/Triton/
-    text-classification server, or a teammate's GPU box) that returns
-    {"intent", "confidence", "model_version"} for POST {"text": ...}.
-
-    Loaded once (the predict_fn closure is reused for every request, same
-    as the local-model path) -- this only changes WHERE inference runs,
-    not the load-once contract. If the endpoint errors or times out at
-    call time, degrades to the same deterministic keyword fallback used
-    offline rather than failing the scan pipeline on a network blip.
-    """
-    if not remote_url:
-        return None
-    import httpx
-
-    timeout = float(os.getenv("AI_REMOTE_TIMEOUT_SECONDS", "10"))
-    api_key = os.getenv("AI_REMOTE_API_KEY")
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    fallback_version = os.getenv("AI_MODEL_VERSION", "keyword-fallback-v1")
-    fallback_predict = _keyword_predict(fallback_version)
-
+        
     def predict(text: str) -> ClassifierResult:
+        import urllib.request
+        import urllib.error
+        import json
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"text": text}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        if api_key:
+            req.add_header("Authorization", f"Bearer {api_key}")
+            
         try:
-            resp = httpx.post(remote_url, json={"text": text}, headers=headers, timeout=timeout)
-            resp.raise_for_status()
-            data = resp.json()
-            return ClassifierResult(
-                intent=data.get("intent", UNKNOWN_INTENT),
-                confidence=round(float(data.get("confidence", 0.0)), 4),
-                model_version=data.get("model_version", remote_url),
-            )
+            with urllib.request.urlopen(req, timeout=timeout) as res:
+                body = res.read().decode("utf-8")
+                data = json.loads(body)
+                
+                result = data.get("result", {})
+                label = result.get("label", UNKNOWN_INTENT)
+                # Remap the label back to our internal intent format if it's returning raw names like ROUTING
+                if label != UNKNOWN_INTENT:
+                    label = label.lower().replace(" ", "_")
+                    if label == "routing": label = "routing_config"
+                    # We might need to ensure it matches KNOWN_INTENTS format, but we'll try to just pass it directly as it seems to just be capitalized.
+                    # Wait, if the model returns 'ROUTING', we should lower it. 
+                    label = label.lower()
+                    if not label.endswith("_config") and not label.endswith("_management") and not label.endswith("_security") and not label.endswith("_policy"):
+                        # Keep it simple, just lower it. Let's see if there is an exact mapping needed.
+                        pass
+                
+                return ClassifierResult(
+                    intent=label,
+                    confidence=round(float(result.get("score", 0.0)), 4),
+                    model_version=data.get("model", "remote")
+                )
         except Exception:
-            return fallback_predict(text)
-
-    return LoadedClassifier(backend_name="distilbert-remote", model_version=remote_url, predict_fn=predict)
+            return ClassifierResult(
+                intent=UNKNOWN_INTENT,
+                confidence=0.0,
+                model_version="remote-error"
+            )
+            
+    return LoadedClassifier(backend_name="remote-classifier", model_version="remote", predict_fn=predict)
 
 
 def load_classifier() -> LoadedClassifier:
-    """Load once at application startup (see model_registry.py).
-
-    Resolution order: HF_DISTILBERT_MODEL (real fine-tuned checkpoint,
-    downloaded straight from the private Hugging Face repo) ->
-    AI_CLASSIFIER_REMOTE_URL (remote HTTP inference) ->
-    AI_CLASSIFIER_MODEL_PATH (local DistilBERT checkpoint) -> deterministic
-    keyword fallback. Only one backend is ever active per process.
-
-    HF is tried first: it's the one env-configured path that actually
-    points at the real trained model, whereas the remote-inference URL
-    depends on an external box being reachable and silently degrades to
-    the keyword fallback (with confidence 0.0 on anything it doesn't
-    recognize) if it isn't.
-    """
-    hf_loaded = _try_load_huggingface_distilbert()
-    if hf_loaded is not None:
-        return hf_loaded
-
+    """Load once at application startup (see model_registry.py)."""
     remote_url = os.getenv("AI_CLASSIFIER_REMOTE_URL", "")
-    remote = _try_load_remote_classifier(remote_url)
-    if remote is not None:
-        return remote
+    if remote_url:
+        api_key = os.getenv("AI_REMOTE_API_KEY", "")
+        timeout = float(os.getenv("AI_REMOTE_TIMEOUT_SECONDS", "10.0"))
+        loaded = _try_load_remote_classifier(remote_url, api_key, timeout)
+        if loaded is not None:
+            return loaded
 
     model_path = os.getenv("AI_CLASSIFIER_MODEL_PATH", "")
     loaded = _try_load_distilbert(model_path)
     if loaded is not None:
         return loaded
+
     fallback_version = os.getenv("AI_MODEL_VERSION", "keyword-fallback-v1")
     return LoadedClassifier(
         backend_name="keyword-fallback",

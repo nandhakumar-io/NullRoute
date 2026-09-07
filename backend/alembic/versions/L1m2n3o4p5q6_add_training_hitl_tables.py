@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = 'L1m2n3o4p5q6'
-down_revision = 'h2i3j4k5l6m7'
+down_revision = 'network_scan_jobs'
 branch_labels = None
 depends_on = None
 

@@ -16,17 +16,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ValidationError
-
-__all__ = [
-    "DeviceInfo", "SSHConfig", "TelnetConfig", "HTTPConfig", "ManagementConfig",
-    "LoggingConfig", "AAAConfig", "PasswordPolicy", "SNMPConfig",
-    "InterfaceSecurity", "NormalizedParameter", "SecurityBaselineModel",
-    "RadiusServer", "TacacsServer", "SyslogServerEntry", "NTPConfig",
-    "InterfaceEntry", "VLANEntry", "ACLEntry", "FirewallPolicyEntry",
-    "StaticRoute", "OSPFConfig", "BGPConfig", "RoutingConfig", "CryptoConfig",
-    "ValidationError",
-]
+from pydantic import BaseModel, Field
 
 
 class DeviceInfo(BaseModel):
@@ -39,14 +29,6 @@ class DeviceInfo(BaseModel):
 
 
 class SSHConfig(BaseModel):
-    # Enforce the declared types (int/bool/etc.) on every assignment, not
-    # just on construction. Without this, a plain `setattr(...)` from the
-    # AI/RAG normalizer (ai/normalize.py) or the deterministic parser's
-    # `_set_dotted` helper can silently store a mistyped value (e.g. the
-    # string "v2" into a field declared `Optional[int]`), which then fails
-    # an `eq 2` OPA comparison even though the device is actually correct.
-    model_config = {"validate_assignment": True}
-
     enabled: Optional[bool] = None
     version: Optional[int] = None
     idle_timeout: Optional[int] = None
@@ -55,22 +37,16 @@ class SSHConfig(BaseModel):
 
 
 class TelnetConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
     enabled: Optional[bool] = None
 
 
 class HTTPConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
     enabled: Optional[bool] = None
     https_only: Optional[bool] = None
     port: Optional[int] = None
 
 
 class ManagementConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
     ssh: SSHConfig = Field(default_factory=SSHConfig)
     telnet: TelnetConfig = Field(default_factory=TelnetConfig)
     http: HTTPConfig = Field(default_factory=HTTPConfig)
@@ -79,69 +55,70 @@ class ManagementConfig(BaseModel):
 
 
 class RadiusServer(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    address: Optional[str] = None
+    address: str
     auth_port: Optional[int] = None
     acct_port: Optional[int] = None
+    key: Optional[str] = None
 
 
-class TacacsServer(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    address: Optional[str] = None
+class TACACSServer(BaseModel):
+    address: str
     port: Optional[int] = None
+    key: Optional[str] = None
 
 
-class SyslogServerEntry(BaseModel):
-    model_config = {"validate_assignment": True}
+class VLAN(BaseModel):
+    id: Any
+    name: Optional[str] = None
+    description: Optional[str] = None
 
-    address: Optional[str] = None
+
+class ACLRule(BaseModel):
+    name: str
+    direction: Optional[str] = None
+    action: Optional[str] = None
+
+
+class SyslogServer(BaseModel):
+    address: str
     severity: Optional[str] = None
+    facility: Optional[str] = None
 
 
 class NTPConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
+    enabled: Optional[bool] = None
     servers: List[str] = Field(default_factory=list)
 
 
-class LoggingConfig(BaseModel):
-    model_config = {"validate_assignment": True}
+class RoutingOSPF(BaseModel):
+    enabled: Optional[bool] = None
+    process_id: Optional[int] = None
 
+
+class RoutingConfig(BaseModel):
+    ospf: RoutingOSPF = Field(default_factory=RoutingOSPF)
+
+
+class LoggingConfig(BaseModel):
     enabled: Optional[bool] = None
     remote_syslog: Optional[bool] = None
     syslog_servers: Optional[List[str]] = None
+    syslog_servers_detail: List[SyslogServer] = Field(default_factory=list)
     log_level: Optional[str] = None
     ntp_synced: Optional[bool] = None
-    # Added for context-aware normalization: full syslog server detail
-    # (address + minimum severity) and the NTP server list, kept alongside
-    # the pre-existing boolean/scalar fields above (which OPA already
-    # evaluates and which are left untouched) rather than replacing them.
-    syslog_servers_detail: List[SyslogServerEntry] = Field(default_factory=list)
     ntp: NTPConfig = Field(default_factory=NTPConfig)
 
 
 class AAAConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
     enabled: Optional[bool] = None
     authentication_method: Optional[str] = None
     accounting_enabled: Optional[bool] = None
     local_fallback: Optional[bool] = None
-    # Added: authorization (distinct from authentication/accounting) plus
-    # the actual RADIUS/TACACS+ server definitions referenced by
-    # `authentication_method` (e.g. "group radius local") -- previously
-    # this relationship (method name -> concrete server addresses) was
-    # lost entirely because normalization only ever saw one line at a time.
-    authorization_method: Optional[str] = None
     radius_servers: List[RadiusServer] = Field(default_factory=list)
-    tacacs_servers: List[TacacsServer] = Field(default_factory=list)
+    tacacs_servers: List[TACACSServer] = Field(default_factory=list)
 
 
 class PasswordPolicy(BaseModel):
-    model_config = {"validate_assignment": True}
-
     min_length: Optional[int] = None
     complexity_required: Optional[bool] = None
     max_age_days: Optional[int] = None
@@ -149,93 +126,42 @@ class PasswordPolicy(BaseModel):
 
 
 class SNMPConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
     enabled: Optional[bool] = None
     version: Optional[str] = None
     community_strings_default: Optional[bool] = None
-    # Added: the actual configured community strings / trap destinations,
-    # not just the "is it public/private" boolean OPA checks.
     community_strings: List[str] = Field(default_factory=list)
-    trap_servers: List[str] = Field(default_factory=list)
-
-
-class InterfaceEntry(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    name: Optional[str] = None
-    description: Optional[str] = None
-    ip_address: Optional[str] = None
-    vlan: Optional[int] = None
-    admin_state: Optional[str] = None  # up | down
-    port_security: Optional[bool] = None
-
-
-class VLANEntry(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    id: Optional[int] = None
-    name: Optional[str] = None
-
-
-class ACLEntry(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    name: Optional[str] = None
-    applied_interface: Optional[str] = None
-    direction: Optional[str] = None  # in | out
-
-
-class FirewallPolicyEntry(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    name: Optional[str] = None
-    source_zone: Optional[str] = None
-    destination_zone: Optional[str] = None
-    action: Optional[str] = None  # allow | deny
-
-
-class StaticRoute(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    destination: Optional[str] = None
-    next_hop: Optional[str] = None
-
-
-class OSPFConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    enabled: Optional[bool] = None
-    process_id: Optional[int] = None
-
-
-class BGPConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    enabled: Optional[bool] = None
-    as_number: Optional[int] = None
-
-
-class RoutingConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    ospf: OSPFConfig = Field(default_factory=OSPFConfig)
-    bgp: BGPConfig = Field(default_factory=BGPConfig)
-    static_routes: List[StaticRoute] = Field(default_factory=list)
-
-
-class CryptoConfig(BaseModel):
-    model_config = {"validate_assignment": True}
-
-    tls_min_version: Optional[str] = None
-    certificates: List[str] = Field(default_factory=list)
 
 
 class InterfaceSecurity(BaseModel):
-    model_config = {"validate_assignment": True}
-
     unused_ports_disabled: Optional[bool] = None
     port_security_enabled: Optional[bool] = None
+
+
+class SecurityGroup(BaseModel):
+    name: Optional[str] = None
+    allow_ssh: Optional[bool] = None
+    allow_http: Optional[bool] = None
+    allow_all_egress: Optional[bool] = None
+    restrict_default_vpc: Optional[bool] = None
+
+class IAMRole(BaseModel):
+    name: str = "default"
+    privilege_escalation: Optional[bool] = None
+    cross_account_access: Optional[bool] = None
+
+class CloudVPC(BaseModel):
+    id: Optional[str] = None
+    flow_logs_enabled: Optional[bool] = None
+    default_security_group_closed: Optional[bool] = None
+    security_groups: List[SecurityGroup] = Field(default_factory=list)
+    iam_roles: List[IAMRole] = Field(default_factory=list)
+
+class KubernetesNetworkPolicy(BaseModel):
+    name: Optional[str] = None
+    namespace: Optional[str] = None
+    default_deny_all_ingress: Optional[bool] = None
+    default_deny_all_egress: Optional[bool] = None
+    istio_mtls_strict: Optional[bool] = None
 
 
 class NormalizedParameter(BaseModel):
@@ -262,20 +188,12 @@ class SecurityBaselineModel(BaseModel):
     password_policy: PasswordPolicy = Field(default_factory=PasswordPolicy)
     snmp: SNMPConfig = Field(default_factory=SNMPConfig)
     interfaces: InterfaceSecurity = Field(default_factory=InterfaceSecurity)
-
-    # Added vendor-neutral structures (see problem statement item 4) for
-    # facts the deterministic parsers + block-aware AI normalizer can now
-    # extract: individual interfaces, VLANs, ACLs, firewall/security
-    # policies, routing (OSPF/BGP/static), and crypto/TLS. Kept as
-    # separate top-level sections rather than folded into `interfaces`
-    # (already used for the CIS unused-ports/port-security booleans OPA
-    # evaluates) so no existing OPA control's dotted path changes.
-    interfaces_detail: List[InterfaceEntry] = Field(default_factory=list)
-    vlans: List[VLANEntry] = Field(default_factory=list)
-    acls: List[ACLEntry] = Field(default_factory=list)
-    firewall_policies: List[FirewallPolicyEntry] = Field(default_factory=list)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
-    crypto: CryptoConfig = Field(default_factory=CryptoConfig)
+    vlans: List[VLAN] = Field(default_factory=list)
+    acls: List[ACLRule] = Field(default_factory=list)
+
+    cloud_constructs: CloudVPC = Field(default_factory=CloudVPC)
+    kube_constructs: KubernetesNetworkPolicy = Field(default_factory=KubernetesNetworkPolicy)
 
     # Fully extensible bucket for anything not yet modeled explicitly.
     extra_parameters: Dict[str, Any] = Field(default_factory=dict)
@@ -295,11 +213,19 @@ class SecurityBaselineModel(BaseModel):
         def _walk(prefix: str, obj: Any):
             if isinstance(obj, BaseModel):
                 for k, v in obj.model_dump().items():
-                    _walk(f"{prefix}.{k}" if prefix else k, v)
+                    if isinstance(v, list):
+                        out[f"{prefix}.{k}"] = v
+                    else:
+                        _walk(f"{prefix}.{k}" if prefix else k, v)
             elif isinstance(obj, dict):
                 for k, v in obj.items():
-                    _walk(f"{prefix}.{k}" if prefix else k, v)
-            else:
+                    if isinstance(v, list):
+                        out[f"{prefix}.{k}"] = v
+                    else:
+                        _walk(f"{prefix}.{k}" if prefix else k, v)
+            elif isinstance(obj, list):
+                out[prefix] = obj
+            elif prefix:
                 out[prefix] = obj
 
         data = self.model_dump(exclude={"provenance"})

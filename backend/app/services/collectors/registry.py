@@ -19,8 +19,11 @@ from app.services.collectors.netconf import NetconfCollector
 from app.services.collectors.restconf import RestconfCollector
 from app.services.collectors.snmp import SNMPCollector
 from app.services.collectors.ssh import SSHCollector
+from app.services.collectors.aws import AWSCollector
+from app.services.collectors.azure import AzureCollector
+from app.services.collectors.gcp import GCPCollector
 
-SUPPORTED_VENDORS = {"cisco", "cisco_ios", "cisco_xe", "juniper", "arista", "arista_eos", "fortigate", "fortinet", "paloalto", "palo_alto"}
+SUPPORTED_VENDORS = {"cisco", "cisco_ios", "cisco_xe", "juniper", "arista", "arista_eos", "fortigate", "fortinet", "paloalto", "palo_alto", "aws", "azure", "gcp"}
 
 # vendor_key -> ordered list of transports to try when no explicit transport is requested
 _DEFAULT_TRANSPORT_PRIORITY: Dict[str, list] = {
@@ -34,6 +37,9 @@ _DEFAULT_TRANSPORT_PRIORITY: Dict[str, list] = {
     "fortinet": ["ssh", "restconf"],
     "paloalto": ["ssh"],
     "palo_alto": ["ssh"],
+    "aws": ["aws_api"],
+    "azure": ["azure_api"],
+    "gcp": ["gcp_api"],
 }
 
 _COLLECTORS: Dict[str, BaseCollector] = {
@@ -43,9 +49,11 @@ _COLLECTORS: Dict[str, BaseCollector] = {
     "snmp": SNMPCollector(),
     # gNMI is never in a vendor's default priority list above (its Get
     # response is structured OpenConfig JSON, not CLI-equivalent running
-    # config -- see collectors/gnmi.py docstring), so it's only reachable
     # via an explicit transport="gnmi" request, same opt-in pattern as SNMP.
     "gnmi": GNMICollector(),
+    "aws_api": AWSCollector(),
+    "azure_api": AzureCollector(),
+    "gcp_api": GCPCollector(),
 }
 
 # DeviceCredentialRef.credential_type prefixes that are valid for each
@@ -63,6 +71,9 @@ TRANSPORT_CREDENTIAL_PREFIXES: Dict[str, tuple] = {
     "restconf": ("restconf", "restconf_token"),
     "snmp": ("snmp_", "snmp"),
     "gnmi": ("gnmi",),
+    "aws_api": ("aws_", "aws"),
+    "azure_api": ("azure_", "azure"),
+    "gcp_api": ("gcp_", "gcp"),
 }
 
 

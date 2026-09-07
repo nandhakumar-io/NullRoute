@@ -91,6 +91,6 @@ def opa_decision_to_findings(decision: OPADecision, baseline: SecurityBaselineMo
 def compute_score(findings: List[Dict[str, Any]]) -> float:
     applicable = [f for f in findings if f["result"] != "NOT_APPLICABLE"]
     if not applicable:
-        return 0.0
+        return 100.0
     passed = sum(1 for f in applicable if f["result"] == "PASS")
     return round(100.0 * passed / len(applicable), 1)

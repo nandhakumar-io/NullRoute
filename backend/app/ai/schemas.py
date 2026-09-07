@@ -13,16 +13,16 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 UNKNOWN_INTENT = "UNKNOWN"
 
 
 class ClassifierResult(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
     intent: str
     confidence: float
     model_version: str
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class EmbeddingMatch(BaseModel):
@@ -33,7 +33,6 @@ class EmbeddingMatch(BaseModel):
 
 class AIAnalysisResult(BaseModel):
     """Full hybrid decision output for one raw configuration line/command."""
-    model_config = ConfigDict(protected_namespaces=())
 
     raw_command: str
     intent: str
@@ -47,10 +46,10 @@ class AIAnalysisResult(BaseModel):
     model_version: str
     inference_latency_ms: float
     reason: str
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class AIHealth(BaseModel):
-    model_config = ConfigDict(protected_namespaces=())
     ai_enabled: bool
     classifier_loaded: bool
     embedder_loaded: bool
@@ -59,6 +58,7 @@ class AIHealth(BaseModel):
     model_version: str
     reference_dataset: Optional[str] = None
     reference_examples: int = 0
+    model_config = ConfigDict(protected_namespaces=())
 
 
 class AIModelInfo(BaseModel):

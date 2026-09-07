@@ -6,8 +6,6 @@ at each stage.
 from __future__ import annotations
 
 import hashlib
-import logging
-import time
 from datetime import datetime
 from typing import Optional
 
@@ -15,33 +13,18 @@ from sqlalchemy.orm import Session
 
 from app import events
 from app.ai import service as ai_service
-from app.ai.normalize import (compute_coverage, interpret_block,
-                               retrieve_similar_mappings,
-                               to_normalized_parameters)
+from app.ai.normalize import (interpret_line, retrieve_similar_mappings,
+                               to_normalized_parameter)
 from app.models.baseline import SecurityBaselineModel
 from app.models.db import AIAnalysis, BatfishAnalysis, Device, Finding, OPAAnalysis, Scan
-from app.services import alert_service, batfish_service, drift_service, evidence_service, fabric_service, minio_service, opa_service, risk_engine, security_baseline_drift, topology_service
+from app.services import batfish_service, evidence_service, fabric_service, opa_service, risk_engine
 from app.services.change_validation_service import correlate
 from app.services.compliance import compute_score, evaluate_baseline_via_opa, opa_decision_to_findings
-from app.services.parsers import parse_config, set_or_append_dotted
+from app.services.parsers import parse_config
 from app.services.vendor_detect import detect_vendor
-from app.services.telemetry import increment_counter, record_histogram, tracer
-
-logger = logging.getLogger("pipeline")
 
 
 async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = "ALL") -> Scan:
-    _pipeline_start = time.perf_counter()
-    with tracer.start_as_current_span("pipeline.run") as _span:
-        _span.set_attribute("scan_id", scan.id)
-        _span.set_attribute("tenant_id", scan.tenant_id)
-        result = await _run_pipeline_body(db, scan, raw_text, framework)
-        record_histogram("scan_duration_ms", (time.perf_counter() - _pipeline_start) * 1000.0,
-                          {"framework": framework, "final_decision": scan.final_decision or "unknown"})
-        return result
-
-
-async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: str = "ALL") -> Scan:
     try:
         # 1. Vendor/OS detection ------------------------------------------------
         guess = detect_vendor(raw_text)
@@ -52,95 +35,9 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
         db.commit()
 
         scan.raw_config_hash = hashlib.sha256(raw_text.encode()).hexdigest()
-        # Phase 8: archive the raw configuration bytes in MinIO; PostgreSQL
-        # keeps only the object key + hash (RULE 6/12). Best-effort -- a
-        # MinIO outage must not fail the scan (see minio_service.put_object).
-        raw_key = minio_service.object_key(scan.tenant_id, scan.device_id, scan.id, "raw.cfg")
-        put_result = minio_service.put_object(raw_key, raw_text.encode("utf-8"), content_type="text/plain")
-        if put_result is not None:
-            scan.raw_config_path = put_result.object_key
         scan.status = "parsed"
         db.commit()
         await events.publish("config.uploaded", {"scan_id": scan.id, "device_id": scan.device_id})
-
-        # 1a. Configuration drift (Phase 11) -------------------------------
-        # Best-effort, never fails the scan: compares this scan's raw config
-        # against the device's immediately-preceding scan (by hash), and
-        # persists an immutable DriftEvent describing the diff. Purely a
-        # triage/record signal -- the pipeline always continues to OPA below
-        # regardless of drift status (RULE 1: only OPA renders a verdict).
-        try:
-            previous_scan = drift_service.get_previous_scan(db, scan.device_id, exclude_scan_id=scan.id)
-            previous_text: Optional[str] = None
-            previous_text_recoverable = True
-            if previous_scan and previous_scan.raw_config_hash != scan.raw_config_hash:
-                if previous_scan.raw_config_path:
-                    try:
-                        previous_text = minio_service.get_object(previous_scan.raw_config_path).decode("utf-8", errors="replace")
-                    except Exception:
-                        # Prior raw text is unrecoverable (e.g. MinIO outage at
-                        # the time). Diffing against "" would flag every line
-                        # of the current config as newly "added" -- a false
-                        # full-rewrite drift event. Record that the hash
-                        # changed without fabricating a line-level diff.
-                        previous_text_recoverable = False
-                else:
-                    previous_text_recoverable = False
-            if previous_scan and previous_text is not None:
-                drift_event = drift_service.record_drift(
-                    db, tenant_id=scan.tenant_id, device_id=scan.device_id,
-                    current_scan=scan, previous_text=previous_text, current_text=raw_text,
-                )
-                if drift_event is not None:
-                    await events.publish("device.drift.detected", {
-                        "scan_id": scan.id, "device_id": scan.device_id,
-                        "drift_event_id": drift_event.id,
-                        "security_impacting": drift_event.security_impacting,
-                    })
-                    if drift_event.security_impacting:
-                        try:
-                            await alert_service.alert_drift(
-                                db, scan.tenant_id, scan.device_id, scan.id, drift_event.id,
-                            )
-                        except Exception:  # noqa: BLE001 - alerting must never fail the scan
-                            logger.warning("Drift alert dispatch failed for scan %s", scan.id, exc_info=True)
-            elif previous_scan and not previous_text_recoverable:
-                # The hash changed but we can't recover the prior raw text to
-                # diff line-by-line. Record that drift occurred (don't lose
-                # the signal) without a fabricated full-file diff, and treat
-                # it as security-impacting by default since we can't rule it
-                # out -- conservative, matches drift_service's "never
-                # suppress a genuine diff" policy.
-                drift_event = drift_service.record_hash_only_drift(
-                    db, tenant_id=scan.tenant_id, device_id=scan.device_id,
-                    current_scan=scan, previous_scan=previous_scan,
-                )
-                if drift_event is not None:
-                    await events.publish("device.drift.detected", {
-                        "scan_id": scan.id, "device_id": scan.device_id,
-                        "drift_event_id": drift_event.id,
-                        "security_impacting": drift_event.security_impacting,
-                    })
-                    try:
-                        await alert_service.alert_drift(
-                            db, scan.tenant_id, scan.device_id, scan.id, drift_event.id,
-                        )
-                    except Exception:  # noqa: BLE001 - alerting must never fail the scan
-                        logger.warning("Drift alert dispatch failed for scan %s", scan.id, exc_info=True)
-        except Exception:  # noqa: BLE001
-            db.rollback()
-
-        # 1b. Inventory/topology extraction (Phase 9) ---------------------------
-        # Best-effort, never fails the scan. Replaces this device's previous
-        # snapshot rows since these represent CURRENT observed state, not a
-        # history (see models/db.py NetworkInterface docstring).
-        try:
-            topology_service.refresh_device_topology(
-                db, tenant_id=scan.tenant_id, device_id=scan.device_id, scan_id=scan.id,
-                vendor=device.vendor or guess.vendor, raw_text=raw_text,
-            )
-        except Exception:  # noqa: BLE001
-            db.rollback()
 
         # 2. Deterministic parsing ----------------------------------------------
         baseline: SecurityBaselineModel = parse_config(device.vendor or guess.vendor, raw_text)
@@ -151,34 +48,21 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
         baseline.raw_config_hash = scan.raw_config_hash
         await events.publish("config.parsed", {"scan_id": scan.id, "matched_params": len(baseline.provenance)})
 
-        # 3. AI/RAG normalization of unknown BLOCKS (context-aware, multi-fact;
-        #    see ai/normalize.py). Replaces the old one-line-at-a-time pass --
-        #    `_unknown_blocks` groups contiguous unmatched lines with their
-        #    surrounding context (parsers._group_unknown_blocks) so a nested
-        #    stanza's relationships (e.g. which RADIUS server a nested
-        #    "address ipv4 ..." line belongs to) survive into the prompt. The
-        #    flat, ungrouped line list (`_all_unknown_lines`) is kept purely
-        #    for the coverage report / human-review queue, never re-derived
-        #    from blocks (so a grouping quirk can't under/over count it). ---
-        unknown_blocks = baseline.extra_parameters.pop("_unknown_blocks", [])
-        vendor_for_ai = device.vendor or guess.vendor
-        AI_BLOCK_CAP = 60  # cap for demo latency, not for correctness
-        if unknown_blocks:
-            await events.publish("ai.mapping.required", {"scan_id": scan.id, "count": len(unknown_blocks)})
-        for block_text in unknown_blocks[:AI_BLOCK_CAP]:
+        # 3. AI/RAG normalization of unknown lines -------------------------------
+        unknown_lines = baseline.extra_parameters.pop("_unknown_lines", [])
+        if unknown_lines:
+            await events.publish("ai.mapping.required", {"scan_id": scan.id, "count": len(unknown_lines)})
+        for line in unknown_lines[:60]:  # cap for demo latency
             # 3a. Trained-AI intent classification (DistilBERT + MiniLM hybrid
             #     decision engine) — purely an interpretation signal, persisted
             #     for review; it never sets compliance PASS/FAIL and never
-            #     overrides the Ollama/RAG normalization result below. Run
-            #     once per block (on its first line) since it's an intent
-            #     signal about the block, not a per-fact classification.
-            first_line = next((l for l in block_text.splitlines() if l.strip()), block_text)
-            ai_result = ai_service.analyze_command(first_line)
+            #     overrides the Ollama/RAG normalization result below.
+            ai_result = ai_service.analyze_command(line)
             db.add(AIAnalysis(
                 scan_id=scan.id,
                 device_id=device.id,
                 tenant_id=scan.tenant_id,
-                raw_command_hash=hashlib.sha256(block_text.encode()).hexdigest(),
+                raw_command_hash=hashlib.sha256(line.encode()).hexdigest(),
                 intent=ai_result.intent,
                 classifier_confidence=ai_result.classifier_confidence,
                 semantic_similarity=ai_result.semantic_similarity,
@@ -192,64 +76,21 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
                 inference_latency_ms=ai_result.inference_latency_ms,
             ))
 
-            retrieved = await retrieve_similar_mappings(db, scan.tenant_id, vendor_for_ai, block_text)
-            block_result = await interpret_block(vendor_for_ai, block_text, retrieved)
-            norm_params = to_normalized_parameters(block_result)
-            baseline.provenance.extend(norm_params)
-            n_facts = len(block_result.facts)
-            for interp, norm_param in zip(block_result.facts, norm_params[:n_facts]):
-                if interp.needs_human_review:
-                    _queue_for_training(db, scan.tenant_id, vendor_for_ai, interp)
-                else:
-                    _apply_to_baseline(baseline, norm_param, is_list_target=interp.is_list_target)
-            # Unknown lines the model/heuristic declined to interpret: never
-            # silently discarded (problem statement item 3/17) -- surfaced
-            # directly under extra_parameters.unknown_evidence in addition
-            # to their full-provenance NormalizedParameter entry above.
-            for norm_param in norm_params[n_facts:]:
+            retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line)
+            interp = await interpret_line(device.vendor or guess.vendor, line, retrieved)
+            norm_param = to_normalized_parameter(interp)
+            baseline.provenance.append(norm_param)
+            if interp.needs_human_review:
+                _queue_for_training(db, device.vendor or guess.vendor, interp)
+            else:
                 _apply_to_baseline(baseline, norm_param)
-        # Blocks beyond the per-scan AI processing cap are NOT discarded --
-        # preserved verbatim so compute_coverage() and the human-review
-        # queue still account for them (problem statement item 15/17).
-        if len(unknown_blocks) > AI_BLOCK_CAP:
-            baseline.extra_parameters["_uncapped_unknown_blocks"] = unknown_blocks[AI_BLOCK_CAP:]
         db.commit()
-        if unknown_blocks:
+        if unknown_lines:
             await events.publish("ai.mapping.completed", {"scan_id": scan.id})
-
-        # Normalization coverage report (item 15/16) -- computed once the
-        # deterministic + AI provenance is complete, before OPA evaluation.
-        baseline.extra_parameters["_coverage"] = compute_coverage(baseline)
 
         scan.status = "normalized"
         scan.baseline_json = baseline.model_dump(mode="json")
         db.commit()
-
-        # 3b. Normalized security-baseline drift (Parts 2-5): compares this
-        # scan's SecurityBaselineModel against the device's immediately
-        # preceding scan's baseline (independent of, and in addition to, the
-        # raw line-diff DriftEvent recorded in step 1a) and persists one
-        # SecurityDriftFinding per changed parameter, each classified as
-        # SECURITY_DEGRADATION/SECURITY_IMPROVEMENT/CONFIGURATION_CHANGE/
-        # COMPLIANCE_IMPACT/UNKNOWN_IMPACT. Best-effort: correlating with OPA
-        # and persisting findings never blocks or fails the scan itself.
-        try:
-            baseline_previous_scan = drift_service.get_previous_scan(db, scan.device_id, exclude_scan_id=scan.id)
-            security_drift_findings = await security_baseline_drift.record_security_drift(
-                db, tenant_id=scan.tenant_id, device_id=scan.device_id,
-                previous_scan=baseline_previous_scan, current_scan=scan,
-            )
-            if security_drift_findings:
-                await events.publish("device.security_drift.detected", {
-                    "scan_id": scan.id, "device_id": scan.device_id,
-                    "finding_count": len(security_drift_findings),
-                    "degradation_count": sum(
-                        1 for f in security_drift_findings if f.drift_type == "SECURITY_DEGRADATION"
-                    ),
-                })
-        except Exception:  # noqa: BLE001 - drift correlation is best-effort enrichment
-            db.rollback()
-            logger.warning("Normalized security-baseline drift failed for scan %s", scan.id, exc_info=True)
 
         # 4. OPA policy evaluation (the ONLY authoritative PASS/FAIL engine;
         #    never the LLM, never a silent Python fallback — see
@@ -290,7 +131,6 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
             vendor=device.vendor or guess.vendor or "",
             hostname=baseline.device.hostname or device.hostname or "device",
             raw_config=raw_text,
-            transport=device.last_collection_transport,
         )
         batfish_status = bf_result.status
         db.add(BatfishAnalysis(
@@ -387,12 +227,6 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
                     "evidence.anchor.failed",
                     {"scan_id": scan.id, "evidence_id": record.evidence_id, "reason": str(e)},
                 )
-                try:
-                    await alert_service.alert_fabric_anchor_failure(
-                        db, scan.tenant_id, scan.id, record.evidence_id, str(e),
-                    )
-                except Exception:  # noqa: BLE001 - alerting must never fail the scan
-                    logger.warning("Fabric-failure alert dispatch failed for scan %s", scan.id, exc_info=True)
                 if fabric_service.FABRIC_REQUIRED_FOR_CRITICAL_CHANGES and compliance_decision.decision == "BLOCK":
                     # Critical evidence must be anchored — surface this to the
                     # scan itself rather than silently completing.
@@ -409,11 +243,6 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
         db.commit()
         await events.publish("compliance.scan.completed", {"scan_id": scan.id, "score": score, "decision": compliance_decision.decision})
 
-        try:
-            await alert_service.evaluate_scan_for_alerts(db, scan, findings)
-        except Exception:  # noqa: BLE001 - alerting must never fail the scan
-            logger.warning("Post-scan alert evaluation failed for scan %s", scan.id, exc_info=True)
-
     except Exception as e:  # keep the demo resilient; surface the error on the scan
         scan.status = "failed"
         scan.error = str(e)
@@ -422,47 +251,27 @@ async def _run_pipeline_body(db: Session, scan: Scan, raw_text: str, framework: 
     return scan
 
 
-def _apply_to_baseline(baseline: SecurityBaselineModel, norm_param, is_list_target: bool = False) -> None:
-    """Merge an AI/RAG-derived NormalizedParameter into the typed baseline.
-
-    Delegates to `parsers.set_or_append_dotted`, the same guarded
-    setattr/append helper the deterministic parser uses: the typed
-    sub-models validate on assignment, so an LLM/heuristic value that
-    doesn't match the declared type (e.g. "v2" for an `Optional[int]`
-    field) is quarantined into extra_parameters instead of silently
-    overwriting a typed compliance fact with a value OPA would then
-    compare incorrectly. `is_list_target=True` appends to a List[...]
-    field (e.g. `aaa.radius_servers`, `vlans`) rather than overwriting a
-    scalar -- the LLM prompt schema explicitly allows one fact per
-    RADIUS/TACACS+ server, VLAN, ACL, interface, etc., so a block with N
-    such facts must not clobber all but the last one.
-    """
-    if norm_param.normalized_parameter == "extra_parameters.unknown_evidence":
-        # Never route unknown evidence through set_or_append_dotted --
-        # accumulate it as a list so multiple unknown lines aren't
-        # overwritten by each other.
-        baseline.extra_parameters.setdefault("unknown_evidence", [])
-        baseline.extra_parameters["unknown_evidence"].append(norm_param.value)
-        return
-    set_or_append_dotted(baseline, norm_param.normalized_parameter, norm_param.value, append=is_list_target)
+def _apply_to_baseline(baseline: SecurityBaselineModel, norm_param) -> None:
+    parts = norm_param.normalized_parameter.split(".")
+    obj = baseline
+    try:
+        for p in parts[:-1]:
+            obj = getattr(obj, p)
+        setattr(obj, parts[-1], norm_param.value)
+    except AttributeError:
+        baseline.extra_parameters[norm_param.normalized_parameter] = norm_param.value
 
 
-def _queue_for_training(db: Session, tenant_id: str, vendor: str, interp) -> None:
+def _queue_for_training(db: Session, vendor: str, interp) -> None:
     from app.models.db import CommandMapping
-    from app.services import vector_search
     existing = (
         db.query(CommandMapping)
-        .filter(
-            CommandMapping.tenant_id == tenant_id,
-            CommandMapping.vendor == vendor,
-            CommandMapping.raw_command_pattern == interp.raw_command,
-        )
+        .filter(CommandMapping.vendor == vendor, CommandMapping.raw_command_pattern == interp.raw_command)
         .first()
     )
     if existing:
         return
-    mapping = CommandMapping(
-        tenant_id=tenant_id,
+    db.add(CommandMapping(
         vendor=vendor,
         raw_command_pattern=interp.raw_command,
         normalized_parameter=interp.normalized_parameter,
@@ -471,15 +280,5 @@ def _queue_for_training(db: Session, tenant_id: str, vendor: str, interp) -> Non
         confidence=interp.confidence,
         status="pending",
         model_version=interp.model_version,
-    )
-    db.add(mapping)
+    ))
     db.commit()
-    db.refresh(mapping)
-    # Embed the raw command text now, once, so this row is retrievable via
-    # real pgvector cosine similarity search the next time an unknown
-    # command comes in (see services/vector_search.py) instead of only
-    # ever being reachable by exact-match/token-overlap. Best-effort: if no
-    # embedder is loaded (AI disabled, offline heuristic mode), this is a
-    # harmless no-op and the row is still usable via the token-overlap
-    # fallback in vector_search.find_similar_mappings.
-    vector_search.store_embedding(db, mapping.id, vector_search.embed_text(interp.raw_command))

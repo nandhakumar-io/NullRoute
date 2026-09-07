@@ -47,6 +47,53 @@ const TRANSPORTS = [
 ];
 
 
+const SNAPSHOT_DIFF_TONE: Record<string, string> = {
+  BATFISH_PASS: "badge-pass",
+  BATFISH_FAIL: "badge-fail",
+  BATFISH_UNSUPPORTED: "badge-na",
+  BATFISH_UNAVAILABLE: "badge-na",
+  BATFISH_ERROR: "badge-fail",
+};
+
+// Network Impact panel: CURRENT-vs-PROPOSED Batfish snapshot diff. Shown
+// whenever a diff was actually attempted (status !== NOT_CHECKED) so a
+// reviewer sees behavioral deltas -- e.g. a newly-reachable path -- before
+// approving, not just OPA's single-snapshot verdict.
+function SnapshotDiffPanel({ diff }: { diff: NonNullable<ChangeRequest["snapshot_diff"]> }) {
+  const nodesChanged = (diff.node_delta?.added?.length || 0) + (diff.node_delta?.removed?.length || 0) > 0;
+  const flowsChanged = (diff.differential_reachability?.changed_flow_count || 0) > 0;
+  return (
+    <div className="mt-2 rounded-lg border border-soc-border bg-soc-bg/40 p-3 text-xs space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="font-semibold text-slate-300">Network Impact (CURRENT vs PROPOSED)</span>
+        <span className={`badge ${SNAPSHOT_DIFF_TONE[diff.status] || "badge-na"}`}>{diff.status}</span>
+      </div>
+      {diff.detail && <div className="text-slate-500">{diff.detail}</div>}
+      {diff.node_delta && (
+        <div className={nodesChanged ? "text-amber-400" : "text-slate-500"}>
+          Nodes — added: {diff.node_delta.added.length ? diff.node_delta.added.join(", ") : "none"}; removed:{" "}
+          {diff.node_delta.removed.length ? diff.node_delta.removed.join(", ") : "none"}
+        </div>
+      )}
+      {diff.route_delta && (
+        <div className="text-slate-500">
+          Routes — current: {diff.route_delta.current_count}, proposed: {diff.route_delta.proposed_count}
+          {diff.route_delta.count_delta !== 0 && (
+            <span className="text-amber-400"> ({diff.route_delta.count_delta > 0 ? "+" : ""}{diff.route_delta.count_delta})</span>
+          )}
+        </div>
+      )}
+      {diff.differential_reachability && (
+        <div className={flowsChanged ? "text-red-400 font-medium" : "text-slate-500"}>
+          Differential reachability: {diff.differential_reachability.status}
+          {flowsChanged &&
+            ` — ${diff.differential_reachability.changed_flow_count} flow(s) changed reachability (review before approving)`}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DeploymentCard({ d }: { d: DeploymentRecord }) {
   const code = explicitCodeIn(d.error);
   return (
@@ -218,6 +265,9 @@ export default function ChangeRequests() {
                     <span className="font-semibold text-slate-300">Final: {cr.final_decision || "—"}</span>
                   </div>
                   {cr.final_reason && <div className="text-xs text-slate-500 mt-1">{cr.final_reason}</div>}
+                  {cr.snapshot_diff && cr.snapshot_diff.status !== "NOT_CHECKED" && (
+                    <SnapshotDiffPanel diff={cr.snapshot_diff} />
+                  )}
                   {cr.status === "REJECTED" && cr.rejection_reason && (
                     <div className="text-xs text-red-400 mt-1">Rejected: {cr.rejection_reason}</div>
                   )}

@@ -92,12 +92,12 @@ export default function Schedules() {
           <div className="text-sm font-semibold text-slate-200">New schedule</div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <input
-              className="bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600"
+              className="input w-full"
               placeholder="Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            <select className="bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+            <select className="select w-full" value={frequency} onChange={(e) => setFrequency(e.target.value)}>
               {FREQUENCIES.map((f) => (
                 <option key={f} value={f}>
                   {f}
@@ -105,7 +105,7 @@ export default function Schedules() {
               ))}
             </select>
             <input
-              className="bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600"
+              className="input w-full"
               placeholder="Framework (e.g. ALL, CIS, NIST)"
               value={framework}
               onChange={(e) => setFramework(e.target.value)}
@@ -117,7 +117,7 @@ export default function Schedules() {
           </div>
           {!scopeAll && (
             <input
-              className="w-full bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600"
+              className="input w-full"
               placeholder="Comma-separated device IDs"
               value={deviceIds}
               onChange={(e) => setDeviceIds(e.target.value)}

@@ -46,5 +46,25 @@
   {
     "intent": "AUTHENTICATION_MANAGEMENT",
     "text": "login authentication ADMIN"
+  },
+  {
+    "intent": "CLOUD_VPC_LOGGING",
+    "text": "aws ec2 describe-flow-logs --filter Name=resource-id"
+  },
+  {
+    "intent": "CLOUD_SECURITY_GROUP",
+    "text": "Type: AWS::EC2::SecurityGroup Ingress IpProtocol tcp FromPort 22"
+  },
+  {
+    "intent": "CLOUD_IAM_ROLE",
+    "text": "Effect Allow Action sts:AssumeRole"
+  },
+  {
+    "intent": "KUBERNETES_NETWORK_POLICY_DENY",
+    "text": "kind: NetworkPolicy podSelector: {} policyTypes: [Ingress, Egress]"
+  },
+  {
+    "intent": "ISTIO_MTLS",
+    "text": "kind: PeerAuthentication mtls: mode: STRICT"
   }
 ]

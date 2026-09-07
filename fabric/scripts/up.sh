@@ -21,7 +21,7 @@ echo "== compliance-evidence: bringing up Fabric network =="
 
 if [ ! -d "$WORK_DIR" ]; then
   echo "-- fetching hyperledger/fabric-samples @ $FABRIC_SAMPLES_VERSION --"
-  git clone --depth 1 \
+  git clone --depth 1 --branch "$FABRIC_SAMPLES_VERSION" \
     https://github.com/hyperledger/fabric-samples.git "$WORK_DIR"
 fi
 
@@ -29,8 +29,6 @@ cd "$WORK_DIR"
 
 if [ ! -d "bin" ] || [ ! -f "bin/peer" ]; then
   echo "-- installing Fabric binaries + Docker images ($FABRIC_VERSION / CA $FABRIC_CA_VERSION) --"
-  curl -sSLO https://raw.githubusercontent.com/hyperledger/fabric/main/scripts/install-fabric.sh
-  chmod +x install-fabric.sh
   ./install-fabric.sh --fabric-version "$FABRIC_VERSION" --ca-version "$FABRIC_CA_VERSION" docker binary
 fi
 

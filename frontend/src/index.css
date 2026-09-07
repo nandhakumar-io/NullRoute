@@ -73,3 +73,17 @@ html.light ::placeholder { color: #94a3b8 !important; }
 .input {
   @apply bg-slate-800 border border-soc-border text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-700 placeholder-slate-500;
 }
+
+/* Toast / confirm dialog entrance used by lib/toast.tsx + lib/confirm.tsx */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-toast-in { animation: toast-in 160ms ease-out; }
+
+/* Slim, dark-theme scrollbars for a more polished, enterprise feel */
+* { scrollbar-width: thin; scrollbar-color: #2a3a5c transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background-color: #2a3a5c; border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background-color: #3a4d78; }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { endpoints, Device, DiscoveredHost, DiscoverResponse, NetworkScanJob, NetworkScanJobCreate } from "../api";
 import { PageHeader, Loading } from "../components/ui";
+import StatCard from "../components/StatCard";
 
 const FRAMEWORKS = ["ALL", "CIS", "NIST", "DISA_STIG", "ISO_27001"];
 const DEFAULT_PORTS = "22,23,80,161,443,830,8443,6030,57400";
@@ -60,6 +61,8 @@ function ScanJobsTab({ devices }: { devices: Device[] }) {
 
   useEffect(() => {
     loadJobs();
+    const iv = setInterval(loadJobs, 5000);
+    return () => clearInterval(iv);
   }, []);
 
   const toggleDevice = (id: string) =>
@@ -186,8 +189,15 @@ function ScanJobsTab({ devices }: { devices: Device[] }) {
         </div>
       )}
 
-      <div className="px-8 mb-8">
-        {jobs.length === 0 ? (
+      {jobs.length > 0 && (
+        <div className="px-8 mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+          <StatCard label="Total Scan Jobs" value={jobs.length} accent="blue" />
+          <StatCard label="In Progress" value={jobs.filter(j => j.status === 'RUNNING' || j.status === 'PENDING').length} accent="amber" />
+          <StatCard label="Finished" value={jobs.filter(j => j.status === 'COMPLETED' || j.status === 'PARTIAL' || j.status === 'FAILED').length} accent="green" />
+        </div>
+      )}
+
+      <div className="px-8 mb-8 mt-6">        {jobs.length === 0 ? (
           <div className="card text-slate-500 text-sm">No network scan jobs yet. Create one above.</div>
         ) : (
           <div className="card p-0 overflow-x-auto">

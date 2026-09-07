@@ -46,7 +46,6 @@ async def publish(subject: str, payload: Dict[str, Any]) -> None:
         logger.info("[event:offline] %s -> %s", subject, payload)
         return
     try:
-        js = conn.jetstream()
-        await js.publish(subject, data)
+        await conn.publish(subject, data)
     except Exception as e:
         logger.warning("Failed to publish %s: %s", subject, e)

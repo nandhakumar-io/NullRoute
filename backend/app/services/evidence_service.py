@@ -113,19 +113,12 @@ def verify_evidence(stored_hash: str, evidence: Dict[str, Any]) -> Dict[str, Any
 
 
 def store_evidence(db: Session, evidence: Dict[str, Any], evidence_hash: str) -> "EvidenceRecord":
-    """Persist the evidence package. The canonical JSON (the exact bytes that
-    were hashed) is archived to MinIO as the durable object-store copy
-    (Phase 8); PostgreSQL keeps the same JSON for query/verification
-    convenience plus the MinIO object key -- the hash column is the
-    tamper-evidence source of truth either way (RULE 6/9)."""
+    """Persist the evidence package off-chain. In the full target
+    architecture this also writes the raw JSON to MinIO and the reference to
+    PostgreSQL (RULE 6/13); this pass stores the canonical JSON directly in
+    PostgreSQL, which is sufficient for hashing/verification/tamper-demo
+    purposes and is a strict subset of the eventual MinIO-backed storage."""
     from app.models.db import EvidenceRecord  # local import avoids a cycle at module load time
-    from app.services import minio_service
-
-    canonical = canonicalize_evidence(evidence)
-    object_key = minio_service.object_key(
-        evidence["tenant_id"], evidence["device_id"], evidence["scan_id"], "evidence.json"
-    )
-    put_result = minio_service.put_object(object_key, canonical.encode("utf-8"), content_type="application/json")
 
     record = EvidenceRecord(
         evidence_id=evidence["evidence_id"],
@@ -135,7 +128,6 @@ def store_evidence(db: Session, evidence: Dict[str, Any], evidence_hash: str) ->
         event_type=evidence["event_type"],
         evidence_json=evidence,
         evidence_hash=evidence_hash,
-        evidence_object_key=put_result.object_key if put_result else None,
         opa_decision_id=evidence["opa_result"].get("decision_id"),
         final_decision=evidence["final_decision"],
         fabric_status="NOT_ANCHORED",  # would become "ANCHORED" once fabric_service is wired
@@ -146,17 +138,16 @@ def store_evidence(db: Session, evidence: Dict[str, Any], evidence_hash: str) ->
     return record
 
 
-def get_evidence(db: Session, evidence_id: str, tenant_id: Optional[str] = None) -> Optional["EvidenceRecord"]:
+def get_evidence(db: Session, evidence_id: str) -> Optional["EvidenceRecord"]:
     from app.models.db import EvidenceRecord
-    q = db.query(EvidenceRecord).filter(EvidenceRecord.evidence_id == evidence_id)
-    if tenant_id is not None:
-        q = q.filter(EvidenceRecord.tenant_id == tenant_id)
-    return q.first()
+    return db.query(EvidenceRecord).filter(EvidenceRecord.evidence_id == evidence_id).first()
 
 
-def get_evidence_history(db: Session, scan_id: str, tenant_id: Optional[str] = None) -> List["EvidenceRecord"]:
+def get_evidence_history(db: Session, scan_id: str) -> List["EvidenceRecord"]:
     from app.models.db import EvidenceRecord
-    q = db.query(EvidenceRecord).filter(EvidenceRecord.scan_id == scan_id)
-    if tenant_id is not None:
-        q = q.filter(EvidenceRecord.tenant_id == tenant_id)
-    return q.order_by(EvidenceRecord.created_at.asc()).all()
+    return (
+        db.query(EvidenceRecord)
+        .filter(EvidenceRecord.scan_id == scan_id)
+        .order_by(EvidenceRecord.created_at.asc())
+        .all()
+    )

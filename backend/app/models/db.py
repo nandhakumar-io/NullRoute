@@ -193,6 +193,8 @@ class EvidenceRecord(Base):
     fabric_status = Column(String, default="NOT_ANCHORED")  # NOT_ANCHORED/ANCHORED/FABRIC_UNAVAILABLE
     fabric_tx_id = Column(String, nullable=True)
     fabric_block_number = Column(Integer, nullable=True)
+    last_verified_at = Column(DateTime, nullable=True)
+    last_verification_status = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -613,6 +615,7 @@ class ChangeRequest(Base):
     final_decision = Column(String, nullable=True)
     final_reason = Column(Text, nullable=True)
     validation_detail = Column(JSON, nullable=True)
+    snapshot_diff = Column(JSON, nullable=True)
     approval_required = Column(Boolean, default=True)
     approved_by = Column(String, nullable=True)
     approved_at = Column(DateTime, nullable=True)
@@ -757,3 +760,16 @@ class ModelRegistryEntry(Base):
     approved_by = Column(String, nullable=True)
     approved_at = Column(DateTime, nullable=True)
     training_job_id = Column(String, ForeignKey("training_jobs.id"), nullable=True)
+
+class Gns3Server(Base):
+    """Database model to track registered GNS3 emulation environments."""
+    __tablename__ = "gns3_servers"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    username = Column(String, nullable=True)
+    password = Column(String, nullable=True)
+    initialized_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+

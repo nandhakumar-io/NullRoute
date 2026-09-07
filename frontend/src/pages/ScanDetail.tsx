@@ -33,15 +33,32 @@ export default function ScanDetail() {
   const [aiAnalysis, setAiAnalysis] = useState<ScanAIAnalysis | null>(null);
   const [rerunning, setRerunning] = useState(false);
 
+  const [currentSnapshot, setCurrentSnapshot] = useState<any>(null);
+  const [deviceHasBaseline, setDeviceHasBaseline] = useState(false);
+  const [approving, setApproving] = useState(false);
+
   function load() {
     if (scanId) {
-      endpoints.scan(scanId).then((r) => setScan(r.data));
+      endpoints.scan(scanId).then((r) => {
+        setScan(r.data);
+        endpoints.deviceSnapshots(r.data.device_id).then(res => {
+           const snaps = res.data.snapshots;
+           setCurrentSnapshot(snaps.find(s => s.scan_id === scanId));
+           setDeviceHasBaseline(snaps.some(s => s.is_approved_baseline));
+        });
+      });
       endpoints.evidenceList(scanId).then((r) => setEvidence(r.data[0] ?? null));
       endpoints.aiAnalysis(scanId).then((r) => setAiAnalysis(r.data));
     }
   }
 
-  useEffect(load, [scanId]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(() => {
+      load();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [scanId]);
 
   if (!scan) return <Loading />;
 
@@ -60,6 +77,18 @@ export default function ScanDetail() {
     }
   }
 
+  async function handleApproveBaseline() {
+    if (!scan || !currentSnapshot) return;
+    const reason = window.prompt("Reason for approving this snapshot as the golden baseline (optional):") || undefined;
+    setApproving(true);
+    try {
+      await endpoints.approveBaseline(scan.device_id, currentSnapshot.snapshot_id, reason);
+      load();
+    } finally {
+      setApproving(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -71,6 +100,32 @@ export default function ScanDetail() {
           </button>
         }
       />
+
+      {currentSnapshot && !deviceHasBaseline && !currentSnapshot.is_approved_baseline && scan.status === "completed" && (
+        <div className="mx-8 mb-6 bg-cyan-950/40 border border-cyan-800 rounded-xl px-5 py-4 flex items-center justify-between">
+          <div>
+            <div className="text-cyan-300 font-semibold mb-1">Golden Baseline Required</div>
+            <div className="text-xs text-slate-400">
+              This device currently has no authoritative configuration signature.
+              Setting this configuration as the baseline enables automatic drift detection and real-time alerts.
+            </div>
+          </div>
+          <button
+            onClick={handleApproveBaseline}
+            disabled={approving}
+            className="btn-primary text-sm whitespace-nowrap ml-4 shrink-0"
+          >
+            {approving ? "Approving..." : "Set as Golden Baseline"}
+          </button>
+        </div>
+      )}
+
+      {currentSnapshot && currentSnapshot.is_approved_baseline && (
+        <div className="mx-8 mb-6 bg-emerald-950/30 border border-emerald-900 rounded-xl px-5 py-3">
+          <div className="text-emerald-400 font-semibold text-sm">Valid Golden Baseline</div>
+          <div className="text-xs text-slate-400">This configuration represents the authoritative baseline for drift monitoring.</div>
+        </div>
+      )}
 
       <div className="px-8 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div className="card lg:col-span-2">

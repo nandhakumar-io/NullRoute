@@ -14,8 +14,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = 'h2i3j4k5l6m7'
-down_revision = 'g1h2i3j4k5l6'
+revision = 'network_scan_jobs'
+down_revision = 'k5l6m7n8o9p0'
 branch_labels = None
 depends_on = None
 

@@ -1,0 +1,2 @@
+[batfish_session]
+bf = pybatfish.client.session:Session

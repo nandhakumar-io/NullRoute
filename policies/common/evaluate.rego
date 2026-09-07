@@ -11,86 +11,82 @@ package compliance.common
 # passing control (see problem-statement RULE 12).
 
 # actual is `null` when the parameter is missing from input.baseline.
-result_for(control, actual) = "NOT_APPLICABLE" {
+result_for(control, actual) = "NOT_APPLICABLE" if {
 	actual == null
 }
 
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "eq"
 	actual == control.expected
 }
 
-result_for(control, actual) = "FAIL" {
+result_for(control, actual) = "FAIL" if {
 	actual != null
 	control.operator == "eq"
 	actual != control.expected
 }
 
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "ne"
 	actual != control.expected
 }
 
-result_for(control, actual) = "FAIL" {
+result_for(control, actual) = "FAIL" if {
 	actual != null
 	control.operator == "ne"
 	actual == control.expected
 }
 
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "lte"
 	actual <= control.expected
 }
 
-result_for(control, actual) = "FAIL" {
+result_for(control, actual) = "FAIL" if {
 	actual != null
 	control.operator == "lte"
 	actual > control.expected
 }
 
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "gte"
 	actual >= control.expected
 }
 
-result_for(control, actual) = "FAIL" {
+result_for(control, actual) = "FAIL" if {
 	actual != null
 	control.operator == "gte"
 	actual < control.expected
 }
 
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "in"
-	actual == control.expected[_]
+	actual in control.expected
 }
 
-result_for(control, actual) = "FAIL" {
+result_for(control, actual) = "FAIL" if {
 	actual != null
 	control.operator == "in"
-	not _is_in_array(actual, control.expected)
+	not actual in control.expected
 }
 
-_is_in_array(item, arr) {
-	item == arr[_]
-}
-
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "exists"
 }
 
-result_for(control, actual) = "PASS" {
+result_for(control, actual) = "PASS" if {
 	actual != null
 	control.operator == "not_true"
 	actual != true
 }
 
-result_for(control, actual) = "FAIL" {
+result_for(control, actual) = "FAIL" if {
 	actual != null
 	control.operator == "not_true"
 	actual == true
@@ -110,7 +106,7 @@ remediation_for(control, "NOT_APPLICABLE") = null
 
 # make_finding builds the structured finding object returned to the backend.
 # Matches the schema required by the problem statement (section 3).
-make_finding(control_id, control, actual) = f {
+make_finding(control_id, control, actual) = f if {
 	r := result_for(control, actual)
 	f := {
 		"control_id": control_id,

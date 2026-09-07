@@ -20,51 +20,46 @@ from app.models.db import EvidenceRecord
 from app.schemas import EvidenceDetailOut, EvidenceOut, VerifyResultOut
 from app.services import evidence_service, fabric_service
 
-from app.auth.dependencies import get_current_tenant, get_current_user, require_role
+from app.auth.dependencies import get_current_user, require_role
 
 router = APIRouter(prefix="/api/evidence", tags=["evidence"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=List[EvidenceOut])
-def list_evidence(
-    scan_id: str | None = None,
-    db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant),
-):
-    q = db.query(EvidenceRecord).filter(EvidenceRecord.tenant_id == tenant_id)
+def list_evidence(scan_id: str | None = None, db: Session = Depends(get_db)):
+    q = db.query(EvidenceRecord)
     if scan_id:
         q = q.filter(EvidenceRecord.scan_id == scan_id)
     return q.order_by(EvidenceRecord.created_at.desc()).limit(500).all()
 
 
 @router.get("/{evidence_id}", response_model=EvidenceDetailOut)
-def get_evidence(evidence_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
-    record = evidence_service.get_evidence(db, evidence_id, tenant_id=tenant_id)
+def get_evidence(evidence_id: str, db: Session = Depends(get_db)):
+    record = evidence_service.get_evidence(db, evidence_id)
     if not record:
         raise HTTPException(status_code=404, detail="Evidence not found")
     return record
 
 
 @router.get("/{evidence_id}/history", response_model=List[EvidenceOut])
-def get_evidence_history(evidence_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
-    record = evidence_service.get_evidence(db, evidence_id, tenant_id=tenant_id)
+def get_evidence_history(evidence_id: str, db: Session = Depends(get_db)):
+    record = evidence_service.get_evidence(db, evidence_id)
     if not record:
         raise HTTPException(status_code=404, detail="Evidence not found")
-    return evidence_service.get_evidence_history(db, record.scan_id, tenant_id=tenant_id)
+    return evidence_service.get_evidence_history(db, record.scan_id)
 
 
 @router.post("/{evidence_id}/verify", response_model=VerifyResultOut)
 async def verify_evidence(
     evidence_id: str,
     db: Session = Depends(get_db),
-    tenant_id: str = Depends(get_current_tenant),
     _user=Depends(require_role("auditor", "admin")),
 ):
     """Recompute SHA-256 over the stored evidence_json and compare against
     evidence_hash. This is the off-chain half of verification; once Fabric
     is wired, fabric_service.verify_evidence() additionally compares against
     the on-chain evidenceHash and both must agree."""
-    record = evidence_service.get_evidence(db, evidence_id, tenant_id=tenant_id)
+    record = evidence_service.get_evidence(db, evidence_id)
     if not record:
         raise HTTPException(status_code=404, detail="Evidence not found")
     result = evidence_service.verify_evidence(record.evidence_hash, record.evidence_json)
@@ -90,13 +85,13 @@ async def verify_evidence(
 
 
 @router.post("/{evidence_id}/simulate-tamper", response_model=EvidenceDetailOut)
-def simulate_tamper(evidence_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def simulate_tamper(evidence_id: str, db: Session = Depends(get_db)):
     """Demo-safe tampering (section 30): mutates ONLY the off-chain
     evidence_json (e.g. flips final_decision), never evidence_hash and never
     anything on Fabric. Verify Integrity afterwards must report
     INTEGRITY_FAILURE. Refuses to run twice without a restore in between so
     the original value isn't lost."""
-    record = evidence_service.get_evidence(db, evidence_id, tenant_id=tenant_id)
+    record = evidence_service.get_evidence(db, evidence_id)
     if not record:
         raise HTTPException(status_code=404, detail="Evidence not found")
     if record.evidence_json.get("_tamper_backup") is not None:
@@ -113,10 +108,10 @@ def simulate_tamper(evidence_id: str, db: Session = Depends(get_db), tenant_id: 
 
 
 @router.post("/{evidence_id}/restore", response_model=EvidenceDetailOut)
-def restore_evidence(evidence_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def restore_evidence(evidence_id: str, db: Session = Depends(get_db)):
     """Undo simulate-tamper, restoring the original off-chain record so
     Verify Integrity returns INTEGRITY_VERIFIED again."""
-    record = evidence_service.get_evidence(db, evidence_id, tenant_id=tenant_id)
+    record = evidence_service.get_evidence(db, evidence_id)
     if not record:
         raise HTTPException(status_code=404, detail="Evidence not found")
     backup = record.evidence_json.get("_tamper_backup")

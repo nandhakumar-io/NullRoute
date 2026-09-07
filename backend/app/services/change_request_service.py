@@ -76,6 +76,7 @@ def to_dict(cr: ChangeRequest) -> Dict[str, Any]:
         "batfish_status": cr.batfish_status, "risk_score": cr.risk_score,
         "risk_level": cr.risk_level, "final_decision": cr.final_decision,
         "final_reason": cr.final_reason, "validation_detail": cr.validation_detail,
+        "snapshot_diff": cr.snapshot_diff,
         "approval_required": cr.approval_required,
         "approved_by": cr.approved_by, "approved_at": cr.approved_at,
         "rejected_by": cr.rejected_by, "rejected_at": cr.rejected_at,
@@ -145,9 +146,44 @@ async def create_and_validate(
             opa_decision.findings, batfish_findings=batfish_findings, unknown_syntax_count=unknown_count,
         )
 
+        # Change-impact simulation (Phase 10 wiring): diff a CURRENT
+        # snapshot (the device's last known scanned config, if any) against
+        # a PROPOSED snapshot (this change request's candidate config) so a
+        # reviewer sees behavioral deltas -- e.g. a newly-reachable
+        # Guest->Management path -- *before* approval, not discovered only
+        # after deployment. Purely additive/advisory: it can only surface a
+        # REVIEW reason via change_validation_service.correlate(), never
+        # itself BLOCK or override OPA/Batfish's own single-snapshot
+        # verdict (RULE 11/13 -- no second compliance authority).
+        change_impact_status = "NOT_CHECKED"
+        change_impact_summary: Optional[str] = None
+        snapshot_diff: Optional[Dict[str, Any]] = None
+        if current_config is not None and batfish_service.BATFISH_ENABLED and batfish_service.is_vendor_supported(vendor):
+            try:
+                snapshot_diff = batfish_service.compare_network_snapshots(
+                    scan_id=f"cr-{cr.id}",
+                    current_devices=[{"hostname": device.hostname or "device", "raw_config": current_config}],
+                    proposed_devices=[{"hostname": device.hostname or "device", "raw_config": proposed_config}],
+                )
+                change_impact_status = snapshot_diff.get("status", "BATFISH_ERROR")
+                if change_impact_status == "BATFISH_FAIL":
+                    node_delta = snapshot_diff.get("node_delta", {})
+                    diff_reach = snapshot_diff.get("differential_reachability", {})
+                    parts = []
+                    if node_delta.get("added") or node_delta.get("removed"):
+                        parts.append(f"nodes added={node_delta.get('added')} removed={node_delta.get('removed')}")
+                    if diff_reach.get("changed_flow_count"):
+                        parts.append(f"{diff_reach['changed_flow_count']} flow(s) changed reachability")
+                    change_impact_summary = "; ".join(parts) or None
+            except Exception:  # noqa: BLE001 - snapshot diff is best-effort, never blocks CR validation
+                logger.warning("Batfish snapshot diff failed for change request %s", cr.id, exc_info=True)
+                change_impact_status = "BATFISH_ERROR"
+                snapshot_diff = {"status": "BATFISH_ERROR", "detail": "Snapshot diff raised; see server logs."}
+
         decision = correlate(
             syntax_ok=True, opa_decision=opa_decision, risk=risk,
             batfish_status=bf_result.status, batfish_critical_violation=bf_result.critical_violation,
+            change_impact_status=change_impact_status, change_impact_summary=change_impact_summary,
         )
 
         cr.syntax_status = "OK"
@@ -157,11 +193,13 @@ async def create_and_validate(
         cr.risk_level = risk.risk_level
         cr.final_decision = decision.decision
         cr.final_reason = decision.reason
+        cr.snapshot_diff = snapshot_diff
         cr.validation_detail = {
             "opa_findings": opa_decision.findings,
             "batfish_findings": batfish_findings,
             "risk_factors": risk.contributing_factors,
             "contributing": decision.contributing,
+            "change_impact_status": change_impact_status,
         }
         cr.status = "PENDING_APPROVAL"
     except Exception as e:  # noqa: BLE001 - a validation failure is recorded, not raised

@@ -82,6 +82,8 @@ def calculate_risk(
 
     if batfish_findings:
         for bf in batfish_findings:
+            if bf.get("result") != "FAIL":
+                continue
             weight = _BATFISH_VIOLATION_WEIGHT if bf.get("severity") == "CRITICAL" else _BATFISH_VIOLATION_WEIGHT // 2
             score += weight
             factors.append(f"Batfish {bf.get('control_id', bf.get('type', 'behavioral'))}: +{weight}")

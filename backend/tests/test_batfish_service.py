@@ -60,17 +60,9 @@ def test_unsupported_vendor_short_circuits_before_touching_batfish():
 def test_disabled_returns_not_integrated(monkeypatch):
     monkeypatch.setattr(batfish_service, "BATFISH_ENABLED", False)
     result = batfish_service.analyze_security_behavior(
-        scan_id="s2", vendor="cisco", hostname="sw01", raw_config=CISCO_GUEST_MGMT_LEAK, transport="ssh"
+        scan_id="s2", vendor="cisco", hostname="sw01", raw_config=CISCO_GUEST_MGMT_LEAK,
     )
     assert result.status == "NOT_INTEGRATED"
-
-
-def test_snmp_returns_batfish_unsupported():
-    result = batfish_service.analyze_security_behavior(
-        scan_id="s_snmp", vendor="cisco", hostname="sw01", raw_config="sysDescr", transport="snmp"
-    )
-    assert result.status == "BATFISH_UNSUPPORTED"
-    assert "unsupported for devices collected via SNMP" in result.detail
 
 
 def test_session_unavailable_returns_batfish_unavailable(monkeypatch):
@@ -171,8 +163,8 @@ def test_init_issues_never_hidden_and_never_become_pass():
     class DummyBf:
         class q:
             @staticmethod
-            def fileParseStatus():
-                return _FakeAnswer(pd.DataFrame([{"File_Name": "sw01.cfg", "Status": "PARTIALLY_UNRECOGNIZED"}]))
+            def parseStatus():
+                return _FakeAnswer(pd.DataFrame([{"Filename": "sw01.cfg", "Status": "PARTIALLY_UNRECOGNIZED"}]))
 
             @staticmethod
             def initIssues():

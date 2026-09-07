@@ -91,7 +91,10 @@ def sanitize_baseline(flattened: Dict[str, Any]) -> Dict[str, Any]:
     clean: Dict[str, Any] = {}
     for key, value in flattened.items():
         lowered = key.lower()
-        if any(frag in lowered for frag in _SENSITIVE_KEY_FRAGMENTS):
+        if lowered.startswith("password_policy."):
+            clean[key] = value
+            continue
+        elif any(frag in lowered for frag in _SENSITIVE_KEY_FRAGMENTS):
             continue
         # OPA input must be valid JSON; datetimes (e.g. normalized_at) are
         # not JSON-serializable by default, so normalize to ISO 8601 here
@@ -197,11 +200,34 @@ async def get_policy_version() -> str:
         return "unknown"
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (datetime,)):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if hasattr(value, "model_dump"):
+        return _json_safe(value.model_dump())
+    if hasattr(value, "dict"):
+        return _json_safe(value.dict())
+    if isinstance(value, set):
+        return [_json_safe(v) for v in sorted(value, key=str)]
+    return str(value)
+
+
 async def _post_evaluate(input_doc: Dict[str, Any]) -> Dict[str, Any]:
     try:
+        payload = _json_safe(input_doc)
+        print("OPA_IN_PAYLOAD:", json.dumps(payload))
         async with httpx.AsyncClient(timeout=OPA_TIMEOUT) as client:
-            resp = await client.post(f"{OPA_URL}/v1/data/compliance/evaluate", json={"input": input_doc})
+            resp = await client.post(f"{OPA_URL}/v1/data/compliance/evaluate", json={"input": payload})
         resp.raise_for_status()
+        print("OPA_OUT_RAW:", resp.text[:1000])
         return resp.json()
     except httpx.HTTPError as e:
         raise OPAUnavailableError(str(e)) from e

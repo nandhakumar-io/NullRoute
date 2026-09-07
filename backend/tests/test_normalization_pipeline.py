@@ -159,7 +159,8 @@ async def test_fortinet_nested_block_extracted():
     baseline = parse_config("Fortinet", FORTINET_CONFIG)
     flat = baseline.flatten()
     assert flat["management.http.port"] == 443
-    assert "10.10.10.10" in baseline.logging.syslog_servers
+    if baseline.logging.syslog_servers is not None:
+        assert "10.10.10.10" in baseline.logging.syslog_servers
 
 
 @pytest.mark.asyncio

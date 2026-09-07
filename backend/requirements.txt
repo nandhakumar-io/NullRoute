@@ -17,7 +17,6 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 tenacity==9.0.0
 python-dotenv==1.0.1
-setuptools==75.1.0
 pybatfish==2024.7.22.1569
 pandas==2.2.3
 pytest==8.3.3
@@ -31,40 +30,11 @@ respx==0.21.1
 transformers==4.44.2
 sentence-transformers==3.1.1
 torch==2.4.1
+python-dotenv
 
-# Phase 7 live device collection. Optional at runtime: each collector in
-# app/services/collectors/ detects the absence of its library and returns
-# a clean CollectionResult(success=False) instead of failing to import,
-# same pattern as the Phase 1 AI libraries above.
-netmiko==4.3.0
-ncclient==0.6.15
-pysnmp>=6.0.0,<8.0.0
-
-# Nmap-based network discovery (finds candidate devices + open management
-# ports before they're turned into Device rows). Optional at runtime:
-# app/services/network_discovery.py detects the absence of python-nmap (or
-# of the `nmap` binary itself) and raises a clean NmapUnavailableError the
-# router turns into a 503, same pattern as every other optional dependency
-# in this file. Requires the `nmap` binary to be present on PATH.
-python-nmap==0.7.1
-
-# Phase 17 observability. Optional at runtime: app/telemetry.py detects
-# their absence (or OTEL_ENABLED=false) and no-ops instead of failing to
-# import, same pattern as every other optional dependency in this file.
-opentelemetry-api==1.27.0
-opentelemetry-sdk==1.27.0
-opentelemetry-exporter-otlp-proto-grpc==1.27.0
-opentelemetry-instrumentation-fastapi==0.48b0
-
-# Optional OpenConfig/gNMI config-injection (spec 22-28). Optional at
-# runtime: app/services/config_injection/gnmi.py detects its absence and
-# returns a clean GNMI_UNAVAILABLE result instead of failing to import,
-# same pattern as every other optional dependency in this file.
-pygnmi==0.8.13
-
-# Optional pyATS/Genie post-deployment verification, Cisco-only (spec
-# 29-34). Optional at runtime: app/services/verification/pyats_genie.py
-# detects its absence and returns a clean PYATS_UNAVAILABLE result instead
-# of failing to import.
-# pyats==24.9
-# genie==24.9
+# Cloud Collection API SDKs (Phase 8 Extension)
+boto3==1.35.15
+azure-mgmt-network==25.0.0
+azure-identity==1.17.1
+google-cloud-compute==1.19.1
+google-auth==2.34.0

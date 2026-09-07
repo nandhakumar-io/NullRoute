@@ -11,18 +11,23 @@ const RESULT_TONE: Record<string, string> = {
 export default function AuditLogPage() {
   const [rows, setRows] = useState<AuditLogEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState({ action: "", object_type: "", result: "" });
+  const [filters, setFilters] = useState({ action: "", object_type: "", result: "", since: "", until: "" });
+  const [exporting, setExporting] = useState(false);
+
+  const getCleanParams = () => ({
+    action: filters.action || undefined,
+    object_type: filters.object_type || undefined,
+    result: filters.result || undefined,
+    since: filters.since ? new Date(filters.since).toISOString() : undefined,
+    until: filters.until ? new Date(filters.until).toISOString() : undefined,
+    limit: 200,
+  });
 
   const load = () => {
     setRows(null);
     setError(null);
     endpoints
-      .auditLog({
-        action: filters.action || undefined,
-        object_type: filters.object_type || undefined,
-        result: filters.result || undefined,
-        limit: 200,
-      })
+      .auditLog(getCleanParams())
       .then((r) => setRows(r.data))
       .catch((e) => {
         if (e?.response?.status === 403) {
@@ -39,11 +44,40 @@ export default function AuditLogPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleExport = async (format: "csv" | "json") => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const res = await endpoints.exportAuditLog(format, getCleanParams());
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `audit-log-${new Date().toISOString().replace(/[:.]/g, "-")}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e: any) {
+      setError("Failed to export Audit Log.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
         title="Audit Log"
         subtitle="Who did what, when, from where — every config upload, scan, compliance change, AI mapping approval, remediation approval, credential operation, and report download."
+        action={
+          <div className="flex gap-2">
+            <button onClick={() => handleExport("csv")} className="btn-secondary" disabled={exporting}>
+              Export CSV
+            </button>
+            <button onClick={() => handleExport("json")} className="btn-secondary" disabled={exporting}>
+              Export JSON
+            </button>
+          </div>
+        }
       />
 
       <div className="px-8 flex flex-wrap gap-3 mb-4">
@@ -69,6 +103,14 @@ export default function AuditLogPage() {
           <option value="FAILURE">Failure</option>
           <option value="DENIED">Denied</option>
         </select>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 font-semibold uppercase">Since</span>
+          <input type="datetime-local" className="input text-sm" value={filters.since} onChange={(e) => setFilters((f) => ({ ...f, since: e.target.value }))} />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 font-semibold uppercase">Until</span>
+          <input type="datetime-local" className="input text-sm" value={filters.until} onChange={(e) => setFilters((f) => ({ ...f, until: e.target.value }))} />
+        </div>
         <button className="btn-primary" onClick={load}>
           Apply filters
         </button>

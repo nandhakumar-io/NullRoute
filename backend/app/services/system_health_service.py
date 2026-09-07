@@ -153,8 +153,15 @@ async def _check_minio() -> ServiceHealth:
     if status == "disabled":
         return ServiceHealth("MinIO", "optional", STATUS_DISABLED, detail="MINIO_ENABLED=false")
     if status == "available":
-        return ServiceHealth("MinIO", "optional", STATUS_HEALTHY, latency_ms=latency,
-                              detail=f"Bucket: {result.get('bucket')}")
+        if result.get("object_lock"):
+            return ServiceHealth("MinIO", "optional", STATUS_HEALTHY, latency_ms=latency,
+                                  detail=f"Bucket: {result.get('bucket')} (Object Lock/WORM enabled)")
+        # Reachable and usable, but evidence/reports are being written
+        # without the extra WORM tamper-protection layer -- real and worth
+        # a yellow flag, not a red one (storage itself is fine).
+        return ServiceHealth("MinIO", "optional", STATUS_DEGRADED, latency_ms=latency,
+                              detail=f"Bucket: {result.get('bucket')}",
+                              error=result.get("object_lock_warning", "Object Lock/WORM not enabled on this bucket"))
     if status == "misconfigured":
         return ServiceHealth("MinIO", "optional", STATUS_ERROR,
                               error=result.get("reason", "Missing MINIO_ACCESS_KEY/MINIO_SECRET_KEY"))

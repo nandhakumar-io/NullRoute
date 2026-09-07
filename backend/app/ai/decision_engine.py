@@ -59,17 +59,10 @@ def decide(
         )
     # Rule 2: exactly one UNKNOWN
     elif classifier_unknown != semantic_unknown:
-        if semantic_unknown and embedding.similarity < thresholds.semantic_similarity:
-            reason_msg = (
-                f"Classifier predicted intent '{classifier.intent}', but semantic similarity "
-                f"{embedding.similarity:.2f} is below threshold {thresholds.semantic_similarity:.2f}."
-            )
-        else:
-            reason_msg = "Classifier and semantic model disagree on whether this intent is known (one predicts UNKNOWN)."
         decision, requires_review, reason = (
             "REQUIRES_REVIEW",
             True,
-            reason_msg,
+            "Classifier and semantic model disagree on whether this intent is known (one predicts UNKNOWN).",
         )
     # Rule 4: both known, but disagree on which known class
     elif classifier.intent != embedding.nearest_intent:

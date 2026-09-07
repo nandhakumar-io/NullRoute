@@ -200,6 +200,7 @@ export default function Ingestion() {
                 id="file-input"
                 type="file"
                 className="hidden"
+                accept=".cfg,.txt,.json,.conf"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
               {file ? (

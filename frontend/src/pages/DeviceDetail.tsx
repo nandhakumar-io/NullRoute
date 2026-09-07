@@ -80,6 +80,11 @@ export default function DeviceDetail() {
         if (e?.response?.status === 404) setNotFound(true);
       })
       .finally(() => setLoading(false));
+      
+    const interval = setInterval(() => {
+      reload()!.catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
 

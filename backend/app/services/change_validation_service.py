@@ -71,6 +71,8 @@ def correlate(
     batfish_status: str = "NOT_INTEGRATED",
     batfish_critical_violation: bool = False,
     syntax_error_detail: Optional[str] = None,
+    change_impact_status: Optional[str] = None,
+    change_impact_summary: Optional[str] = None,
 ) -> ComplianceDecision:
     if batfish_status not in VALID_BATFISH_STATUSES:
         raise ValueError(f"Unknown batfish_status: {batfish_status!r}")
@@ -110,6 +112,22 @@ def correlate(
             decision="BLOCK", reason="Batfish detected a CRITICAL network-behavior violation.",
             syntax_status="OK", opa_status=opa_decision.decision, batfish_status=batfish_status,
             risk_score=risk.risk_score, risk_level=risk.risk_level, contributing=contributing,
+        )
+
+    # 3b. Snapshot diff expressly warns of behavioral change; it can only
+    # escalate to REVIEW, never auto-BLOCK or replace OPA/Batfish verdicts.
+    if change_impact_status == "BATFISH_FAIL":
+        detail = change_impact_summary or "Current-vs-proposed behavior changed."
+        contributing.append(f"Snapshot diff detected behavior change: {detail}")
+        return ComplianceDecision(
+            decision="REVIEW",
+            reason=f"Current-vs-proposed snapshot diff found a behavioral change: {detail}",
+            syntax_status="OK",
+            opa_status=opa_decision.decision,
+            batfish_status=batfish_status,
+            risk_score=risk.risk_score,
+            risk_level=risk.risk_level,
+            contributing=contributing,
         )
 
     # 4. Risk CRITICAL band can independently escalate to BLOCK.

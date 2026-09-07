@@ -31,15 +31,6 @@ KEYCLOAK_JWKS_URL = os.getenv("KEYCLOAK_JWKS_URL") or (
 )
 JWKS_CACHE_TTL_SECONDS = int(os.getenv("KEYCLOAK_JWKS_CACHE_TTL", "3600"))
 
-# Algorithm confusion guard: Keycloak signs with RS256 (asymmetric). We must
-# never let the token itself dictate which algorithm is used to verify it --
-# if a caller could set alg=HS256 in the header, a library that treats the
-# RSA *public* key bytes as an HMAC *secret* would let anyone forge a token
-# using the (publicly known) public key. Only ever accept the algorithm(s)
-# Keycloak actually issues; a header claiming anything else is rejected
-# before signature verification is attempted.
-ALLOWED_ALGORITHMS = ["RS256"]
-
 # RULE (Phase 5): demo/dev mode is an explicit opt-in, never the silent
 # default in a real deployment.
 AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
@@ -100,10 +91,6 @@ def decode_and_validate(token: str) -> Dict[str, Any]:
     if not kid:
         raise AuthError("Token header missing 'kid'")
 
-    alg = unverified_header.get("alg")
-    if alg not in ALLOWED_ALGORITHMS:
-        raise AuthError(f"Unsupported token algorithm '{alg}'; must be one of {ALLOWED_ALGORITHMS}")
-
     jwks = _get_jwks()
     key = _find_key(jwks, kid)
     if key is None:
@@ -117,7 +104,7 @@ def decode_and_validate(token: str) -> Dict[str, Any]:
         claims = jwt.decode(
             token,
             key,
-            algorithms=ALLOWED_ALGORITHMS,
+            algorithms=[unverified_header.get("alg", "RS256")],
             audience=KEYCLOAK_AUDIENCE,
             issuer=KEYCLOAK_ISSUER or None,
             options={"verify_aud": bool(KEYCLOAK_AUDIENCE), "verify_iss": bool(KEYCLOAK_ISSUER)},

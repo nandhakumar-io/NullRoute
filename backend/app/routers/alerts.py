@@ -1,9 +1,9 @@
 """Phase 13 -- GET /api/alerts, POST /api/alerts/{id}/acknowledge.
 
-All authenticated tenant members can view/acknowledge alerts for their own
-tenant; there's no restriction to admin-only here since alerts are
-informational, not a control-plane action (unlike training approvals or
-device collection).
+All authenticated tenant members can view alerts for their own tenant.
+Acknowledging is a state-mutating action, though, so (per the Section 11
+RBAC audit) it's gated to everyone except pure VIEWER -- read-only users
+can see alerts but shouldn't be able to change their status.
 """
 from __future__ import annotations
 
@@ -12,10 +12,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user, require_role
+from app.auth.rbac import ALL_ROLE_NAMES
 from app.db import get_db
 from app.models.db import Alert
 from app.services import alert_service
+
+# Every recognized role except the read-only VIEWER (canonical + legacy name).
+_NON_VIEWER_ROLES = [r for r in ALL_ROLE_NAMES if r not in ("VIEWER", "viewer")]
 
 router = APIRouter(prefix="/api/alerts", tags=["alerts"], dependencies=[Depends(get_current_user)])
 
@@ -45,7 +49,7 @@ def acknowledge_alert(
     alert_id: str,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_role(*_NON_VIEWER_ROLES)),
 ):
     alert = db.query(Alert).filter(Alert.id == alert_id, Alert.tenant_id == tenant_id).first()
     if not alert:

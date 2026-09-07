@@ -193,6 +193,57 @@ def test_alerts_router_list_and_acknowledge(client):
     assert alert.id not in [a["id"] for a in filtered.json()["alerts"]]
 
 
+def test_viewer_can_list_but_not_acknowledge_alerts(client):
+    """Section 11 RBAC audit fix: VIEWER is read-only. Listing stays open
+    to every authenticated role, but acknowledging (a state mutation) must
+    403 for VIEWER while remaining available to every other role."""
+    import asyncio
+
+    from app.auth.dependencies import CurrentUser, get_current_user
+    from app.db import SessionLocal
+    from app.main import app
+    from app.models.db import Tenant
+
+    db = SessionLocal()
+    tenant = db.query(Tenant).filter(Tenant.name == "SIH-Demo").first()
+    if not tenant:
+        tenant = Tenant(name="SIH-Demo")
+        db.add(tenant)
+        db.commit()
+        db.refresh(tenant)
+    tenant_id = tenant.id
+    alert = asyncio.run(
+        alert_service.create_alert(db, tenant_id, "HIGH_RISK", "HIGH", "viewer test alert")
+    )
+    alert_id = alert.id
+    db.close()
+
+    def _viewer_user():
+        return CurrentUser(subject="v1", username="viewer1", roles=["VIEWER"], tenant_id=tenant_id)
+
+    app.dependency_overrides[get_current_user] = _viewer_user
+    try:
+        listed = client.get("/api/alerts")
+        assert listed.status_code == 200
+
+        ack = client.post(f"/api/alerts/{alert_id}/acknowledge")
+        assert ack.status_code == 403
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    # Sanity check the same alert IS acknowledgeable by a non-viewer role.
+    def _analyst_user():
+        return CurrentUser(subject="a1", username="analyst1", roles=["SECURITY_ANALYST"], tenant_id=tenant_id)
+
+    app.dependency_overrides[get_current_user] = _analyst_user
+    try:
+        ack = client.post(f"/api/alerts/{alert_id}/acknowledge")
+        assert ack.status_code == 200
+        assert ack.json()["status"] == "ACKNOWLEDGED"
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+
 def test_alerts_tenant_isolation(client):
     import asyncio
 

@@ -25,24 +25,24 @@ import data.compliance.security.logging
 import data.compliance.security.password
 import data.compliance.network.segmentation
 
-all_findings[control_id] = f { f := management.findings[control_id] }
-all_findings[control_id] = f { f := snmp.findings[control_id] }
-all_findings[control_id] = f { f := aaa.findings[control_id] }
-all_findings[control_id] = f { f := logging.findings[control_id] }
-all_findings[control_id] = f { f := password.findings[control_id] }
-all_findings[control_id] = f { f := segmentation.findings[control_id] }
+all_findings[control_id] = f if { f := management.findings[control_id] }
+all_findings[control_id] = f if { f := snmp.findings[control_id] }
+all_findings[control_id] = f if { f := aaa.findings[control_id] }
+all_findings[control_id] = f if { f := logging.findings[control_id] }
+all_findings[control_id] = f if { f := password.findings[control_id] }
+all_findings[control_id] = f if { f := segmentation.findings[control_id] }
 
 # Only include controls actually requested for the given framework filter
 # (input.framework == "ALL" or unset means every control is in scope).
-in_scope(control_id) {
+in_scope(control_id) if {
 	input.framework == "ALL"
 }
 
-in_scope(control_id) {
+in_scope(control_id) if {
 	not input.framework
 }
 
-in_scope(control_id) {
+in_scope(control_id) if {
 	control := controls.controls[control_id]
 	control.framework == input.framework
 }
@@ -67,12 +67,14 @@ policy_version := metadata.version
 # (Segmentation/behavioral BLOCK escalation from Batfish happens one layer
 # up, in change_validation_service.py — OPA only ever speaks to what it can
 # actually verify from the static config.)
-decision = "BLOCK" {
-	violations[_].severity == "CRITICAL"
-} else = "REVIEW" {
-	violations[_].severity == "HIGH"
-} else = "REVIEW" {
-	count([v | v := violations[_]; v.severity == "MEDIUM"]) >= 3
-} else = "PASS" {
+decision = "BLOCK" if {
+	v1 := violations[_]
+	v1.severity == "CRITICAL"
+} else = "REVIEW" if {
+	v2 := violations[_]
+	v2.severity == "HIGH"
+} else = "REVIEW" if {
+	count([v3 | v3 := violations[_]; v3.severity == "MEDIUM"]) >= 3
+} else = "PASS" if {
 	true
 }

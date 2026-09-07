@@ -3,6 +3,35 @@ import { Link } from "react-router-dom";
 import { endpoints, Device, DeviceCreatePayload } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
 
+function SnmpIndicator({ deviceId, protocol }: { deviceId: string; protocol: string | null | undefined }) {
+  const [status, setStatus] = useState<"loading" | "up" | "down" | "none">("loading");
+  const [uptime, setUptime] = useState<string>("");
+
+  useEffect(() => {
+    // Only attempt SNMP poll if the device indicates it uses SNMP, or if protocol is null (auto-detect)
+    if (protocol && protocol !== "snmp") {
+      setStatus("none");
+      return;
+    }
+    endpoints.gatewayGetFacts(deviceId, "snmp")
+      .then(res => {
+        const facts = (res.data as any)?.data;
+        if (facts && facts.sys_uptime_ticks) {
+          setStatus("up");
+          setUptime(facts.sys_uptime_ticks);
+        } else {
+          setStatus("down");
+        }
+      })
+      .catch(() => setStatus("down"));
+  }, [deviceId, protocol]);
+
+  if (status === "none") return <span className="text-slate-600" title={`Protocol is ${protocol}`}>—</span>;
+  if (status === "loading") return <span className="text-slate-500 animate-pulse">polling...</span>;
+  if (status === "down") return <span className="text-red-400" title="SNMP Unreachable">Timeout</span>;
+  return <span className="text-emerald-400 font-medium text-xs whitespace-nowrap overflow-hidden text-ellipsis block max-w-[120px]" title={uptime}>Live ({uptime.split(' ')[0] || "up"})</span>;
+}
+
 function DeviceFormModal({
   onClose,
   onSave,
@@ -137,19 +166,27 @@ export default function Devices() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const load = () => {
-    setLoading(true);
-    endpoints.devices({ limit: 500 }).then((r) => {
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const [search, setSearch] = useState("");
+  const [total, setTotal] = useState(0);
+
+  const load = (silent = false) => {
+    if (!silent) setLoading(true);
+    endpoints.devices({ limit, offset: (page - 1) * limit, search: search || undefined }).then((r) => {
       const items = (r.data as any).items ?? r.data;
       setDevices(Array.isArray(items) ? items : []);
+      setTotal((r.data as any).total ?? items?.length ?? 0);
     }).catch((err) => {
       setPageError(err?.response?.data?.detail || "Failed to load devices.");
-    }).finally(() => setLoading(false));
+    }).finally(() => { if (!silent) setLoading(false); });
   };
 
   useEffect(() => {
     load();
-  }, []);
+    const interval = setInterval(() => load(true), 5000);
+    return () => clearInterval(interval);
+  }, [page, search]);
 
   const handleSave = async (data: DeviceCreatePayload, creds: any) => {
     let targetDeviceId = editingDevice?.id;
@@ -232,6 +269,15 @@ export default function Devices() {
             {pageError}
           </div>
         )}
+        <div className="flex gap-4 mb-4 items-center">
+          <input 
+            type="text" 
+            placeholder="Search hostname, IP, or tags..." 
+            className="input max-w-sm" 
+            value={search} 
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }} 
+          />
+        </div>
         {loading && <div className="text-cyan-400 text-sm mb-2 text-right">Refreshing inventory...</div>}
         {devices.length === 0 && !loading ? (
           <EmptyState message="No devices in inventory yet. Add one manually or use Network Discovery." />
@@ -245,6 +291,7 @@ export default function Devices() {
                   <th className="px-4 py-3">Mgmt IP</th>
                   <th className="px-4 py-3">Hardware / OS</th>
                   <th className="px-4 py-3">Environment</th>
+                  <th className="px-4 py-3">SNMP State</th>
                   <th className="px-4 py-3" title="Compliance Score">C-Score</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
@@ -271,6 +318,9 @@ export default function Devices() {
                       {d.site && <span className="ml-1 text-slate-500">{d.site}</span>}
                       {(!d.environment && !d.site && !d.protocol) && "—"}
                     </td>
+                    <td className="px-4 py-3 text-xs">
+                      {d.enabled ? <SnmpIndicator deviceId={d.id} protocol={d.protocol} /> : <span className="text-slate-600">—</span>}
+                    </td>
                     <td className="px-4 py-3 font-semibold">
                       {d.last_compliance_score != null ? (
                         <span className={d.last_compliance_score >= 80 ? "text-emerald-400" : d.last_compliance_score >= 50 ? "text-amber-400" : "text-red-400"}>
@@ -290,6 +340,13 @@ export default function Devices() {
                 ))}
               </tbody>
             </table>
+            <div className="px-4 py-3 border-t border-soc-border bg-slate-900 flex justify-between items-center text-sm text-slate-400">
+              <div>Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total} devices</div>
+              <div className="flex gap-2">
+                <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="btn-secondary py-1 px-3">Prev</button>
+                <button disabled={page * limit >= total} onClick={() => setPage(p => p + 1)} className="btn-secondary py-1 px-3">Next</button>
+              </div>
+            </div>
           </div>
         )}
       </div>

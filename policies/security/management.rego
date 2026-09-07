@@ -6,7 +6,7 @@ package compliance.security.management
 import data.compliance.common
 import data.compliance.common.controls
 
-findings[control_id] = f {
+findings[control_id] = f if {
 	some control_id
 	control := controls.controls[control_id]
 	control.domain == "management"

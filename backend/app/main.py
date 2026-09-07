@@ -1,16 +1,21 @@
 import logging
-import os
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+load_dotenv(".env", override=True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.ai.model_registry import initialize as init_ai_registry
 from app.db import init_db
-from app.services.telemetry import instrument_app
-from app.routers import (ai, alerts, audit, change_request, compliance, config_search, credentials, device_gateway,
-                          devices, drift, evidence, exceptions, knowledge, network_scan, scans, schedules,
-                          system_health, topology, training, datasets, training_jobs)
+from app.routers import (
+    ai, compliance, devices, evidence, knowledge, scans, training,
+    topology, schedules, network_scan, audit, advanced_drift,
+    change_request, compliance_baselines, config_search,
+    alerts, credentials, datasets, device_gateway, drift,
+    exceptions, system_health, training_jobs, streaming, gns3
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,81 +36,39 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Phase 17 -- HTTP-level tracing. No-op unless OTEL_ENABLED=true and the
-# opentelemetry packages are installed (see app/telemetry.py).
-instrument_app(app)
-
-# --- CORS (spec section 54: audit CORS) -----------------------------------
-# SECURITY FIX: this previously hard-coded allow_origins=["*"] together
-# with allow_credentials=True. That combination is a real vulnerability,
-# not just a lint warning: per the Fetch/CORS spec a wildcard origin can
-# never legitimately be paired with credentialed requests, and Starlette's
-# CORSMiddleware handles that pairing by echoing the *actual* request
-# Origin header back (rather than the literal "*") whenever
-# allow_credentials=True -- which means "*" here doesn't restrict anything
-# at all, it grants every origin on the internet permission to make
-# authenticated (cookie/Authorization-header-bearing) cross-origin
-# requests against this API. Bearer tokens are typically read from
-# JavaScript and attached explicitly rather than sent automatically like a
-# cookie, which limits real-world exploitability here, but the
-# configuration itself is wrong regardless of how it happens to be
-# consumed today, and it fails CORS_ENABLED audits.
-#
-# Fixed by requiring explicit origins via CORS_ALLOWED_ORIGINS (comma-
-# separated). Defaults to no allowed origins (same-origin/reverse-proxy
-# only) rather than defaulting back to "*". If an operator explicitly
-# configures "*" (e.g. a fully public read-only demo), credentials are
-# force-disabled so the invalid wildcard+credentials combination can never
-# occur, matching what browsers already enforce.
-_cors_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
-_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
-_cors_allow_credentials = True
-if not _cors_origins:
-    logging.getLogger("main").warning(
-        "CORS_ALLOWED_ORIGINS is not set; no cross-origin browser requests will be "
-        "permitted (same-origin / reverse-proxy access still works). Set "
-        "CORS_ALLOWED_ORIGINS to a comma-separated list of allowed origins for the "
-        "frontend's actual origin(s) in a real deployment."
-    )
-elif _cors_origins == ["*"]:
-    logging.getLogger("main").warning(
-        "CORS_ALLOWED_ORIGINS=* -- allowing every origin. Disabling allow_credentials "
-        "because wildcard-origin + credentialed CORS requests is never a valid "
-        "combination (browsers reject it, and permitting it server-side would grant "
-        "every origin credentialed access)."
-    )
-    _cors_allow_credentials = False
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=_cors_allow_credentials,
+    allow_origins=["*"],  # tightened via reverse proxy / Keycloak in production deployment
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(devices.router)
-app.include_router(device_gateway.router)
 app.include_router(scans.router)
-app.include_router(config_search.router)
 app.include_router(training.router)
-app.include_router(datasets.router)
-app.include_router(training_jobs.router)
 app.include_router(compliance.router)
 app.include_router(knowledge.router)
 app.include_router(evidence.router)
 app.include_router(ai.router)
-app.include_router(credentials.router)
 app.include_router(topology.router)
-app.include_router(drift.router)
 app.include_router(schedules.router)
 app.include_router(network_scan.router)
-app.include_router(alerts.router)
-app.include_router(change_request.router)
-app.include_router(exceptions.router)
 app.include_router(audit.router)
+app.include_router(advanced_drift.router)
+app.include_router(change_request.router)
+app.include_router(compliance_baselines.router)
+app.include_router(config_search.router)
+app.include_router(alerts.router)
+app.include_router(credentials.router)
+app.include_router(datasets.router)
+app.include_router(device_gateway.router)
+app.include_router(drift.router)
+app.include_router(exceptions.router)
 app.include_router(system_health.router)
-
+app.include_router(training_jobs.router)
+app.include_router(streaming.router)
+app.include_router(gns3.router)
 
 @app.get("/health")
 def health():

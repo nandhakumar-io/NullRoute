@@ -28,6 +28,11 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000",
 });
 
+export const setTargetTenant = (tenant: string) => {
+  // Optional: Add tenant header if backend requires it. Or just export a no-op to fix the build.
+  api.defaults.headers.common["X-Tenant-ID"] = tenant;
+};
+
 export interface Device {
   id: string;
   name?: string | null;
@@ -535,6 +540,16 @@ export interface ChangeRequest {
   final_decision: string | null;
   final_reason: string | null;
   validation_detail: Record<string, unknown> | null;
+  // CURRENT-vs-PROPOSED Batfish snapshot diff (node/route delta,
+  // differential reachability), or null when no prior known config
+  // existed to diff against / Batfish is disabled / vendor unsupported.
+  snapshot_diff: {
+    status: string;
+    detail?: string;
+    node_delta?: { added: string[]; removed: string[] };
+    route_delta?: { current_count: number; proposed_count: number; count_delta: number };
+    differential_reachability?: { status: string; changed_flow_count?: number; detail?: string };
+  } | null;
   approval_required: boolean;
   approved_by: string | null;
   approved_at: string | null;
@@ -677,8 +692,10 @@ export const endpoints = {
     api.get<DashboardMetrics>("/api/dashboard/metrics", { params: { range } }),
   auditLog: (params?: {
     action?: string; object_type?: string; object_id?: string;
-    username?: string; result?: string; limit?: number; offset?: number;
+    username?: string; result?: string; since?: string; until?: string; limit?: number; offset?: number;
   }) => api.get<AuditLogEntry[]>("/api/audit-log", { params }),
+  exportAuditLog: (format: "csv" | "json", params?: any) =>
+    api.get("/api/audit-log/export", { params: { ...params, format }, responseType: "blob" }),
   devices: (params?: DeviceListParams) => api.get<DeviceListResponse>("/api/devices", { params }),
   createDevice: (payload: DeviceCreatePayload) => api.post<Device>("/api/devices", payload),
   updateDevice: (id: string, payload: DeviceUpdatePayload) => api.patch<Device>(`/api/devices/${id}`, payload),
@@ -735,9 +752,7 @@ export const endpoints = {
     form.append("file", file);
     form.append("framework", framework);
     if (hostname) form.append("hostname", hostname);
-    return api.post<ScanDetail>("/api/scans/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    return api.post<ScanDetail>("/api/scans/upload", form);
   },
   
   // Training Center Layer 3+
@@ -827,4 +842,10 @@ export const endpoints = {
     api.post<DeploymentRecord>(`/api/change-requests/${id}/deploy`, opts),
   changeRequestDeployments: (id: string) =>
     api.get<{ count: number; deployments: DeploymentRecord[] }>(`/api/change-requests/${id}/deployments`),
+
+  // GNS3
+  gns3Servers: () => api.get("/api/gns3/servers"),
+  addGns3Server: (data: any) => api.post("/api/gns3/servers", data),
+  gns3Labs: (serverId: string) => api.get(`/api/gns3/servers/${serverId}/labs`),
+  importGns3Lab: (serverId: string, labId: string) => api.post(`/api/gns3/servers/${serverId}/labs/${labId}/import`),
 };

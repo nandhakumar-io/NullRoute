@@ -1,0 +1,1831 @@
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 519, in wait_for
+    async with timeouts.timeout(timeout):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/timeouts.py", line 115, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+ERROR:nats.aio.client:nats: encountered error
+Traceback (most recent call last):
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1330, in _select_next_server
+    await self._transport.connect(
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/transport.py", line 121, in connect
+    r, w = await asyncio.wait_for(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/tasks.py", line 520, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1083, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 1466, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 905, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/socket.py", line 978, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/app/gateway/consumer.py", line 120, in <module>
+    asyncio.run(run_consumer())
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/3437kliwcg0aq7h30alls8mvsv6laarf-python3-3.12.13/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/app/gateway/consumer.py", line 91, in run_consumer
+    nc = await nats.connect(NATS_URL)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/__init__.py", line 45, in connect
+    await nc.connect(servers, **options)
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 498, in connect
+    raise e
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 488, in connect
+    await self._select_next_server()
+  File "/home/kenpachi-zaraki/NetSecAuditor/backend/.venv/lib/python3.12/site-packages/nats/aio/client.py", line 1297, in _select_next_server
+    raise errors.NoServersError
+nats.errors.NoServersError: nats: no servers available for connection

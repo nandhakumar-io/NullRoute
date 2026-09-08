@@ -92,19 +92,37 @@ def collect_configuration(device_id: str, db: Session = Depends(get_db)):
     }
 
 @router.post("/{device_id}/scan")
-async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends(get_db)):
+async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     from app.models.db import Scan, Finding
     from app.schemas import ScanDetailOut, ScanOut
     from app.services.pipeline import run_pipeline
-    import os
+    from app.gateway.publisher import submit_job
+    from app.services import minio_service
     
     device = db.query(Device).get(device_id)
     if not device:
         raise HTTPException(404, "Device not found")
         
-    cfg_path = "/home/kenpachi-zaraki/NetSecAuditor/sample_configs/demo_cisco_ios_xe.cfg"
-    with open(cfg_path, "r") as f:
-        raw_text = f.read()
+    job_res = await submit_job(
+        db,
+        tenant_id=device.tenant_id,
+        requester_id=current_user.id if current_user else "api",
+        device_id=device.id,
+        operation="FETCH_CONFIG",
+        protocol=device.protocol or "ssh"
+    )
+    if not job_res.get("success"):
+        raise HTTPException(400, f"Config collection failed: {job_res.get('error_message')}")
+        
+    object_key = job_res.get("raw_output_reference")
+    if not object_key:
+        raise HTTPException(500, "Device gateway succeeded but skipped storing raw configuration")
+        
+    try:
+        raw_bytes = minio_service.get_object(object_key)
+        raw_text = raw_bytes.decode("utf-8")
+    except Exception as e:
+        raise HTTPException(500, f"Failed to retrieve collected config from MinIO: {e}")
         
     device.last_config_raw = raw_text
     

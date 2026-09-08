@@ -1,0 +1,1103 @@
+INFO:     Will watch for changes in these directories: ['/home/kenpachi-zaraki/NetSecAuditor/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [797969] using WatchFiles
+INFO:     Started server process [798129]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:38312 - "POST /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/gateway-get-facts HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:49420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49420 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49420 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "OPTIONS /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49420 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49420 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49386 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49402 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49406 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49406 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49406 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49406 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49406 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49416 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49402 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49386 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49416 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49402 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49416 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49402 - "OPTIONS /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49416 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49406 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49420 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49386 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49402 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49406 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49416 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36342 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36346 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36342 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36346 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36300 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36304 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36318 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36332 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52554 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52554 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52496 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52510 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52540 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52510 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52510 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52554 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52540 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52496 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52540 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52554 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52496 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52510 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53168 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53176 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53168 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53176 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53138 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53140 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53144 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53160 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53140 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53144 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53140 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53144 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53160 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53138 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53168 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53176 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40638 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40638 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40608 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40634 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40634 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40638 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40608 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40608 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40634 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40638 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40628 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40608 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40634 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40638 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40634 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40608 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40638 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40608 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40638 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40634 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32886 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32900 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32886 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32900 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:32838 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32852 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32856 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:32872 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49120 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49120 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49080 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49094 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49114 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49102 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49170 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49186 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49170 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49186 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49130 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49142 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49154 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49166 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40120 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40126 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40120 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40126 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40070 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40086 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40094 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40106 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40162 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40164 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40162 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40164 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40136 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40152 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40158 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40160 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36704 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36714 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36704 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36714 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36652 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36668 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36678 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36688 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36760 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36774 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36760 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36774 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36730 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36738 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36740 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36756 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58276 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58278 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58276 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58278 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58250 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58262 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58268 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58272 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58262 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58268 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58262 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58268 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58276 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58250 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58278 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37880 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37892 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37880 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37892 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37842 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37846 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37854 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37866 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37932 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37938 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37932 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37938 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37904 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37916 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37928 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37930 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57598 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57598 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57542 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57554 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57584 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57658 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57658 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57624 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57642 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57628 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53042 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53042 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52998 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53024 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53042 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52998 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53042 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52998 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53042 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52998 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52998 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53042 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53042 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52998 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53036 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53010 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53042 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53000 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52998 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38552 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38590 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38552 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47318 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47318 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47274 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47318 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47318 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47290 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47318 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47318 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47318 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47318 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47314 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47296 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47290 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47306 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47274 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47318 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52146 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52154 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52146 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52154 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52108 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52132 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52134 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52132 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52132 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52146 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52134 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52108 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52154 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52146 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52146 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52122 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52154 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52132 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52134 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52108 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60612 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60612 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60650 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60612 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60632 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60612 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60612 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60650 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60650 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60612 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60644 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60616 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60612 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60632 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48828 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48836 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48828 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48836 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48814 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48820 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48836 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48814 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48814 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48836 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60650 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60642 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48828 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48820 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42674 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42674 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42640 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42654 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42658 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42640 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42654 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42654 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42640 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42658 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42674 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42636 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60464 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60472 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60464 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60472 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60432 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60450 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58694 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58706 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58694 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58706 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60450 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58680 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58658 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58658 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60450 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58680 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58694 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58706 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58694 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58666 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58694 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58658 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58680 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58706 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60450 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44224 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:44226 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:44224 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:44226 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:44188 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44204 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44210 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44216 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36862 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36866 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36862 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36866 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36816 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36828 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36844 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36848 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36916 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36924 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36916 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36924 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36872 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36886 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36892 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36902 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40506 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40518 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40506 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40518 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40454 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40458 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40474 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40490 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40558 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40562 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:40530 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40544 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40546 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47484 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47498 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47484 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47498 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47444 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47452 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47460 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47468 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47452 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47460 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47452 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47460 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:47484 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47444 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47498 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47468 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46284 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46300 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46284 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46300 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46246 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46260 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46276 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46346 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46356 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46346 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46356 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46310 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46322 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46330 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46338 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34710 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34718 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34710 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34718 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34668 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34676 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34682 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34698 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34760 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34770 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34760 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34770 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:34732 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34740 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34748 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34754 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52380 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52388 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52380 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52388 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52350 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52358 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52364 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52372 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52372 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52392 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52408 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52392 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52392 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52372 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52420 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52372 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52392 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52392 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52372 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52420 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52372 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52392 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52420 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52400 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52412 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52420 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52392 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52372 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42440 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42448 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42440 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42448 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42414 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42416 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42432 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42414 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42416 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42414 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42416 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42432 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42408 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42440 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42448 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46620 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46620 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46598 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46598 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46620 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46620 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46598 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46578 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46570 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46598 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46620 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46614 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46578 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46598 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46620 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35564 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35550 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35564 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35510 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35518 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35532 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35546 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35592 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35592 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35566 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35574 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35586 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35574 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35574 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35566 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35592 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35592 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35566 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35574 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35584 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35590 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35574 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35566 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35592 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56034 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56060 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56062 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "OPTIONS /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46270 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46272 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "OPTIONS /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56026 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46272 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46270 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56026 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56046 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56062 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35972 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35988 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36002 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35988 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35988 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36024 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36002 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36002 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35988 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36002 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35988 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:35986 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36016 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:36024 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35972 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36002 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35988 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37548 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37560 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37548 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37538 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37548 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37586 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37560 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37548 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37570 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37548 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:37524 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37586 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37560 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37538 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33474 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33484 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33474 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33484 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:33430 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33436 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33450 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33464 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46150 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46166 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/snapshots HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46150 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/drift/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46166 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/compliance/history HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:46106 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46120 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/interfaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46146 - "GET /api/scans?device_id=91f1d58c-c451-4b9f-90c9-b18884d9ca25 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46136 - "GET /api/devices/91f1d58c-c451-4b9f-90c9-b18884d9ca25/routes HTTP/1.1" 200 OK

@@ -47,6 +47,20 @@ export default function DeviceDetail() {
   // Configuration History compare selection: up to two snapshot ids.
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [approving, setApproving] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+
+  async function requestConfigCollection() {
+    if (!deviceId) return;
+    setScanning(true);
+    try {
+      await endpoints.collectAndScanDevice(deviceId, "ALL", device?.protocol || undefined);
+      await reload();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Scan request failed");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   function reload() {
     if (!deviceId) return;
@@ -208,9 +222,20 @@ export default function DeviceDetail() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="card">
-            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Collection Status</div>
-            <div className="text-lg font-bold mt-2 text-slate-100">{device.collection_status || "never collected"}</div>
+          <div className="card text-left">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Collection Status</div>
+                <div className="text-lg font-bold mt-2 text-slate-100">{device.collection_status || "never collected"}</div>
+              </div>
+              <button
+                onClick={requestConfigCollection}
+                disabled={scanning}
+                className="text-xs px-3 py-1 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded hover:bg-cyan-900 transition-colors disabled:opacity-50"
+              >
+                {scanning ? "Scanning..." : "Request Scan"}
+              </button>
+            </div>
           </div>
           <div className="card">
             <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Management Address</div>

@@ -7,72 +7,153 @@ body {
 }
 
 /* -----------------------------------------------------------------------
- * Light / dark theme
+ * Theme
  * -----------------------------------------------------------------------
- * The app is built almost entirely on hardcoded Tailwind slate/soc-* dark
- * palette classes spread across every page, not CSS variables. Rewriting
- * every className in every page to a variable-driven scheme is a much
- * bigger change than a theme toggle warrants. Instead, `html.light`
- * remaps the small set of color utilities actually used throughout the
- * app so the toggle works everywhere immediately. Dark mode (no class) is
- * unchanged from today.
+ * Light is the default, native appearance — an auditor's paper-and-ledger
+ * canvas, not a dark console with the lights turned up. The `.light`
+ * class name is kept for compatibility with theme.tsx but its rules below
+ * are simply "how the app looks"; `html.dark` is the opt-in variant for
+ * anyone who wants the console look back.
+ *
+ * The app's pages are built on Tailwind slate/cyan/emerald utility
+ * classes rather than CSS variables, so both variants work by remapping
+ * that fixed set of utilities rather than rewriting every page.
  * --------------------------------------------------------------------- */
-html.light body {
-  background-color: #f4f6fb;
-  color: #0f172a;
+
+:root {
+  --paper: #f5f6f9;
+  --surface: #ffffff;
+  --surface-sunken: #eef0f4;
+  --border: #dfe2ea;
+  --border-strong: #c7cbd6;
+  --ink: #171b26;
+  --ink-muted: #565e6f;
+  --ink-faint: #8992a3;
+  --brand: #28406f;
+  --brand-strong: #17264a;
 }
 
-html.light .bg-soc-bg { background-color: #f4f6fb !important; }
-html.light .bg-soc-panel { background-color: #ffffff !important; }
-html.light .border-soc-border { border-color: #e2e8f0 !important; }
+html.dark {
+  --paper: #0b1220;
+  --surface: #111a2e;
+  --surface-sunken: #0d1526;
+  --border: #1e2a44;
+  --border-strong: #2a3a5c;
+  --ink: #e6e9f0;
+  --ink-muted: #94a3b8;
+  --ink-faint: #64748b;
+  --brand: #67e8f9;
+  --brand-strong: #22d3ee;
+}
 
-html.light [class*="bg-slate-9"],
-html.light [class*="bg-slate-8"] { background-color: #f1f5f9 !important; }
-html.light [class*="bg-slate-800/30"],
-html.light [class*="bg-slate-800/40"],
-html.light [class*="bg-slate-800/60"] { background-color: #eef2f7 !important; }
+html:not(.dark) body { background-color: var(--paper); color: var(--ink); }
+html.dark body { background-color: var(--paper); color: var(--ink); }
 
-html.light [class*="border-slate-7"],
-html.light [class*="border-slate-8"] { border-color: #e2e8f0 !important; }
+html:not(.dark) .bg-soc-bg { background-color: var(--paper) !important; }
+html:not(.dark) .bg-soc-panel { background-color: var(--surface) !important; }
+html:not(.dark) .border-soc-border { border-color: var(--border) !important; }
 
-html.light [class*="text-slate-1"],
-html.light [class*="text-slate-2"],
-html.light [class*="text-slate-3"] { color: #0f172a !important; }
-html.light [class*="text-slate-4"],
-html.light [class*="text-slate-5"] { color: #475569 !important; }
-html.light [class*="text-slate-6"] { color: #94a3b8 !important; }
+/* Generic slate-* remaps used throughout the page components */
+html:not(.dark) [class*="bg-slate-9"],
+html:not(.dark) [class*="bg-slate-8"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class*="bg-slate-800/30"],
+html:not(.dark) [class*="bg-slate-800/40"],
+html:not(.dark) [class*="bg-slate-800/60"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class*="border-slate-7"],
+html:not(.dark) [class*="border-slate-8"] { border-color: var(--border) !important; }
 
-html.light .shadow-black\/20 { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06); }
-html.light ::placeholder { color: #94a3b8 !important; }
+html:not(.dark) [class*="text-slate-1"],
+html:not(.dark) [class*="text-slate-2"],
+html:not(.dark) [class*="text-slate-3"] { color: var(--ink) !important; }
+html:not(.dark) [class*="text-slate-4"],
+html:not(.dark) [class*="text-slate-5"] { color: var(--ink-muted) !important; }
+html:not(.dark) [class*="text-slate-6"] { color: var(--ink-faint) !important; }
+
+/* The app's original accent was neon cyan on near-black — remap it to a
+   restrained ink-navy so links, active values and highlighted numbers
+   read as "official document" rather than "terminal readout". */
+html:not(.dark) [class*="text-cyan-"] { color: var(--brand) !important; }
+html:not(.dark) [class*="border-cyan-"] { border-color: #b9c3dc !important; }
+/* Exact-token matches (`~=`), not substring (`*=`) — pages also use
+   opacity-modified variants like `bg-emerald-500/10` for pale chip fills,
+   and a substring match would repaint those solid too, hiding same-color
+   text underneath. */
+html:not(.dark) [class~="bg-cyan-950"],
+html:not(.dark) [class~="bg-cyan-900"] { background-color: #eef1f8 !important; color: var(--brand-strong) !important; }
+html:not(.dark) [class~="bg-cyan-600"],
+html:not(.dark) [class~="bg-cyan-500"] { background-color: var(--brand) !important; }
+html:not(.dark) .hover\:bg-cyan-500:hover,
+html:not(.dark) .hover\:bg-cyan-700:hover { background-color: var(--brand-strong) !important; }
+
+html:not(.dark) [class*="text-emerald-"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="bg-emerald-950"],
+html:not(.dark) [class~="bg-emerald-900"] { background-color: #e6f4ee !important; }
+html:not(.dark) [class~="bg-emerald-500"],
+html:not(.dark) [class~="bg-emerald-600"] { background-color: #0a6b4f !important; }
+
+html:not(.dark) [class*="text-red-"] { color: #9f1c14 !important; }
+html:not(.dark) [class*="text-orange-"] { color: #a85104 !important; }
+html:not(.dark) [class*="text-amber-"] { color: #92620c !important; }
+
+html:not(.dark) .shadow-black\/20,
+html:not(.dark) .shadow-lg { box-shadow: 0 1px 2px rgba(23, 27, 38, 0.04); }
+html:not(.dark) ::placeholder { color: var(--ink-faint) !important; }
+
+/* -----------------------------------------------------------------------
+ * Primitives
+ * --------------------------------------------------------------------- */
 
 .card {
-  @apply bg-soc-panel border border-soc-border rounded-xl p-5 shadow-lg shadow-black/20;
+  @apply rounded-lg p-5;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
 }
 
 .badge {
-  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold tracking-wide;
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium tracking-wide border;
 }
 
-.badge-critical { @apply bg-red-950 text-red-300 border border-red-800; }
-.badge-high { @apply bg-orange-950 text-orange-300 border border-orange-800; }
-.badge-medium { @apply bg-amber-950 text-amber-300 border border-amber-800; }
-.badge-low { @apply bg-emerald-950 text-emerald-300 border border-emerald-800; }
-.badge-pass { @apply bg-emerald-950 text-emerald-300 border border-emerald-800; }
-.badge-fail { @apply bg-red-950 text-red-300 border border-red-800; }
-.badge-na { @apply bg-slate-800 text-slate-400 border border-slate-700; }
+/* Light-native severity colors: solid ink text on a soft tint, the way a
+   printed audit report flags a finding, rather than a bright badge on a
+   dark chip. Dark mode keeps the original saturated chip treatment. */
+html:not(.dark) .badge-critical { background-color: #fbe9e7; color: #9f1c14; border-color: #f3c9c4; }
+html:not(.dark) .badge-high     { background-color: #fdefe0; color: #a85104; border-color: #f6d9b5; }
+html:not(.dark) .badge-medium   { background-color: #fdf3d9; color: #92620c; border-color: #f2e0a8; }
+html:not(.dark) .badge-low      { background-color: #e6f4ee; color: #0a6b4f; border-color: #bfe3d4; }
+html:not(.dark) .badge-pass     { background-color: #e6f4ee; color: #0a6b4f; border-color: #bfe3d4; }
+html:not(.dark) .badge-fail     { background-color: #fbe9e7; color: #9f1c14; border-color: #f3c9c4; }
+html:not(.dark) .badge-na       { background-color: var(--surface-sunken); color: var(--ink-muted); border-color: var(--border); }
+
+html.dark .badge-critical { @apply bg-red-950 text-red-300 border-red-800; }
+html.dark .badge-high { @apply bg-orange-950 text-orange-300 border-orange-800; }
+html.dark .badge-medium { @apply bg-amber-950 text-amber-300 border-amber-800; }
+html.dark .badge-low { @apply bg-emerald-950 text-emerald-300 border-emerald-800; }
+html.dark .badge-pass { @apply bg-emerald-950 text-emerald-300 border-emerald-800; }
+html.dark .badge-fail { @apply bg-red-950 text-red-300 border-red-800; }
+html.dark .badge-na { @apply bg-slate-800 text-slate-400 border-slate-700; }
 
 .btn-primary {
-  @apply bg-cyan-600 hover:bg-cyan-500 text-white font-medium px-4 py-2 rounded-lg transition-colors;
+  @apply font-medium px-4 py-2 rounded-md transition-colors text-white;
+  background-color: var(--brand);
 }
+.btn-primary:hover { background-color: var(--brand-strong); }
+
 .btn-secondary {
-  @apply bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium px-4 py-2 rounded-lg transition-colors border border-soc-border;
+  @apply font-medium px-4 py-2 rounded-md transition-colors;
+  background-color: var(--surface-sunken);
+  color: var(--ink);
+  border: 1px solid var(--border);
 }
-.select {
-  @apply bg-slate-800 border border-soc-border text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-700;
+html:not(.dark) .btn-secondary:hover { background-color: #e6e9f0; }
+html.dark .btn-secondary:hover { @apply bg-slate-700; }
+
+.select, .input {
+  @apply text-sm rounded-md px-3 py-1.5 focus:outline-none;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink);
 }
-.input {
-  @apply bg-slate-800 border border-soc-border text-slate-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-700 placeholder-slate-500;
-}
+.select:focus, .input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(40, 64, 111, 0.15); }
 
 /* Toast / confirm dialog entrance used by lib/toast.tsx + lib/confirm.tsx */
 @keyframes toast-in {
@@ -81,9 +162,18 @@ html.light ::placeholder { color: #94a3b8 !important; }
 }
 .animate-toast-in { animation: toast-in 160ms ease-out; }
 
-/* Slim, dark-theme scrollbars for a more polished, enterprise feel */
-* { scrollbar-width: thin; scrollbar-color: #2a3a5c transparent; }
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Slim scrollbars, tuned per theme */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background-color: #2a3a5c; border-radius: 9999px; }
-*::-webkit-scrollbar-thumb:hover { background-color: #3a4d78; }
+*::-webkit-scrollbar-thumb { background-color: var(--border-strong); border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
+
+/* Always-dark navigation rail scrollbar (the rail never switches theme) */
+.rail-scroll { scrollbar-color: #3a4260 transparent; }
+.rail-scroll::-webkit-scrollbar-thumb { background-color: #3a4260; }

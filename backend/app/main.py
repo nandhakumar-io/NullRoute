@@ -16,7 +16,7 @@ from app.routers import (
     alerts, credentials, datasets, device_gateway, drift,
     exceptions, system_health, training_jobs, streaming, gns3,
     backups, controls, vulnerabilities, document_ingestion, report_verification,
-    metrics, event_triggers, topology_groups,
+    metrics, event_triggers, topology_groups, rag,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -40,12 +40,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://172.17.1.5:5173",
-        "http://localhost:3000"
-    ],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,6 +55,7 @@ app.include_router(evidence.router)
 app.include_router(ai.router)
 app.include_router(topology.router)
 app.include_router(topology_groups.router)
+app.include_router(rag.router)
 app.include_router(schedules.router)
 app.include_router(network_scan.router)
 app.include_router(audit.router)

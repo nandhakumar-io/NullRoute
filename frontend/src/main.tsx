@@ -1,11 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import "./index.css";
 import { ThemeProvider } from "./theme";
 import { ToastProvider } from "./lib/toast";
 import { ConfirmProvider } from "./lib/confirm";
+import ErrorBoundary from "./components/ErrorBoundary";
 import App from "./App";
+
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>;
+}
 import Login from "./pages/Login";
 import { AuthProvider, ProtectedRoute } from "./context/AuthContext";
 import Dashboard from "./pages/Dashboard";
@@ -46,6 +52,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ToastProvider>
     <ConfirmProvider>
     <BrowserRouter>
+      <RouteErrorBoundary>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><App /></ProtectedRoute>}>
@@ -82,6 +89,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="vulnerabilities" element={<VulnerabilityDashboard />} />
         </Route>
       </Routes>
+      </RouteErrorBoundary>
     </BrowserRouter>
     </ConfirmProvider>
     </ToastProvider>

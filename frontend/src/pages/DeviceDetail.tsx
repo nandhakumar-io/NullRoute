@@ -42,7 +42,7 @@ export default function DeviceDetail() {
   const [snmpFacts, setSnmpFacts] = useState<Record<string, any> | null>(null);
   const [snmpInterfaces, setSnmpInterfaces] = useState<Record<string, any>[]>([]);
   const [snmpHealth, setSnmpHealth] = useState<Record<string, any> | null>(null);
-  const [latestSnapshot, setLatestSnapshot] = useState<Record<string, any> | null>(null);
+  const [latestMetricsSnapshot, setLatestMetricsSnapshot] = useState<Record<string, any> | null>(null);
   const [metricsHistory, setMetricsHistory] = useState<Record<string, any>[]>([]);
   const [snmpError, setSnmpError] = useState<string | null>(null);
   const [snmpLoading, setSnmpLoading] = useState(false);
@@ -191,10 +191,10 @@ export default function DeviceDetail() {
         endpoints.metricsLatest(deviceId),
         endpoints.metricsHistory(deviceId, 24),
       ]);
-      setLatestSnapshot((latestRes.data as any)?.snapshot ?? null);
+      setLatestMetricsSnapshot((latestRes.data as any)?.snapshot ?? null);
       setMetricsHistory((historyRes.data as any)?.snapshots ?? []);
     } catch (e: any) {
-      setLatestSnapshot(null);
+      setLatestMetricsSnapshot(null);
       setMetricsHistory([]);
     }
   }
@@ -510,7 +510,7 @@ export default function DeviceDetail() {
                 </thead>
                 <tbody>
                   {snmpHealth.interface_health.map((row: Record<string, any>) => {
-                    const util = (latestSnapshot?.interface_utilization || []).find(
+                    const util = (latestMetricsSnapshot?.interface_utilization || []).find(
                       (u: Record<string, any>) => u.if_index === row.if_index
                     );
                     return (

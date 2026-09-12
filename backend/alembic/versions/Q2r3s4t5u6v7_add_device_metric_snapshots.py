@@ -19,8 +19,8 @@ def upgrade() -> None:
     op.create_table(
         "device_metric_snapshots",
         sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False, index=True),
-        sa.Column("device_id", sa.String(), sa.ForeignKey("devices.id"), nullable=False, index=True),
+        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
+        sa.Column("device_id", sa.String(), sa.ForeignKey("devices.id"), nullable=False),
         sa.Column("collected_at", sa.DateTime(), nullable=True),
         sa.Column("source", sa.String(), nullable=False, server_default="snmp"),
         sa.Column("success", sa.Boolean(), nullable=False, server_default=sa.true()),
@@ -43,8 +43,8 @@ def upgrade() -> None:
     op.create_table(
         "tenant_settings",
         sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False, index=True),
-        sa.Column("key", sa.String(), nullable=False, index=True),
+        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
+        sa.Column("key", sa.String(), nullable=False),
         sa.Column("value", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),

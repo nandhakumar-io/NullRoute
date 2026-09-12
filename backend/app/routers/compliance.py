@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import List, Optional
 import hashlib
@@ -124,19 +125,69 @@ def dashboard(db: Session = Depends(get_db)):
         evidence_anchoring_status=dict(evidence_anchoring_status),
     )
 
+RANGE_TO_DAYS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
+
+
 @router.get("/api/dashboard/metrics", response_model=DashboardMetrics)
 def dashboard_metrics(range: str = "30d", db: Session = Depends(get_db)):
-    # Local developer fallback: providing an empty timeseries structure.
+    cutoff = datetime.utcnow() - timedelta(days=RANGE_TO_DAYS.get(range, 30))
+
+    # Findings currently open, restricted to scans that ran inside the
+    # selected window.
+    open_in_range = (
+        db.query(Finding)
+        .join(Scan, Finding.scan_id == Scan.id)
+        .filter(Finding.result == "FAIL", Scan.created_at >= cutoff)
+        .all()
+    )
+    sev_counts = defaultdict(int)
+    for f in open_in_range:
+        sev_counts[f.severity] += 1
+
+    # "Resolved in this window": no finding-lifecycle table exists yet, so
+    # this is derived from consecutive scans instead of a stored status.
+    # For each device, compare its two most recent completed scans — a
+    # control_id that FAILed on the earlier one and PASSes on the later
+    # one is a real remediation, counted if the later scan landed in range.
+    resolved = 0
+    for device in db.query(Device).all():
+        last_two = (
+            db.query(Scan)
+            .filter(Scan.device_id == device.id, Scan.status == "completed")
+            .order_by(Scan.created_at.desc())
+            .limit(2)
+            .all()
+        )
+        if len(last_two) < 2:
+            continue
+        latest, previous = last_two
+        if latest.created_at < cutoff:
+            continue
+        prev_fails = {
+            f.control_id for f in db.query(Finding).filter(Finding.scan_id == previous.id, Finding.result == "FAIL")
+        }
+        if not prev_fails:
+            continue
+        latest_results = {f.control_id: f.result for f in db.query(Finding).filter(Finding.scan_id == latest.id)}
+        resolved += sum(1 for cid in prev_fails if latest_results.get(cid) == "PASS")
+
+    scores_in_range = [
+        s.compliance_score
+        for s in db.query(Scan).filter(Scan.status == "completed", Scan.created_at >= cutoff).all()
+        if s.compliance_score is not None
+    ]
+    compliance_score = round(sum(scores_in_range) / len(scores_in_range), 1) if scores_in_range else 0.0
+
     return DashboardMetrics(
         range=range,
-        compliance_score=0.0,
-        critical_findings=0,
-        high_findings=0,
-        medium_findings=0,
-        low_findings=0,
-        open_findings=0,
-        resolved_findings=0,
-        timeseries=[]
+        compliance_score=compliance_score,
+        critical_findings=sev_counts["CRITICAL"],
+        high_findings=sev_counts["HIGH"],
+        medium_findings=sev_counts["MEDIUM"],
+        low_findings=sev_counts["LOW"],
+        open_findings=sum(sev_counts.values()),
+        resolved_findings=resolved,
+        timeseries=[],
     )
 
 

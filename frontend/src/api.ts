@@ -273,6 +273,22 @@ export interface ScanDetail extends Scan {
   findings: Finding[];
 }
 
+export interface RagSource {
+  document_id: string;
+  source_type: string;
+  source_id?: string | null;
+  title: string;
+  content: string;
+  metadata?: Record<string, unknown> | null;
+  score: number;
+}
+
+export interface RagQueryResponse {
+  query_id: string;
+  answer: string;
+  sources: RagSource[];
+}
+
 export interface DashboardStats {
   total_devices: number;
   devices_scanned: number;
@@ -1215,4 +1231,11 @@ export const endpoints = {
   updateVulnMatchStatus: (deviceId: string, matchId: string, payload: { status: string; justification?: string }) =>
     api.patch<DeviceVulnerabilityMatch>(`/api/devices/${deviceId}/vulns/${matchId}`, payload),
   syncVulnFeeds: () => api.post("/api/vulns/sync"),
+
+  // --- RAG chat (Ask NetSecAuditor) ---
+  ragQuery: (question: string, top_k = 5) =>
+    api.post<RagQueryResponse>("/api/rag/query", { question, top_k }),
+  ragReindex: () => api.post<{ reindexed: Record<string, number> }>("/api/rag/reindex"),
+  ragHistory: (limit = 20) =>
+    api.get<{ id: string; question: string; answer: string; created_at: string }[]>("/api/rag/history", { params: { limit } }),
 };

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { endpoints, DashboardStats, DashboardMetrics, DashboardRange, Device, Finding, BackupFleetSummary } from "../api";
-import { PageHeader, StatCard, Loading, StatusBadge, ScoreRing } from "../components/ui";
+import { PageHeader, StatCard, Loading, StatusBadge, ScoreRing, CollapsibleCard } from "../components/ui";
+import RagChatPanel from "../components/RagChatPanel";
+import { useTheme } from "../theme";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, Legend,
   ResponsiveContainer, CartesianGrid,
@@ -23,7 +25,7 @@ function formatBucketLabel(iso: string, range: DashboardRange) {
 
 function ScoreBar({ score }: { score: number | null }) {
   const v = score ?? 0;
-  const color = v >= 80 ? "#34d399" : v >= 50 ? "#fbbf24" : "#f87171";
+  const color = v >= 80 ? "#10b981" : v >= 50 ? "#f59e0b" : "#ef4444";
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -34,7 +36,36 @@ function ScoreBar({ score }: { score: number | null }) {
   );
 }
 
+/** Small chip used for the top-of-page "posture" summary row. */
+function PostureChip({ label, value, tone }: { label: string; value: ReactNode; tone: "critical" | "high" | "medium" | "good" | "neutral" }) {
+  const toneStyles: Record<string, string> = {
+    critical: "bg-red-500/10 text-red-500 border-red-500/30",
+    high: "bg-orange-500/10 text-orange-500 border-orange-500/30",
+    medium: "bg-amber-500/10 text-amber-600 border-amber-500/30",
+    good: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30",
+    neutral: "bg-slate-500/10 text-slate-500 border-slate-500/30",
+  };
+  return (
+    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium ${toneStyles[tone]}`}>
+      <span className="font-bold">{value}</span>
+      <span className="opacity-80 text-xs">{label}</span>
+    </div>
+  );
+}
+
 export default function Dashboard() {
+  const { theme } = useTheme();
+  const isLight = theme === "light";
+  // recharts needs literal color values, not Tailwind classes, so the two
+  // small palettes below are the one place chart colors are picked
+  // per-theme; everything else in this file rides the app-wide CSS
+  // `html.light` remap in index.css.
+  const chartAxis = "#64748b";
+  const chartGrid = isLight ? "#e2e8f0" : "#1e2a44";
+  const tooltipStyle = isLight
+    ? { background: "#ffffff", border: "1px solid #e2e8f0", color: "#0f172a", borderRadius: 8 }
+    : { background: "#111a2e", border: "1px solid #1e2a44", borderRadius: 8 };
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [range, setRange] = useState<DashboardRange>("7d");
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
@@ -88,25 +119,64 @@ export default function Dashboard() {
     })
     .slice(0, 8);
 
-  return (
-    <div>
-      <PageHeader title="SOC Dashboard" subtitle="AI-driven multi-vendor network security compliance overview" />
+  const neverScanned = devices.filter((d) => d.last_compliance_score == null).length;
+  // The fleet-wide `overall_compliance_score` is the always-on source of
+  // truth for "current posture" — it's derived from each device's latest
+  // scan regardless of when that scan happened. `metrics.compliance_score`
+  // is scoped to the selected time window and legitimately reads 0 when no
+  // scan ran in that window, which used to make the dashboard show "0%
+  // overall compliance" even on a fleet that's actually 93.9% compliant.
+  // Only prefer the windowed score once the window actually has scan
+  // activity to report.
+  const overallScore =
+    metrics && trendData.length > 0
+      ? Math.round(metrics.compliance_score)
+      : Math.round(stats.overall_compliance_score);
 
-      <div className="px-8 flex items-center justify-between mb-3">
-        <div className="font-semibold text-slate-200">Compliance Trends</div>
-        <div className="flex gap-1 bg-slate-900/60 border border-soc-border rounded-lg p-1">
-          {RANGES.map((r) => (
-            <button
-              key={r.value}
-              onClick={() => setRange(r.value)}
-              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                range === r.value ? "bg-cyan-600 text-white" : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+  // Same fallback: the windowed metrics endpoint legitimately reports 0
+  // open/critical/high findings when nothing happened in the selected
+  // range, but the fleet still has real open findings from before that
+  // window — those live on `stats` and are what "Findings Breakdown"
+  // below is built from, so use them whenever the window itself is empty.
+  const hasWindowActivity = !!metrics && trendData.length > 0;
+  const openFindingsTotal = hasWindowActivity
+    ? metrics!.open_findings
+    : stats.critical_findings + stats.high_findings + stats.medium_findings + stats.low_findings;
+  const criticalCount = hasWindowActivity ? metrics!.critical_findings : stats.critical_findings;
+  const highCount = hasWindowActivity ? metrics!.high_findings : stats.high_findings;
+  const postureTone: "critical" | "high" | "medium" | "good" = overallScore >= 80 ? "good" : overallScore >= 60 ? "medium" : overallScore >= 40 ? "high" : "critical";
+
+  return (
+    <div className="pb-24">
+      <PageHeader
+        title="Security Operations Dashboard"
+        subtitle="Multi-vendor network compliance, risk, and drift posture at a glance"
+        action={
+          <div className="flex gap-1 bg-slate-900/60 border border-soc-border rounded-lg p-1">
+            {RANGES.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setRange(r.value)}
+                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                  range === r.value ? "bg-cyan-600 text-white" : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      {/* At-a-glance posture strip -- the "so what do I need to know right now" row */}
+      <div className="px-8 flex flex-wrap gap-2 mb-6">
+        <PostureChip label="overall compliance" value={`${overallScore}%`} tone={postureTone} />
+        <PostureChip label="open critical" value={stats.critical_findings} tone={stats.critical_findings > 0 ? "critical" : "good"} />
+        <PostureChip label="open high" value={stats.high_findings} tone={stats.high_findings > 0 ? "high" : "good"} />
+        <PostureChip label="devices never scanned" value={neverScanned} tone={neverScanned > 0 ? "medium" : "good"} />
+        <PostureChip label="open alerts" value={openAlertCount ?? "—"} tone={(openAlertCount ?? 0) > 0 ? "high" : "good"} />
+        <PostureChip label="batfish violations" value={stats.batfish_violations} tone={stats.batfish_violations > 0 ? "high" : "good"} />
+        <PostureChip label="evidence integrity failures" value={stats.integrity_failures} tone={stats.integrity_failures > 0 ? "critical" : "good"} />
       </div>
 
       <div className="px-8 grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -114,20 +184,19 @@ export default function Dashboard() {
           <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
             Compliance % ({range})
           </div>
-          <ScoreRing score={metrics ? Math.round(metrics.compliance_score) : 0} />
+          <ScoreRing score={overallScore} />
         </div>
-        <StatCard label="Open Findings" value={metrics?.open_findings ?? "—"} tone="high" />
+        <StatCard label="Open Findings" value={openFindingsTotal} tone="high" />
         <StatCard label="Resolved Findings" value={metrics?.resolved_findings ?? "—"} tone="good" />
         <StatCard
           label={`Critical / High (${range})`}
-          value={metrics ? `${metrics.critical_findings} / ${metrics.high_findings}` : "—"}
+          value={`${criticalCount} / ${highCount}`}
           tone="critical"
         />
       </div>
 
       <div className="px-8 mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card">
-          <div className="font-semibold text-slate-200 mb-3">Compliance Score Over Time</div>
+        <CollapsibleCard title="Compliance Score Over Time" subtitle={`Trend across the last ${range}`} storageKey="complianceTrend">
           {metricsLoading || !metrics ? (
             <div className="text-slate-500 text-sm h-[220px] flex items-center justify-center">Loading…</div>
           ) : trendData.length === 0 ? (
@@ -135,18 +204,17 @@ export default function Dashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e2a44" />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={12} domain={[0, 100]} />
-                <Tooltip contentStyle={{ background: "#111a2e", border: "1px solid #1e2a44" }} />
-                <Line type="monotone" dataKey="compliance" stroke="#22d3ee" strokeWidth={2} dot={false} connectNulls />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} />
+                <XAxis dataKey="label" stroke={chartAxis} fontSize={11} />
+                <YAxis stroke={chartAxis} fontSize={12} domain={[0, 100]} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Line type="monotone" dataKey="compliance" stroke="#0891b2" strokeWidth={2} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </CollapsibleCard>
 
-        <div className="card">
-          <div className="font-semibold text-slate-200 mb-3">Findings by Severity Over Time</div>
+        <CollapsibleCard title="Findings by Severity Over Time" subtitle="New findings introduced per period" storageKey="findingsTrend">
           {metricsLoading || !metrics ? (
             <div className="text-slate-500 text-sm h-[220px] flex items-center justify-center">Loading…</div>
           ) : trendData.length === 0 ? (
@@ -154,89 +222,102 @@ export default function Dashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e2a44" />
-                <XAxis dataKey="label" stroke="#64748b" fontSize={11} />
-                <YAxis stroke="#64748b" fontSize={12} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "#111a2e", border: "1px solid #1e2a44" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} />
+                <XAxis dataKey="label" stroke={chartAxis} fontSize={11} />
+                <YAxis stroke={chartAxis} fontSize={12} allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Area type="monotone" dataKey="critical" stackId="1" stroke="#ef4444" fill="#ef4444" name="Critical" />
-                <Area type="monotone" dataKey="high" stackId="1" stroke="#f97316" fill="#f97316" name="High" />
-                <Area type="monotone" dataKey="medium" stackId="1" stroke="#f59e0b" fill="#f59e0b" name="Medium" />
-                <Area type="monotone" dataKey="low" stackId="1" stroke="#10b981" fill="#10b981" name="Low" />
+                <Area type="monotone" dataKey="critical" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.75} name="Critical" />
+                <Area type="monotone" dataKey="high" stackId="1" stroke="#f97316" fill="#f97316" fillOpacity={0.75} name="High" />
+                <Area type="monotone" dataKey="medium" stackId="1" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.75} name="Medium" />
+                <Area type="monotone" dataKey="low" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.75} name="Low" />
               </AreaChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </CollapsibleCard>
       </div>
 
-      {/* KPI rows */}
-      <div className="px-8 grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-        <StatCard label="Total Devices" value={stats.total_devices} />
-        <StatCard label="Devices Scanned" value={stats.devices_scanned} />
-        <StatCard label="Overall Compliance" value={`${stats.overall_compliance_score}%`} tone="good" />
-        <StatCard label="Pending AI Reviews" value={stats.pending_ai_mappings} tone="medium" />
+      {/* Findings breakdown -- most-referenced numbers for a netsec auditor */}
+      <div className="px-8 mt-6">
+        <CollapsibleCard title="Findings Breakdown" subtitle="Current open findings by severity and check engine" storageKey="findingsBreakdown">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Critical Findings" value={stats.critical_findings} tone="critical" />
+            <StatCard label="High Findings" value={stats.high_findings} tone="high" />
+            <StatCard label="Medium Findings" value={stats.medium_findings} tone="medium" />
+            <StatCard label="Low Findings" value={stats.low_findings} tone="low" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <StatCard label="OPA Policy Violations" value={stats.opa_violations} tone="critical" />
+            <StatCard label="Batfish Violations" value={stats.batfish_violations} tone="high" />
+            <StatCard label="High-Risk Devices" value={stats.high_risk_devices} tone="high" />
+            <StatCard label="Unknown Configurations" value={stats.unknown_configurations} tone="medium" />
+          </div>
+        </CollapsibleCard>
       </div>
-      <div className="px-8 mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Critical Findings" value={stats.critical_findings} tone="critical" />
-        <StatCard label="High Findings" value={stats.high_findings} tone="high" />
-        <StatCard label="Medium Findings" value={stats.medium_findings} tone="medium" />
-        <StatCard label="Low Findings" value={stats.low_findings} tone="low" />
-      </div>
-      <div className="px-8 mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="OPA Violations" value={stats.opa_violations} tone="critical" />
-        <StatCard label="Batfish Violations" value={stats.batfish_violations} tone="high" />
-        <StatCard label="High-Risk Devices" value={stats.high_risk_devices} tone="high" />
-        <StatCard label="Unknown Configurations" value={stats.unknown_configurations} tone="medium" />
-      </div>
-      <div className="px-8 mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Evidence Anchors" value={stats.evidence_anchors} tone="good" />
-        <StatCard label="Fabric Failures" value={stats.fabric_failures} tone={stats.fabric_failures > 0 ? "critical" : "default"} />
-        <StatCard label="Integrity Failures" value={stats.integrity_failures} tone={stats.integrity_failures > 0 ? "critical" : "good"} />
+
+      {/* Fleet + assurance -- inventory & evidence-chain health */}
+      <div className="px-8 mt-4">
+        <CollapsibleCard title="Fleet & Assurance" subtitle="Inventory coverage and tamper-evidence integrity" storageKey="fleetAssurance">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard label="Total Devices" value={stats.total_devices} />
+            <StatCard label="Devices Scanned" value={stats.devices_scanned} />
+            <StatCard label="Pending AI Reviews" value={stats.pending_ai_mappings} tone="medium" />
+            <StatCard label="Evidence Anchors" value={stats.evidence_anchors} tone="good" />
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <StatCard label="Fabric Failures" value={stats.fabric_failures} tone={stats.fabric_failures > 0 ? "critical" : "default"} />
+            <StatCard label="Integrity Failures" value={stats.integrity_failures} tone={stats.integrity_failures > 0 ? "critical" : "good"} />
+            <StatCard label="Overall Compliance" value={`${stats.overall_compliance_score}%`} tone="good" />
+            <StatCard label="Devices Never Scanned" value={neverScanned} tone={neverScanned > 0 ? "medium" : "good"} />
+          </div>
+        </CollapsibleCard>
       </div>
 
       {/* Operational Health: NCO backup coverage + alerting */}
       <div className="px-8 mt-6">
-        <div className="font-semibold text-slate-200 mb-3">Operational Health</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Link to="/backups" className="card hover:border-cyan-800 transition-colors block">
-            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Snapshot Coverage</div>
-            <div className="text-2xl font-bold mt-2 text-slate-100">
-              {backupSummary ? `${backupSummary.devices_with_snapshot}/${backupSummary.total_devices}` : "—"}
-            </div>
-          </Link>
-          <Link to="/backups" className="card hover:border-cyan-800 transition-colors block">
-            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">DR Destinations Healthy</div>
-            <div
-              className="text-2xl font-bold mt-2"
-              style={{ color: backupSummary && backupSummary.destinations_failing > 0 ? "#f87171" : "#34d399" }}
-            >
-              {backupSummary ? `${backupSummary.destinations_healthy}/${backupSummary.destination_count}` : "—"}
-            </div>
-          </Link>
-          <Link to="/alerts" className="card hover:border-cyan-800 transition-colors block">
-            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Open Alerts</div>
-            <div className="text-2xl font-bold mt-2" style={{ color: openAlertCount ? "#f87171" : "#34d399" }}>
-              {openAlertCount ?? "—"}
-            </div>
-          </Link>
-          <Link to="/backups" className="card hover:border-cyan-800 transition-colors block">
-            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Recent Export Success</div>
-            <div className="text-2xl font-bold mt-2 text-slate-100">
-              {backupSummary && backupSummary.recent_jobs_evaluated > 0
-                ? `${Math.round((backupSummary.recent_jobs_success / backupSummary.recent_jobs_evaluated) * 100)}%`
-                : "—"}
-            </div>
-          </Link>
-        </div>
+        <CollapsibleCard title="Operational Health" subtitle="Backup coverage, DR readiness, and alert volume" storageKey="operationalHealth">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Link to="/backups" className="card hover:border-cyan-700 transition-colors block">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Snapshot Coverage</div>
+              <div className="text-2xl font-bold mt-2 text-slate-100">
+                {backupSummary ? `${backupSummary.devices_with_snapshot}/${backupSummary.total_devices}` : "—"}
+              </div>
+            </Link>
+            <Link to="/backups" className="card hover:border-cyan-700 transition-colors block">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">DR Destinations Healthy</div>
+              <div
+                className="text-2xl font-bold mt-2"
+                style={{ color: backupSummary && backupSummary.destinations_failing > 0 ? "#ef4444" : "#10b981" }}
+              >
+                {backupSummary ? `${backupSummary.destinations_healthy}/${backupSummary.destination_count}` : "—"}
+              </div>
+            </Link>
+            <Link to="/alerts" className="card hover:border-cyan-700 transition-colors block">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Open Alerts</div>
+              <div className="text-2xl font-bold mt-2" style={{ color: openAlertCount ? "#ef4444" : "#10b981" }}>
+                {openAlertCount ?? "—"}
+              </div>
+            </Link>
+            <Link to="/backups" className="card hover:border-cyan-700 transition-colors block">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Recent Export Success</div>
+              <div className="text-2xl font-bold mt-2 text-slate-100">
+                {backupSummary && backupSummary.recent_jobs_evaluated > 0
+                  ? `${Math.round((backupSummary.recent_jobs_success / backupSummary.recent_jobs_evaluated) * 100)}%`
+                  : "—"}
+              </div>
+            </Link>
+          </div>
+        </CollapsibleCard>
       </div>
 
       {/* Devices Requiring Attention + Top Critical Findings */}
       <div className="px-8 mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold text-slate-200">Devices Requiring Attention</div>
-            <Link to="/devices" className="text-xs text-cyan-400 hover:underline">View all →</Link>
-          </div>
+        <CollapsibleCard
+          title="Devices Requiring Attention"
+          subtitle="Lowest compliance score first"
+          storageKey="devicesAttention"
+          action={<Link to="/devices" className="text-xs text-cyan-500 hover:underline" onClick={(e) => e.stopPropagation()}>View all →</Link>}
+        >
           {attentionDevices.length === 0 ? (
             <div className="text-slate-500 text-sm">No devices in inventory yet.</div>
           ) : (
@@ -259,21 +340,22 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </CollapsibleCard>
 
-        <div className="card">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold text-slate-200">Top Critical Findings</div>
-            <Link to="/compliance" className="text-xs text-cyan-400 hover:underline">View all →</Link>
-          </div>
+        <CollapsibleCard
+          title="Top Critical Findings"
+          subtitle="Currently failing, highest severity"
+          storageKey="topCriticalFindings"
+          action={<Link to="/compliance" className="text-xs text-cyan-500 hover:underline" onClick={(e) => e.stopPropagation()}>View all →</Link>}
+        >
           {criticalFindings.length === 0 ? (
             <div className="text-slate-500 text-sm">No critical findings. ✓</div>
           ) : (
             <div className="space-y-2">
               {criticalFindings.map((f) => (
-                <div key={f.id} className="px-3 py-2 rounded-lg bg-red-950/20 border border-red-900/40">
+                <div key={f.id} className="px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/20">
                   <div className="flex items-center gap-2">
-                    <span className="text-red-300 text-xs font-semibold">{f.control_id}</span>
+                    <span className="text-red-500 text-xs font-semibold">{f.control_id}</span>
                     <span className="badge bg-red-950 text-red-300 border border-red-800 text-[10px]">{f.framework}</span>
                   </div>
                   <div className="text-slate-300 text-sm mt-0.5 truncate" title={f.title}>{f.title}</div>
@@ -284,47 +366,44 @@ export default function Dashboard() {
               ))}
             </div>
           )}
-        </div>
+        </CollapsibleCard>
       </div>
 
       {/* Framework + Risk + Recent Scans */}
-      <div className="px-8 mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
-        <div className="card">
-          <div className="font-semibold text-slate-200 mb-3">Framework Compliance</div>
+      <div className="px-8 mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <CollapsibleCard title="Framework Compliance" subtitle="Score by regulatory/security framework" storageKey="frameworkCompliance">
           {fwData.length === 0 ? (
             <div className="text-slate-500 text-sm">No scans yet — upload a configuration to get started.</div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={fwData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e2a44" />
-                <XAxis dataKey="framework" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} domain={[0, 100]} />
-                <Tooltip contentStyle={{ background: "#111a2e", border: "1px solid #1e2a44" }} />
-                <Bar dataKey="score" fill="#22d3ee" radius={[4, 4, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} />
+                <XAxis dataKey="framework" stroke={chartAxis} fontSize={12} />
+                <YAxis stroke={chartAxis} fontSize={12} domain={[0, 100]} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="score" fill="#0891b2" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </CollapsibleCard>
 
-        <div className="card">
-          <div className="font-semibold text-slate-200 mb-3">Risk Distribution</div>
+        <CollapsibleCard title="Risk Distribution" subtitle="Devices by computed risk level" storageKey="riskDistribution">
           {Object.keys(stats.risk_distribution).length === 0 ? (
             <div className="text-slate-500 text-sm">No risk-scored scans yet.</div>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={Object.entries(stats.risk_distribution).map(([level, count]) => ({ level, count }))}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e2a44" />
-                <XAxis dataKey="level" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "#111a2e", border: "1px solid #1e2a44" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chartGrid} />
+                <XAxis dataKey="level" stroke={chartAxis} fontSize={12} />
+                <YAxis stroke={chartAxis} fontSize={12} allowDecimals={false} />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Bar dataKey="count" fill="#ef4444" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </CollapsibleCard>
 
-        <div className="card">
-          <div className="font-semibold text-slate-200 mb-3">Recent Scans</div>
+        <CollapsibleCard title="Recent Scans" subtitle="Latest compliance runs" storageKey="recentScans">
           <div className="space-y-1.5">
             {stats.recent_scans.length === 0 && <div className="text-slate-500 text-sm">No scans yet.</div>}
             {stats.recent_scans.map((s) => (
@@ -340,8 +419,11 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
-        </div>
+        </CollapsibleCard>
       </div>
+
+      {/* Floating, shrinkable RAG chat dock -- see components/RagChatPanel.tsx */}
+      <RagChatPanel />
     </div>
   );
 }

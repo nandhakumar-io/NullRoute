@@ -542,6 +542,47 @@ class NetworkScanJob(Base):
     completed_at = Column(DateTime, nullable=True)
 
 
+class RagDocument(Base):
+    """A chunk of retrievable knowledge for the RAG chat feature: findings,
+    device facts, Batfish results, evidence summaries, or externally
+    ingested docs (policies, runbooks) get indexed here as they're
+    created/updated.
+
+    `embedding` is intentionally nullable and unused today -- retrieval
+    currently runs on `content`/`title` via a keyword/BM25-style match in
+    services/rag_service.py. Once a real embedding model + vector store
+    (e.g. pgvector) is wired in, this column carries the vector and the
+    same row shape keeps working; no migration of the retrieval call sites
+    is needed, only rag_service.search()'s internals.
+    """
+    __tablename__ = "rag_documents"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    source_type = Column(String, nullable=False, index=True)  # finding | device | scan | batfish_group | evidence | manual_upload
+    source_id = Column(String, nullable=True, index=True)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    doc_metadata = Column(JSON, nullable=True)
+    embedding = Column(JSON, nullable=True)  # placeholder for a future vector; JSON list[float] until pgvector is adopted
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RagQueryLog(Base):
+    """Every question asked through the dashboard's RAG chat, the sources
+    retrieved for it, and the answer returned -- gives an audit trail and a
+    ready-made eval set for when a real LLM answer-generation step is
+    plugged in behind services/rag_service.answer_query()."""
+    __tablename__ = "rag_query_logs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=True)
+    source_document_ids = Column(JSON, nullable=True)
+    asked_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Alert(Base):
     """Phase 13 -- alert engine output. Every trigger listed in the problem
     statement (CRITICAL finding, HIGH risk, drift, unknown config, AI low

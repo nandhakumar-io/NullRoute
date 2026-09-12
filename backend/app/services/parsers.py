@@ -223,10 +223,12 @@ def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -
     (see ai/normalize.py) and, if confidence stays low, the Training Center.
     """
     baseline = SecurityBaselineModel(device={"vendor": vendor, "os": "unknown"})
-    rules = VENDOR_RULES.get(vendor, [])
+    rules = []
     raw_lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     baseline.extra_parameters["_input_lines"] = raw_lines
-    baseline.extra_parameters["_unknown_lines"] = []
+    baseline.extra_parameters["_unknown_lines"] = list(raw_lines)
+    baseline.extra_parameters["_unknown_blocks"] = list(raw_lines)
+    return baseline
 
     matched_lines = set()
 

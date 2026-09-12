@@ -1,15 +1,18 @@
 from collections import defaultdict
 from io import BytesIO
 from typing import List, Optional
+import hashlib
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.db import CommandMapping, Device, EvidenceRecord, Finding, Scan
+from app.models.db import (CommandMapping, Device, DeviceVulnerabilityMatch,
+                            EvidenceRecord, Finding, ReportArtifact, Scan)
 from app.schemas import DashboardStats, DashboardMetrics, DashboardMetricPoint, FindingOut, ScanOut
-from app.services import evidence_service
+from app.services import control_service, evidence_service, minio_service
 from app.services.reports import (build_csv_report, build_json_report,
                                    build_pdf_report)
 
@@ -161,16 +164,90 @@ def get_report(scan_id: str, fmt: str, db: Session = Depends(get_db)):
                 "fabric_block_number": record.fabric_block_number,
             }
 
+    # Unified Control Library + Vulnerability Management extensions: pull
+    # the multi-framework matrix for this scan's findings and this
+    # device's CVE matches, so the compliance-matrix and vulnerability
+    # panel report sections have data to render (both degrade to empty
+    # sections gracefully -- see reports.build_compliance_matrix_section /
+    # build_vulnerability_panel_section -- if the tenant hasn't populated
+    # the Unified Control Library or run a vuln sync/correlation yet).
+    framework_matrix: dict = {}
+    vuln_matches_out: list = []
+    if scan.tenant_id:
+        control_ids = list({f.get("control_id") for f in findings if f.get("control_id")})
+        framework_matrix = control_service.get_framework_matrix(db, scan.tenant_id, control_ids or None)
+
+        matches = (
+            db.query(DeviceVulnerabilityMatch)
+            .filter(
+                DeviceVulnerabilityMatch.device_id == scan.device_id,
+                DeviceVulnerabilityMatch.tenant_id == scan.tenant_id,
+            )
+            .order_by(DeviceVulnerabilityMatch.risk_priority_score.desc().nullslast())
+            .all()
+        )
+        for m in matches:
+            vuln = m.vulnerability
+            vuln_matches_out.append({
+                "cve_id": m.cve_id,
+                "status": m.status,
+                "risk_priority_score": m.risk_priority_score,
+                "linked_control_id": m.linked_control_id,
+                "vulnerability": {
+                    "cvss_score": vuln.cvss_score if vuln else None,
+                    "severity": vuln.severity if vuln else None,
+                    "kev_flag": vuln.kev_flag if vuln else False,
+                } if vuln else None,
+            })
+
     if fmt == "pdf":
-        data = build_pdf_report(scan_dict, device_dict, findings, evidence_dict)
+        data = build_pdf_report(scan_dict, device_dict, findings, evidence_dict, framework_matrix, vuln_matches_out)
         media = "application/pdf"
     elif fmt == "csv":
         data = build_csv_report(findings)
         media = "text/csv"
     else:
-        data = build_json_report(scan_dict, device_dict, findings, evidence_dict)
+        data = build_json_report(scan_dict, device_dict, findings, evidence_dict, framework_matrix, vuln_matches_out)
         media = "application/json"
 
     filename = f"compliance-report-{scan_id[:8]}.{fmt}"
+
+    # Archive the exact bytes just generated (Phase 8 / report_artifacts —
+    # see migration a7b8c9d0e1f2). This is what makes tamper detection on
+    # an uploaded report possible later: report_verification.py compares an
+    # uploaded file's SHA-256 against the row written here, and — for the
+    # on-chain layer — cross-checks the scan's Fabric-anchored evidence
+    # hash too. Best-effort: a MinIO outage must not block a report
+    # download (minio_service.put_object never raises), but the SHA-256 +
+    # size are always recorded in Postgres even if the object body upload
+    # fails, per ReportArtifact's docstring. Each call gets its own
+    # artifact id/object key (never overwritten) so re-downloading after a
+    # rerun preserves every prior version rather than silently replacing
+    # the archived copy a report-verification lookup might depend on.
+    try:
+        artifact_id = str(uuid.uuid4())
+        sha256_hex = hashlib.sha256(data).hexdigest()
+        put_result = minio_service.put_object(
+            minio_service.object_key(scan.tenant_id, scan.device_id, scan_id, f"report_{artifact_id}.{fmt}"),
+            data,
+            content_type=media,
+            immutable=True,
+        )
+        artifact = ReportArtifact(
+            id=artifact_id,
+            tenant_id=scan.tenant_id,
+            scan_id=scan_id,
+            format=fmt,
+            object_key=put_result.object_key if put_result else None,
+            object_bucket=put_result.bucket if put_result else None,
+            sha256=sha256_hex,
+            size_bytes=len(data),
+        )
+        db.add(artifact)
+        db.commit()
+    except Exception:
+        # Archival is never allowed to break the report download itself.
+        db.rollback()
+
     return StreamingResponse(BytesIO(data), media_type=media,
                               headers={"Content-Disposition": f"attachment; filename={filename}"})

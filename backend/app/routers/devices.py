@@ -106,7 +106,7 @@ async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends
     job_res = await submit_job(
         db,
         tenant_id=device.tenant_id,
-        requester_id=current_user.id if current_user else "api",
+        requester_id=current_user.subject if current_user else "api",
         device_id=device.id,
         operation="FETCH_CONFIG",
         protocol=device.protocol or "ssh"
@@ -141,7 +141,18 @@ async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends
     
     db.refresh(scan)
     db.refresh(device)
-    
+
+    # Best-effort: replicate this newly-archived snapshot to any remote
+    # backup destination (AWS S3 / Azure Blob / SFTP) that has
+    # auto_export enabled and includes this device in scope. Never
+    # allowed to fail the scan itself -- see
+    # services/backup_destination_service.py::auto_export_after_scan.
+    try:
+        from app.services import backup_destination_service
+        backup_destination_service.auto_export_after_scan(db, device, scan)
+    except Exception:
+        pass
+
     findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
     return ScanDetailOut(
         **ScanOut.model_validate(scan).model_dump(),

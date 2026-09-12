@@ -71,6 +71,10 @@ def to_dict(dr: DeploymentRecord) -> Dict[str, Any]:
 
 
 def _resolve_credentials(db: Session, device: Device, tenant_id: str, credential_ref_id: Optional[str] = None):
+    from app.gateway import connectors
+    if connectors.GATEWAY_MOCK_CONNECTOR:
+        return openbao_service.DeviceCredentials(credential_type="mock", secret={"username": "mock", "password": "mock"})
+
     query = db.query(DeviceCredentialRef).filter(
         DeviceCredentialRef.device_id == device.id, DeviceCredentialRef.tenant_id == tenant_id,
     )

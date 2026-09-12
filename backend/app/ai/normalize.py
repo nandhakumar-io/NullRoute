@@ -153,7 +153,7 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                f"{OLLAMA_HOST}/api/generate",
+                f"{OLLAMA_HOST}/generate",
                 json={
                     "model": LLM_MODEL,
                     "system": SYSTEM_PROMPT,

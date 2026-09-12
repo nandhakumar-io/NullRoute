@@ -131,7 +131,14 @@ async def create_alert(
     db.commit()
     db.refresh(alert)
 
-    alert.dispatch_results = await _dispatch(alert)
+    legacy_results = await _dispatch(alert)
+    try:
+        from app.services import alert_channel_service
+        channel_results = await alert_channel_service.route_and_dispatch(db, alert)
+    except Exception as e:  # noqa: BLE001 - configurable-channel routing must never block alert creation
+        logger.warning("Configurable alert-channel routing failed: %s", e)
+        channel_results = {}
+    alert.dispatch_results = {**legacy_results, **channel_results}
     db.commit()
     db.refresh(alert)
     return alert

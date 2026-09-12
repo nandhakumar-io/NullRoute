@@ -132,6 +132,26 @@ async def get_interfaces(
     return await _run_operation(request, device_id, "GET_INTERFACES", payload, db, tenant_id, user)
 
 
+@router.post("/{device_id}/gateway-get-health-metrics")
+async def get_health_metrics(
+    device_id: str,
+    request: Request,
+    payload: Optional[GatewayJobRequest] = None,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Retrieve live health/performance metrics -- CPU load, memory
+    utilization, and per-interface traffic/error/discard counters --
+    distinct from gateway-get-facts (static identity) and
+    gateway-get-interfaces (admin/oper status only). Currently only the SNMP
+    transport implements this (HOST-RESOURCES-MIB + IF-MIB high-capacity
+    counters); other transports return a clear "not implemented" error via
+    the collector's NotImplementedError fallback rather than fabricating
+    zeros."""
+    return await _run_operation(request, device_id, "GET_HEALTH_METRICS", payload, db, tenant_id, user)
+
+
 @router.get("/gateway/metrics")
 def gateway_metrics_endpoint():
     return gateway_metrics.snapshot()

@@ -87,6 +87,17 @@ class BaseCollector(ABC):
         vendor-agnostic YANG model mapping worth maintaining."""
         raise NotImplementedError
 
+    def get_health_metrics(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        """Optional: return live health/performance metrics -- CPU load,
+        memory utilization, and per-interface traffic/error counters --
+        distinct from get_facts()/get_interfaces() which are identity and
+        admin/oper-status snapshots, not load metrics. Same fallback
+        contract: collectors that don't implement this raise
+        NotImplementedError and gateway/connectors.py degrades rather than
+        erroring the whole operation. Currently only SNMP implements this
+        (HOST-RESOURCES-MIB + IF-MIB high-capacity counters)."""
+        raise NotImplementedError
+
 
 def timed_structured(fn):
     """Same contract as `timed`, but for get_facts()/get_interfaces()

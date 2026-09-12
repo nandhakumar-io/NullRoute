@@ -152,6 +152,42 @@ class VerifyResultOut(BaseModel):
     fabric_status: Optional[str] = None
 
 
+class ReportArtifactOut(BaseModel):
+    """A previously archived report (see ReportArtifact / report_artifacts
+    table). `has_stored_copy` tells the UI whether the original bytes can
+    still be downloaded (object_key set) vs. only the hash/size metadata
+    survives (MinIO write failed or was disabled at generation time)."""
+    id: str
+    scan_id: str
+    format: str
+    sha256: str
+    size_bytes: int
+    created_at: Optional[datetime] = None
+    has_stored_copy: bool = False
+
+    class Config:
+        from_attributes = True
+
+
+class ReportVerifyResultOut(BaseModel):
+    """Result of uploading a previously-downloaded report for tamper
+    verification (routers/report_verification.py). Mirrors the shape of
+    VerifyResultOut above: an off-chain hash comparison against our own
+    archived copy, plus an on-chain cross-check against the Fabric-anchored
+    evidence hash for the same scan when available."""
+    status: str  # VERIFIED | TAMPERED | UNKNOWN_REPORT
+    match: bool
+    calculated_hash: str
+    scan_id: Optional[str] = None
+    format: Optional[str] = None
+    artifact: Optional[ReportArtifactOut] = None
+    fabric_checked: bool = False
+    fabric_match: Optional[bool] = None
+    fabric_status: Optional[str] = None
+    downloadable: bool = False
+    message: str
+
+
 class MappingReviewIn(BaseModel):
     action: str  # "approve", "correct", or "reject"
     normalized_parameter: Optional[str] = None  # allow admin correction

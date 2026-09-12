@@ -94,6 +94,11 @@ func (c *EvidenceContract) CreateEvidence(
 		if err := json.Unmarshal(existingBytes, &existing); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal existing evidence: %v", err)
 		}
+
+		if existing.EvidenceHash != evidenceHash {
+			return nil, fmt.Errorf("idempotency violation: evidenceId %s already exists with different hash %s", evidenceId, existing.EvidenceHash)
+		}
+
 		history, err := c.GetEvidenceHistory(ctx, evidenceId)
 		if err != nil || len(history) == 0 {
 			return &EvidenceWithTx{EvidenceAnchor: existing, TxID: ctx.GetStub().GetTxID()}, nil

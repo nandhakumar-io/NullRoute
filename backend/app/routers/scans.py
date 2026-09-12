@@ -250,3 +250,16 @@ def get_opa_analysis(scan_id: str, db: Session = Depends(get_db)):
         "created_at": analysis.created_at,
         **(analysis.result_json or {}),
     }
+
+
+@router.get("/{scan_id}/remediation")
+async def get_remediation_suggestions(scan_id: str, db: Session = Depends(get_db)):
+    """Phase 14 AI Feature Extension: Retrieve or LLM-synthesize remediation CLI recommendations."""
+    from app.services.remediation_service import generate_remediation_cli_for_scan
+    scan = db.query(Scan).get(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    
+    # Asynchronously invoke the LLM proxy
+    return await generate_remediation_cli_for_scan(db, scan)
+

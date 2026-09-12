@@ -207,6 +207,86 @@ services:
         condition: service_started
     restart: "no"
 
+  # Phase 12 -- executes scheduled audits (AuditSchedule rows) on its own
+  # poll loop, completely separate from the `backend` uvicorn process so a
+  # slow/hung device collection never blocks API request handling. See
+  # app/workers/scheduler_worker.py's module docstring, which documents
+  # this exact service. Without this service running, schedules are saved
+  # correctly and show up in the UI, but nothing ever executes them.
+  scheduler:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-scheduler
+    command: ["python", "-m", "app.workers.scheduler_worker"]
+    environment:
+      <<: *common-env
+      SCHEDULER_POLL_INTERVAL_SECONDS: "30"
+      SCHEDULER_WORKER_ENABLED: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # Periodic device health-metrics poller (app/workers/metrics_poller_worker.py)
+  # -- same "own process, never blocks the API" rationale as `scheduler`
+  # above, but on its own interval since metrics polling and audit
+  # scheduling are unrelated cadences.
+  metrics-poller:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-metrics-poller
+    command: ["python", "-m", "app.workers.metrics_poller_worker"]
+    environment:
+      <<: *common-env
+      METRICS_POLL_INTERVAL_SECONDS: "300"
+      METRICS_POLLER_ENABLED: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # Background worker for CVE feed sync + vulnerability correlation
+  # (app/workers/vuln_sync_worker.py) -- same "own process" rationale as
+  # `scheduler` above. Was previously never started by this compose file.
+  vuln-sync-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-vuln-sync-worker
+    command: ["python", "-m", "app.workers.vuln_sync_worker"]
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # Re-verifies Fabric-anchored evidence on its own cadence
+  # (app/workers/evidence_verification_worker.py) so integrity failures on
+  # already-anchored evidence surface without waiting for someone to open
+  # the Evidence Ledger and click Verify. Was previously never started.
+  evidence-verification-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-evidence-verification-worker
+    command: ["python", "-m", "app.workers.evidence_verification_worker"]
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

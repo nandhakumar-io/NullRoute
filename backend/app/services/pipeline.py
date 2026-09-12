@@ -258,7 +258,7 @@ def _apply_to_baseline(baseline: SecurityBaselineModel, norm_param) -> None:
         for p in parts[:-1]:
             obj = getattr(obj, p)
         setattr(obj, parts[-1], norm_param.value)
-    except AttributeError:
+    except (AttributeError, ValueError):
         baseline.extra_parameters[norm_param.normalized_parameter] = norm_param.value
 
 

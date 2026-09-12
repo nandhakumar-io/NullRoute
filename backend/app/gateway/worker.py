@@ -53,6 +53,9 @@ def _resolve_credentials(db: Session, device: Device, tenant_id: str, protocol: 
     _resolve_credentials -- a device with both ssh_password and
     snmp_community refs on file must not have the wrong one handed to the
     collector just because it's the most recently created row."""
+    if connectors.GATEWAY_MOCK_CONNECTOR:
+        return openbao_service.DeviceCredentials(credential_type="mock", secret={"username": "mock", "password": "mock"})
+
     candidates = (
         db.query(DeviceCredentialRef)
         .filter(DeviceCredentialRef.device_id == device.id, DeviceCredentialRef.tenant_id == tenant_id)

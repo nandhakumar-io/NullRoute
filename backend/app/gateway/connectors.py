@@ -83,6 +83,20 @@ class MockConnector:
                 "interface_count": 1,
                 "vendor": device.vendor or "mock", "hostname": "mock-device",
             }
+        elif operation == "GET_HEALTH_METRICS":
+            normalized = {
+                "cpu_average_pct": 12.0,
+                "cpu_per_processor_pct": {"1": 12},
+                "memory_used_pct": 34.5,
+                "memory_total_bytes": 1_000_000_000,
+                "memory_used_bytes": 345_000_000,
+                "memory_pools": [{"description": "Mock RAM", "total_bytes": 1_000_000_000, "used_bytes": 345_000_000}],
+                "interface_health": [
+                    {"if_index": "1", "name": "GigabitEthernet0/0", "in_octets_hc": "1000000", "out_octets_hc": "500000",
+                     "in_errors": "0", "out_errors": "0", "in_discards": "0", "out_discards": "0"},
+                ],
+                "vendor": device.vendor or "mock", "hostname": "mock-device",
+            }
         else:
             normalized = {"vendor": device.vendor or "mock", "facts": {"hostname": "mock-device"}}
 
@@ -91,7 +105,7 @@ class MockConnector:
             protocol="mock",
             operation=operation,
             success=True,
-            raw_config=raw if operation not in ("GET_FACTS", "GET_INTERFACES") else None,
+            raw_config=raw if operation not in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS") else None,
             normalized_data=normalized,
             duration_ms=round((time.perf_counter() - start) * 1000.0, 2),
         )
@@ -127,13 +141,15 @@ def _operation_to_collection(device: Device, operation: str, protocol: str, cred
     # ------------------------------------------------------------------ #
     # Structured operation dispatch (GET_FACTS / GET_INTERFACES)          #
     # ------------------------------------------------------------------ #
-    if operation in ("GET_FACTS", "GET_INTERFACES"):
+    if operation in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS"):
         structured_result = None
         try:
             if operation == "GET_FACTS":
                 structured_result = collector.get_facts(device, credentials)
-            else:
+            elif operation == "GET_INTERFACES":
                 structured_result = collector.get_interfaces(device, credentials)
+            else:
+                structured_result = collector.get_health_metrics(device, credentials)
         except NotImplementedError:
             # Collector declared no implementation; fall through to
             # collect_config degradation below.

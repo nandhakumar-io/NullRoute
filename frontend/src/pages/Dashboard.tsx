@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { endpoints, DashboardStats, DashboardMetrics, DashboardRange, Device, Finding } from "../api";
+import { endpoints, DashboardStats, DashboardMetrics, DashboardRange, Device, Finding, BackupFleetSummary } from "../api";
 import { PageHeader, StatCard, Loading, StatusBadge, ScoreRing } from "../components/ui";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, XAxis, YAxis, Tooltip, Legend,
@@ -41,9 +41,13 @@ export default function Dashboard() {
   const [metricsLoading, setMetricsLoading] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
   const [criticalFindings, setCriticalFindings] = useState<Finding[]>([]);
+  const [backupSummary, setBackupSummary] = useState<BackupFleetSummary | null>(null);
+  const [openAlertCount, setOpenAlertCount] = useState<number | null>(null);
 
   useEffect(() => {
     endpoints.dashboard().then((r) => setStats(r.data)).catch(() => setStats(null));
+    endpoints.backupSummary().then((r) => setBackupSummary(r.data)).catch(() => setBackupSummary(null));
+    endpoints.alerts({ status: "OPEN" }).then((r) => setOpenAlertCount(r.data.count)).catch(() => setOpenAlertCount(null));
     endpoints.devices({ limit: 50, sort_by: "last_compliance_score", sort_dir: "asc" })
       .then((r) => {
         const items = (r.data as any).items ?? r.data;
@@ -188,6 +192,42 @@ export default function Dashboard() {
         <StatCard label="Evidence Anchors" value={stats.evidence_anchors} tone="good" />
         <StatCard label="Fabric Failures" value={stats.fabric_failures} tone={stats.fabric_failures > 0 ? "critical" : "default"} />
         <StatCard label="Integrity Failures" value={stats.integrity_failures} tone={stats.integrity_failures > 0 ? "critical" : "good"} />
+      </div>
+
+      {/* Operational Health: NCO backup coverage + alerting */}
+      <div className="px-8 mt-6">
+        <div className="font-semibold text-slate-200 mb-3">Operational Health</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Link to="/backups" className="card hover:border-cyan-800 transition-colors block">
+            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Snapshot Coverage</div>
+            <div className="text-2xl font-bold mt-2 text-slate-100">
+              {backupSummary ? `${backupSummary.devices_with_snapshot}/${backupSummary.total_devices}` : "—"}
+            </div>
+          </Link>
+          <Link to="/backups" className="card hover:border-cyan-800 transition-colors block">
+            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">DR Destinations Healthy</div>
+            <div
+              className="text-2xl font-bold mt-2"
+              style={{ color: backupSummary && backupSummary.destinations_failing > 0 ? "#f87171" : "#34d399" }}
+            >
+              {backupSummary ? `${backupSummary.destinations_healthy}/${backupSummary.destination_count}` : "—"}
+            </div>
+          </Link>
+          <Link to="/alerts" className="card hover:border-cyan-800 transition-colors block">
+            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Open Alerts</div>
+            <div className="text-2xl font-bold mt-2" style={{ color: openAlertCount ? "#f87171" : "#34d399" }}>
+              {openAlertCount ?? "—"}
+            </div>
+          </Link>
+          <Link to="/backups" className="card hover:border-cyan-800 transition-colors block">
+            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Recent Export Success</div>
+            <div className="text-2xl font-bold mt-2 text-slate-100">
+              {backupSummary && backupSummary.recent_jobs_evaluated > 0
+                ? `${Math.round((backupSummary.recent_jobs_success / backupSummary.recent_jobs_evaluated) * 100)}%`
+                : "—"}
+            </div>
+          </Link>
+        </div>
       </div>
 
       {/* Devices Requiring Attention + Top Critical Findings */}

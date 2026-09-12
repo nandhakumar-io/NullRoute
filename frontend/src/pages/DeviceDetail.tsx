@@ -41,6 +41,9 @@ export default function DeviceDetail() {
   // SSH/NETCONF instead of the SNMP MIBs this panel is about.
   const [snmpFacts, setSnmpFacts] = useState<Record<string, any> | null>(null);
   const [snmpInterfaces, setSnmpInterfaces] = useState<Record<string, any>[]>([]);
+  const [snmpHealth, setSnmpHealth] = useState<Record<string, any> | null>(null);
+  const [latestSnapshot, setLatestSnapshot] = useState<Record<string, any> | null>(null);
+  const [metricsHistory, setMetricsHistory] = useState<Record<string, any>[]>([]);
   const [snmpError, setSnmpError] = useState<string | null>(null);
   const [snmpLoading, setSnmpLoading] = useState(false);
 
@@ -57,6 +60,20 @@ export default function DeviceDetail() {
       await reload();
     } catch (e: any) {
       alert(e?.response?.data?.detail || "Scan request failed");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  async function requestBackup() {
+    if (!deviceId) return;
+    setScanning(true);
+    try {
+      await endpoints.collectDeviceConfig(deviceId, device?.protocol || undefined);
+      await reload();
+      alert("Backup successfully collected.");
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || "Backup request failed");
     } finally {
       setScanning(false);
     }
@@ -156,6 +173,30 @@ export default function DeviceDetail() {
     } finally {
       setSnmpLoading(false);
     }
+    // Health metrics (CPU/memory/interface traffic) are polled separately
+    // so a device/agent that doesn't support HOST-RESOURCES-MIB doesn't
+    // block the identity/interface panel above from populating.
+    try {
+      const healthRes = await endpoints.gatewayGetHealthMetrics(deviceId, "snmp");
+      setSnmpHealth((healthRes.data as any)?.data ?? null);
+    } catch (e: any) {
+      setSnmpHealth(null);
+    }
+    // Utilization and trend come from the persisted snapshot history
+    // (app.workers.metrics_poller_worker), not the live poll above --
+    // utilization needs two samples over time, a single live read can't
+    // produce it.
+    try {
+      const [latestRes, historyRes] = await Promise.all([
+        endpoints.metricsLatest(deviceId),
+        endpoints.metricsHistory(deviceId, 24),
+      ]);
+      setLatestSnapshot((latestRes.data as any)?.snapshot ?? null);
+      setMetricsHistory((historyRes.data as any)?.snapshots ?? []);
+    } catch (e: any) {
+      setLatestSnapshot(null);
+      setMetricsHistory([]);
+    }
   }
 
   return (
@@ -228,13 +269,23 @@ export default function DeviceDetail() {
                 <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Collection Status</div>
                 <div className="text-lg font-bold mt-2 text-slate-100">{device.collection_status || "never collected"}</div>
               </div>
-              <button
-                onClick={requestConfigCollection}
-                disabled={scanning}
-                className="text-xs px-3 py-1 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded hover:bg-cyan-900 transition-colors disabled:opacity-50"
-              >
-                {scanning ? "Scanning..." : "Request Scan"}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={requestBackup}
+                  disabled={scanning}
+                  title="Pull config snapshot without running full compliance scan"
+                  className="text-xs px-3 py-1 bg-slate-900 border border-slate-700 text-slate-300 rounded hover:bg-slate-800 transition-colors disabled:opacity-50"
+                >
+                  {scanning ? "..." : "Backup Config"}
+                </button>
+                <button
+                  onClick={requestConfigCollection}
+                  disabled={scanning}
+                  className="text-xs px-3 py-1 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded hover:bg-cyan-900 transition-colors disabled:opacity-50"
+                >
+                  {scanning ? "Scanning..." : "Request Scan"}
+                </button>
+              </div>
             </div>
           </div>
           <div className="card">
@@ -246,7 +297,7 @@ export default function DeviceDetail() {
             <div className="text-lg font-mono mt-2 text-slate-100">{device.serial_number || "—"}</div>
           </div>
           <div className="card">
-            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Approved Baseline</div>
+            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Golden Config (Baseline)</div>
             <div className="text-lg font-mono mt-2 text-slate-100">
               {approvedSnapshot ? "SET" : "NOT SET"}
             </div>
@@ -304,7 +355,7 @@ export default function DeviceDetail() {
                       {s.compliance_score != null && (
                         <span className="text-slate-400">{s.compliance_score}%</span>
                       )}
-                      {s.is_approved_baseline && <span className="badge badge-low">BASELINE</span>}
+                      {s.is_approved_baseline && <span className="badge badge-low">GOLDEN CONFIG</span>}
                     </div>
                     <div className="mt-2 flex items-center gap-2">
                       <Link className="text-cyan-400 hover:underline" to={`/scans/${s.scan_id}`}>
@@ -319,7 +370,7 @@ export default function DeviceDetail() {
                             approveAsBaseline(s.snapshot_id);
                           }}
                         >
-                          {approving === s.snapshot_id ? "approving…" : "approve"}
+                          {approving === s.snapshot_id ? "setting..." : "set as golden config"}
                         </button>
                       )}
                     </div>
@@ -406,6 +457,131 @@ export default function DeviceDetail() {
                 <div className="font-mono mt-1 text-slate-100 truncate" title={snmpFacts.sys_object_id}>
                   {snmpFacts.sys_object_id || "—"}
                 </div>
+              </div>
+            </div>
+          )}
+          {snmpHealth && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm border-t border-soc-border pt-4">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">CPU (avg)</div>
+                <div className="font-mono mt-1 text-slate-100">
+                  {snmpHealth.cpu_average_pct != null ? `${snmpHealth.cpu_average_pct}%` : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Memory Used</div>
+                <div className="font-mono mt-1 text-slate-100">
+                  {snmpHealth.memory_used_pct != null ? `${snmpHealth.memory_used_pct}%` : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Memory Total</div>
+                <div className="font-mono mt-1 text-slate-100">
+                  {snmpHealth.memory_total_bytes
+                    ? `${(snmpHealth.memory_total_bytes / (1024 * 1024)).toFixed(0)} MB`
+                    : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">Interfaces Reporting</div>
+                <div className="font-mono mt-1 text-slate-100">
+                  {(snmpHealth.interface_health || []).length || "—"}
+                </div>
+              </div>
+            </div>
+          )}
+          {snmpHealth?.interface_health?.length > 0 && (
+            <div className="mb-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
+                Interface Traffic &amp; Errors (SNMP IF-MIB)
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b border-soc-border">
+                    <th className="py-2 pr-4">ifIndex</th>
+                    <th className="py-2 pr-4">Name</th>
+                    <th className="py-2 pr-4">In (octets)</th>
+                    <th className="py-2 pr-4">Out (octets)</th>
+                    <th className="py-2 pr-4">In Errors</th>
+                    <th className="py-2 pr-4">Out Errors</th>
+                    <th className="py-2 pr-4">Discards (in/out)</th>
+                    <th className="py-2 pr-4">Utilization (in/out)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snmpHealth.interface_health.map((row: Record<string, any>) => {
+                    const util = (latestSnapshot?.interface_utilization || []).find(
+                      (u: Record<string, any>) => u.if_index === row.if_index
+                    );
+                    return (
+                    <tr key={row.if_index} className="border-b border-soc-border/50">
+                      <td className="py-2 pr-4 font-mono">{row.if_index}</td>
+                      <td className="py-2 pr-4 font-mono">{row.name || "—"}</td>
+                      <td className="py-2 pr-4 font-mono">{row.in_octets_hc ?? "—"}</td>
+                      <td className="py-2 pr-4 font-mono">{row.out_octets_hc ?? "—"}</td>
+                      <td className={`py-2 pr-4 font-mono ${Number(row.in_errors) > 0 ? "text-red-400" : ""}`}>
+                        {row.in_errors ?? "—"}
+                      </td>
+                      <td className={`py-2 pr-4 font-mono ${Number(row.out_errors) > 0 ? "text-red-400" : ""}`}>
+                        {row.out_errors ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">
+                        {row.in_discards ?? "—"} / {row.out_discards ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">
+                        {util ? (
+                          <span
+                            className={
+                              (util.in_utilization_pct ?? 0) >= 90 || (util.out_utilization_pct ?? 0) >= 90
+                                ? "text-red-400"
+                                : (util.in_utilization_pct ?? 0) >= 70 || (util.out_utilization_pct ?? 0) >= 70
+                                ? "text-amber-400"
+                                : ""
+                            }
+                          >
+                            {util.in_utilization_pct != null ? `${util.in_utilization_pct}%` : "—"} /{" "}
+                            {util.out_utilization_pct != null ? `${util.out_utilization_pct}%` : "—"}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div className="text-[11px] text-slate-500 mt-1">
+                Utilization is derived from consecutive polled snapshots (app.workers.metrics_poller_worker) and
+                requires an interface speed known from the SNMP interface table; it may read "—" until at least two
+                poll cycles have completed.
+              </div>
+            </div>
+          )}
+          {metricsHistory.length > 1 && (
+            <div className="mb-4">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
+                CPU &amp; Memory — Last 24h ({metricsHistory.length} samples)
+              </div>
+              <div className="flex items-end gap-[2px] h-16">
+                {[...metricsHistory].reverse().map((snap, i) => (
+                  <div key={snap.id || i} className="flex-1 flex flex-col justify-end gap-[1px]" title={
+                    `${snap.collected_at}: CPU ${snap.cpu_average_pct ?? "—"}% / Mem ${snap.memory_used_pct ?? "—"}%`
+                  }>
+                    <div
+                      className="bg-blue-500/70 w-full"
+                      style={{ height: `${Math.min(100, snap.cpu_average_pct ?? 0)}%` }}
+                    />
+                    <div
+                      className="bg-emerald-500/70 w-full"
+                      style={{ height: `${Math.min(100, snap.memory_used_pct ?? 0)}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-4 text-[11px] text-slate-500 mt-1">
+                <span><span className="inline-block w-2 h-2 bg-blue-500/70 mr-1" />CPU %</span>
+                <span><span className="inline-block w-2 h-2 bg-emerald-500/70 mr-1" />Memory %</span>
               </div>
             </div>
           )}

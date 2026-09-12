@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis } from "../api";
-import { PageHeader, Loading, ScoreRing, SeverityBadge, ResultBadge, StatusBadge } from "../components/ui";
+import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch } from "../api";
+import { PageHeader, Loading, ScoreRing, SeverityBadge, ResultBadge, StatusBadge, EmptyState } from "../components/ui";
 
-const STAGES = ["uploaded", "parsed", "normalized", "opa_evaluating", "batfish_evaluating", "correlating", "completed"];
+const STAGES = ["uploaded", "parsed", "normalized", "opa_evaluating", "batfish_evaluating", "correlating", "completed", "ai_ready"];
 
 const BATFISH_TONE: Record<string, string> = {
   BATFISH_PASS: "badge-pass",
@@ -31,49 +31,107 @@ export default function ScanDetail() {
   const [scan, setScan] = useState<ScanDetailType | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRecord | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<ScanAIAnalysis | null>(null);
+  const [remediations, setRemediations] = useState<any>(null);
   const [rerunning, setRerunning] = useState(false);
 
   const [currentSnapshot, setCurrentSnapshot] = useState<any>(null);
   const [deviceHasBaseline, setDeviceHasBaseline] = useState(false);
   const [approving, setApproving] = useState(false);
 
-  function load() {
-    if (scanId) {
-      endpoints.scan(scanId).then((r) => {
-        setScan(r.data);
-        endpoints.deviceSnapshots(r.data.device_id).then(res => {
-           const snaps = res.data.snapshots;
-           setCurrentSnapshot(snaps.find(s => s.scan_id === scanId));
-           setDeviceHasBaseline(snaps.some(s => s.is_approved_baseline));
-        });
-      });
-      endpoints.evidenceList(scanId).then((r) => setEvidence(r.data[0] ?? null));
-      endpoints.aiAnalysis(scanId).then((r) => setAiAnalysis(r.data));
-    }
-  }
+  const [activeTab, setActiveTab] = useState<"overview" | "matrix" | "vulns">("overview");
+  const [complianceMatrix, setComplianceMatrix] = useState<Array<Record<string, any>> | null>(null);
+  const [vulnMatches, setVulnMatches] = useState<DeviceVulnerabilityMatch[] | null>(null);
+  const [correlating, setCorrelating] = useState(false);
 
   useEffect(() => {
-    load();
-    const interval = setInterval(() => {
-      load();
-    }, 3000);
-    return () => clearInterval(interval);
+    let isActive = true;
+    let timeoutId: number;
+
+    async function tick() {
+      if (!isActive || !scanId) return;
+      try {
+        const scanRes = await endpoints.scan(scanId);
+        if (!isActive) return;
+        setScan(scanRes.data);
+        
+        const pipelineDone = ["completed", "review", "blocked"].includes(scanRes.data.status);
+        
+        const snaps = await endpoints.deviceSnapshots(scanRes.data.device_id);
+        if (isActive) {
+           setCurrentSnapshot(snaps.data.snapshots.find((s: any) => s.scan_id === scanId));
+           setDeviceHasBaseline(snaps.data.snapshots.some((s: any) => s.is_approved_baseline));
+        }
+
+        const ev = await endpoints.evidenceList(scanId);
+        if (isActive) setEvidence(ev.data[0] ?? null);
+        
+        const ai = await endpoints.aiAnalysis(scanId);
+        if (isActive) setAiAnalysis(ai.data);
+
+        if (pipelineDone) {
+          try {
+            const rem = await endpoints.aiRemediation(scanId);
+            if (isActive) setRemediations(rem.data);
+          } catch (e) {
+            if (isActive) setRemediations(null);
+          }
+        } else {
+          timeoutId = window.setTimeout(tick, 3000);
+        }
+      } catch (err) {
+        if (isActive) timeoutId = window.setTimeout(tick, 3000);
+      }
+    }
+    
+    tick();
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
   }, [scanId]);
 
   if (!scan) return <Loading />;
 
-  const currentStageIdx = scan.status === "failed"
-    ? -1
-    : STAGES.indexOf(["completed", "review", "blocked"].includes(scan.status) ? "completed" : scan.status);
+  const pipelineCompleted = ["completed", "review", "blocked"].includes(scan.status);
+  const aiReady = aiAnalysis !== null && aiAnalysis.count >= 0 && pipelineCompleted;
+  // If pipeline is done, wait for AI analysis before fully lighting up 'completed'
+  let currentStageIdx = -1;
+  if (scan.status !== "failed") {
+      const pIdx = STAGES.indexOf(pipelineCompleted ? "completed" : scan.status);
+      currentStageIdx = aiReady ? pIdx + 1 : pIdx;
+  }
 
   async function handleRerun() {
     if (!scanId) return;
     setRerunning(true);
     try {
       await endpoints.rerunScan(scanId);
-      load();
+      window.location.reload();
     } finally {
       setRerunning(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!scanId) return;
+    if (activeTab === "matrix" && complianceMatrix === null) {
+      endpoints.reportJson(scanId).then((r) => setComplianceMatrix(r.data.compliance_matrix || []));
+    }
+    if (activeTab === "vulns" && scan?.device_id) {
+      endpoints.deviceVulns(scan.device_id).then((r) => setVulnMatches(r.data.matches));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, scanId, scan?.device_id]);
+
+  async function runVulnCorrelation() {
+    if (!scan?.device_id) return;
+    setCorrelating(true);
+    try {
+      await endpoints.correlateDeviceVulns(scan.device_id);
+      const r = await endpoints.deviceVulns(scan.device_id);
+      setVulnMatches(r.data.matches);
+    } finally {
+      setCorrelating(false);
     }
   }
 
@@ -83,7 +141,7 @@ export default function ScanDetail() {
     setApproving(true);
     try {
       await endpoints.approveBaseline(scan.device_id, currentSnapshot.snapshot_id, reason);
-      load();
+      window.location.reload();
     } finally {
       setApproving(false);
     }
@@ -127,6 +185,101 @@ export default function ScanDetail() {
         </div>
       )}
 
+      <div className="px-8 pb-4 border-b border-soc-border mb-6 flex gap-6">
+        <button
+          onClick={() => setActiveTab("overview")}
+          className={`pb-2 font-medium ${activeTab === "overview" ? "text-cyan-400 border-b-2 border-cyan-400" : "text-slate-400 hover:text-slate-200"}`}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab("matrix")}
+          className={`pb-2 font-medium ${activeTab === "matrix" ? "text-cyan-400 border-b-2 border-cyan-400" : "text-slate-400 hover:text-slate-200"}`}
+        >
+          Compliance Matrix
+        </button>
+        <button
+          onClick={() => setActiveTab("vulns")}
+          className={`pb-2 font-medium ${activeTab === "vulns" ? "text-cyan-400 border-b-2 border-cyan-400" : "text-slate-400 hover:text-slate-200"}`}
+        >
+          Vulnerabilities
+        </button>
+      </div>
+
+      {activeTab === "matrix" && (
+        <div className="px-8 pb-8">
+          {!complianceMatrix ? (
+            <Loading />
+          ) : complianceMatrix.length === 0 ? (
+            <EmptyState message="No compliance matrix data. Map findings to Unified Controls with framework mappings to populate this view." />
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-soc-border">
+              <table className="w-full text-left text-sm text-slate-400">
+                <thead className="bg-soc-panel border-b border-soc-border uppercase text-xs">
+                  <tr>
+                    <th className="px-4 py-3">Control</th>
+                    <th className="px-4 py-3">Result</th>
+                    <th className="px-4 py-3">NIST-800-53</th>
+                    <th className="px-4 py-3">CIS</th>
+                    <th className="px-4 py-3">ISO-27001</th>
+                    <th className="px-4 py-3">DISA-STIG</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-soc-border">
+                  {complianceMatrix.map((row, i) => (
+                    <tr key={i} className="hover:bg-soc-panel">
+                      <td className="px-4 py-3 font-mono text-xs text-slate-300">{row.control_id}</td>
+                      <td className="px-4 py-3"><ResultBadge result={row.result} /></td>
+                      <td className="px-4 py-3 font-mono text-xs">{row["NIST-800-53"]}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{row["CIS"]}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{row["ISO-27001"]}</td>
+                      <td className="px-4 py-3 font-mono text-xs">{row["DISA-STIG"]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "vulns" && (
+        <div className="px-8 pb-8">
+          <div className="flex justify-end mb-3">
+            <button onClick={runVulnCorrelation} disabled={correlating} className="btn-secondary text-sm">
+              {correlating ? "Correlating…" : "Run Correlation"}
+            </button>
+          </div>
+          {!vulnMatches ? (
+            <Loading />
+          ) : vulnMatches.length === 0 ? (
+            <EmptyState message="No vulnerability matches for this device yet. Run correlation to check against the CVE catalog." />
+          ) : (
+            <div className="space-y-2">
+              {vulnMatches.map((m) => (
+                <div key={m.id} className="card">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-cyan-400">{m.cve_id}</span>
+                    {m.vulnerability?.severity && <SeverityBadge severity={m.vulnerability.severity} />}
+                    {m.vulnerability?.kev_flag && (
+                      <span className="px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400">KEV</span>
+                    )}
+                    <span className="px-2 py-0.5 rounded text-xs bg-slate-500/20 text-slate-300">{m.status.replace(/_/g, " ")}</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    matched via {m.matched_via}
+                    {m.risk_priority_score != null && ` · risk priority: ${m.risk_priority_score.toFixed(1)}`}
+                    {m.linked_control_id && ` · linked control: ${m.linked_control_id}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "overview" && (
+      <>
       <div className="px-8 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div className="card lg:col-span-2">
           <div className="font-semibold text-slate-200 mb-4">Pipeline Progress</div>
@@ -284,6 +437,18 @@ export default function ScanDetail() {
                 {f.evidence_line && (
                   <div className="text-xs font-mono text-cyan-400/80 mt-1 truncate">{f.evidence_line}</div>
                 )}
+                {remediations?.remediations?.find((r: any) => r.finding_id === f.id)?.cli_steps?.length > 0 && (
+                  <div className="mt-3 bg-slate-900/50 rounded p-2 border border-slate-800">
+                    <div className="text-xs font-semibold text-emerald-500 mb-2">AI Generated Synthesized CLI Remediation</div>
+                    {remediations.remediations.find((r: any) => r.finding_id === f.id).cli_steps.map((step: string | Record<string, string>, idx: number) => {
+                      const txt = typeof step === "string" ? step : Object.keys(step)[0];
+                      return <div key={idx} className="font-mono text-[11px] text-emerald-300 whitespace-pre-wrap">{txt}</div>;
+                    })}
+                    {remediations.remediations.find((r: any) => r.finding_id === f.id).guidance && (
+                      <div className="text-[11px] text-slate-400 mt-2 border-t border-slate-800 pt-2">{remediations.remediations.find((r: any) => r.finding_id === f.id).guidance}</div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -295,6 +460,8 @@ export default function ScanDetail() {
         <a className="btn-secondary text-sm" href={endpoints.reportUrl(scan.id, "json")}>Download JSON</a>
         <a className="btn-secondary text-sm" href={endpoints.reportUrl(scan.id, "csv")}>Download CSV</a>
       </div>
+      </>
+      )}
     </div>
   );
 }

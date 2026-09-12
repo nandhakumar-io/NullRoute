@@ -31,7 +31,7 @@ from app.drift_schemas import (
 )
 from app.services import audit_service, advanced_drift_service as drift_service
 
-router = APIRouter(tags=["drift"])
+router = APIRouter(prefix="/api/v1", tags=["drift"])
 
 # Reviewing/dismissing/approving a drift changes its record of what's
 # "acceptable" on the device, same authority level as approving a change.
@@ -203,9 +203,6 @@ def weekly_golden_config_drift_report(
     devices = db.query(Device).filter(Device.id.in_(device_ids)).all() if device_ids else []
     devices_by_id = {d.id: d for d in devices}
 
-    group_ids = {d.group_id for d in devices if d.group_id is not None}
-    group_names = {g.id: g.name for g in db.query(DeviceGroup).filter(DeviceGroup.id.in_(group_ids)).all()} if group_ids else {}
-
     entries = [
         WeeklyGoldenDriftEntry(
             **DriftRead.model_validate(d).model_dump(),
@@ -214,25 +211,25 @@ def weekly_golden_config_drift_report(
         for d in drifts
     ]
 
-    entries_by_group: dict[uuid.UUID | None, list[WeeklyGoldenDriftEntry]] = {}
+    # Group by device site for the digest view (site is always present on
+    # Device; DeviceGroup is not implemented in this deployment). Devices
+    # with no site fall into "Ungrouped".
+    entries_by_group: dict[str | None, list[WeeklyGoldenDriftEntry]] = {}
     for entry, drift_row in zip(entries, drifts):
         device = devices_by_id.get(drift_row.device_id)
-        group_key = device.group_id if device else None
+        group_key = (device.site if device and hasattr(device, "site") else None)
         entries_by_group.setdefault(group_key, []).append(entry)
 
-    # Named groups first (alphabetical), "Ungrouped" last -- matches how
-    # the Groups page orders things elsewhere in the app.
-    ordered_group_ids = sorted(
-        (gid for gid in entries_by_group if gid is not None),
-        key=lambda gid: group_names.get(gid, ""),
+    ordered_group_keys = sorted(
+        (k for k in entries_by_group if k is not None),
     )
     groups = [
         WeeklyGoldenDriftGroup(
-            group_id=gid,
-            group_name=group_names.get(gid, "Unnamed group"),
-            devices=entries_by_group[gid],
+            group_id=None,
+            group_name=site,
+            devices=entries_by_group[site],
         )
-        for gid in ordered_group_ids
+        for site in ordered_group_keys
     ]
     if None in entries_by_group:
         groups.append(

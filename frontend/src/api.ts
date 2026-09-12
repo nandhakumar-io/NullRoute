@@ -24,6 +24,127 @@ export interface ConfigSearchResult {
   devices: ConfigSearchDeviceMatch[];
 }
 
+// --- Unified Control Library ---
+export interface FrameworkMapping {
+  id: string;
+  framework: string;
+  external_id: string;
+  confidence: number | null;
+}
+
+export interface ConfigConcept {
+  id: string;
+  concept_name: string;
+  description: string | null;
+}
+
+export interface VendorConfigPattern {
+  id: string;
+  concept_id: string;
+  vendor: string;
+  pattern: string;
+  example_snippet: string | null;
+  created_by: string | null;
+}
+
+export interface UnifiedControl {
+  id: string;
+  name: string;
+  objective: string | null;
+  domain: string | null;
+  source_text: string | null;
+  normalized_description: string | null;
+  status: "pending_review" | "approved";
+  source_document: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  framework_mappings?: FrameworkMapping[];
+  config_concepts?: ConfigConcept[];
+}
+
+export interface ControlReview {
+  id: string;
+  control_id: string;
+  reviewer: string;
+  original_text: string | null;
+  proposed_change: string | null;
+  decision: "approved" | "rejected" | "corrected";
+  correction_json: Record<string, unknown> | null;
+  created_at: string | null;
+}
+
+export interface DocumentIngestionJob {
+  id: string;
+  filename: string;
+  status: "queued" | "parsing" | "extracting" | "completed" | "failed";
+  llm_used: boolean;
+  controls_created: number;
+  sections_found: number;
+  warning: string | null;
+  error: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+// --- Vulnerability Management ---
+export interface Vulnerability {
+  cve_id: string;
+  cvss_score: number | null;
+  severity: string | null;
+  description: string | null;
+  kev_flag: boolean;
+  published_date: string | null;
+  last_modified_date: string | null;
+  source: string;
+  remediation_advice: string | null;
+}
+
+export interface DeviceVulnerabilityMatch {
+  id: string;
+  device_id: string;
+  cve_id: string;
+  matched_via: string;
+  risk_priority_score: number | null;
+  status: "open" | "mitigated" | "accepted_risk" | "false_positive";
+  evidence: Record<string, unknown> | null;
+  justification: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  linked_control_id: string | null;
+  created_at: string | null;
+  vulnerability: Vulnerability | null;
+}
+
+// --- Report Verification (blockchain-backed tamper check) ---
+export interface ReportArtifact {
+  id: string;
+  scan_id: string;
+  format: "pdf" | "json" | "csv";
+  sha256: string;
+  size_bytes: number;
+  created_at: string | null;
+  has_stored_copy: boolean;
+}
+
+export interface ReportVerifyResult {
+  status: "VERIFIED" | "TAMPERED" | "UNKNOWN_REPORT";
+  match: boolean;
+  calculated_hash: string;
+  scan_id: string | null;
+  format: string | null;
+  artifact: ReportArtifact | null;
+  fabric_checked: boolean;
+  fabric_match: boolean | null;
+  fabric_status: string | null;
+  downloadable: boolean;
+  message: string;
+}
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000",
 });
@@ -456,6 +577,73 @@ export interface ConfigSnapshotDetail extends ConfigSnapshot {
   approval?: { approved_by: string; approved_at: string | null; approval_reason: string | null };
 }
 
+// --- Enterprise config backup / NCO management ---------------------------
+
+export type BackupDestinationType = "s3" | "azure_blob" | "sftp" | "local";
+
+export interface BackupDestination {
+  id: string;
+  name: string;
+  destination_type: BackupDestinationType;
+  enabled: boolean;
+  config: Record<string, any>;
+  has_credentials: boolean;
+  auto_export_enabled: boolean;
+  auto_export_scope: { all?: boolean; device_ids?: string[] } | null;
+  retention_days: number | null;
+  last_test_status: "SUCCESS" | "FAILED" | "NEVER_TESTED" | null;
+  last_test_at: string | null;
+  last_test_message: string | null;
+  last_export_status: "SUCCESS" | "FAILED" | null;
+  last_export_at: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BackupDestinationCreate {
+  name: string;
+  destination_type: BackupDestinationType;
+  enabled?: boolean;
+  config: Record<string, any>;
+  secret?: Record<string, any>;
+  auto_export_enabled?: boolean;
+  auto_export_scope?: { all?: boolean; device_ids?: string[] };
+  retention_days?: number | null;
+}
+
+export interface BackupJob {
+  id: string;
+  destination_id: string;
+  destination_name: string | null;
+  device_id: string;
+  device_hostname: string | null;
+  scan_id: string;
+  trigger: "manual" | "auto_on_backup" | "scheduled";
+  status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+  remote_path: string | null;
+  bytes_written: number | null;
+  sha256: string | null;
+  error: string | null;
+  duration_ms: number | null;
+  triggered_by: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface BackupFleetSummary {
+  total_devices: number;
+  devices_with_snapshot: number;
+  devices_without_snapshot: number;
+  devices_with_golden_config: number;
+  destination_count: number;
+  destinations_healthy: number;
+  destinations_failing: number;
+  recent_jobs_evaluated: number;
+  recent_jobs_success: number;
+  recent_jobs_failed: number;
+}
+
 export interface SecurityDriftFinding {
   drift_id: string;
   tenant_id: string;
@@ -521,6 +709,60 @@ export interface Alert {
   acknowledged_at: string | null;
   dispatch_results: Record<string, string> | null;
   created_at: string;
+}
+
+// --- Enterprise alerting: channels, rules, push -----------------------------
+
+export type AlertChannelType = "email" | "ntfy" | "webhook" | "push";
+
+export interface AlertChannel {
+  id: string;
+  name: string;
+  channel_type: AlertChannelType;
+  enabled: boolean;
+  config: Record<string, any>;
+  has_credentials: boolean;
+  last_test_status: "SUCCESS" | "FAILED" | "NEVER_TESTED" | null;
+  last_test_at: string | null;
+  last_test_message: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AlertChannelCreate {
+  name: string;
+  channel_type: AlertChannelType;
+  enabled?: boolean;
+  config: Record<string, any>;
+  secret?: Record<string, any>;
+}
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match_categories: string[];
+  match_severities: string[];
+  channel_ids: string[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AlertRuleCreate {
+  name: string;
+  enabled?: boolean;
+  match_categories?: string[];
+  match_severities?: string[];
+  channel_ids: string[];
+}
+
+export interface PushSubscriptionSummary {
+  id: string;
+  user_agent: string | null;
+  created_at: string | null;
+  last_used_at: string | null;
+  last_error: string | null;
 }
 
 export interface ChangeRequest {
@@ -743,6 +985,7 @@ export const endpoints = {
   snapshotDiff: (scanId: string) => api.get<SnapshotDiff>(`/api/scans/${scanId}/snapshot-diff`),
   opaAnalysis: (scanId: string) => api.get<OpaAnalysis>(`/api/scans/${scanId}/opa`),
   aiAnalysis: (scanId: string) => api.get<ScanAIAnalysis>(`/api/scans/${scanId}/ai`),
+  aiRemediation: (scanId: string) => api.get<any>(`/api/scans/${scanId}/remediation`),
   aiHealth: () => api.get<AIHealth>("/api/ai/health"),
   systemHealth: () => api.get<SystemHealth>("/api/system/health"),
   findings: (params?: { scan_id?: string; severity?: string; result?: string }) =>
@@ -773,6 +1016,27 @@ export const endpoints = {
 
   reportUrl: (scanId: string, fmt: "pdf" | "json" | "csv") =>
     `${api.defaults.baseURL}/api/reports/${scanId}/${fmt}`,
+  // Fetches the same JSON report as reportUrl(scanId,"json") but via the
+  // authenticated axios instance, so in-app tabs (Compliance Matrix /
+  // Vulnerabilities on ScanDetail) can read compliance_matrix /
+  // vulnerability_matches without a plain <a href> download.
+  reportJson: (scanId: string) => api.get<{
+    compliance_matrix: Array<Record<string, any>>;
+    vulnerability_matches: Array<Record<string, any>>;
+  }>(`/api/reports/${scanId}/json`),
+  verifyReport: (file: File, scanId?: string, fmt?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (scanId) form.append("scan_id", scanId);
+    if (fmt) form.append("fmt", fmt);
+    return api.post<ReportVerifyResult>("/api/reports/verify", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  downloadOriginalReportUrl: (artifactId: string) =>
+    `${api.defaults.baseURL}/api/reports/artifact/${artifactId}/download`,
+  downloadOriginalReport: (artifactId: string) =>
+    api.get(`/api/reports/artifact/${artifactId}/download`, { responseType: "blob" }),
   evidenceList: (scanId?: string) => api.get<EvidenceRecord[]>("/api/evidence", { params: scanId ? { scan_id: scanId } : undefined }),
   evidenceDetail: (evidenceId: string) => api.get<EvidenceDetail>(`/api/evidence/${evidenceId}`),
   evidenceVerify: (evidenceId: string) => api.post<VerifyResult>(`/api/evidence/${evidenceId}/verify`),
@@ -797,6 +1061,27 @@ export const endpoints = {
     api.get<{ device_id: string; count: number; findings: SecurityDriftFinding[] }>(
       `/api/devices/${deviceId}/drift/history`, { params },
     ),
+
+  // --- Enterprise config backup / NCO management ---
+  backupSummary: () => api.get<BackupFleetSummary>("/api/backups/summary"),
+  backupDestinations: () => api.get<{ count: number; destinations: BackupDestination[] }>("/api/backup-destinations"),
+  createBackupDestination: (payload: BackupDestinationCreate) =>
+    api.post<BackupDestination>("/api/backup-destinations", payload),
+  updateBackupDestination: (id: string, payload: Partial<BackupDestinationCreate>) =>
+    api.patch<BackupDestination>(`/api/backup-destinations/${id}`, payload),
+  deleteBackupDestination: (id: string) => api.delete(`/api/backup-destinations/${id}`),
+  testBackupDestination: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/api/backup-destinations/${id}/test`),
+  exportSnapshot: (deviceId: string, snapshotId: string, destinationIds: string[]) =>
+    api.post<{ snapshot_id: string; results: BackupJob[] }>(
+      `/api/devices/${deviceId}/snapshots/${snapshotId}/export`, { destination_ids: destinationIds },
+    ),
+  downloadSnapshot: (deviceId: string, snapshotId: string) =>
+    api.get<{ snapshot_id: string; filename: string; content: string }>(
+      `/api/devices/${deviceId}/snapshots/${snapshotId}/download`,
+    ),
+  backupJobs: (params?: { device_id?: string; destination_id?: string; status?: string; limit?: number }) =>
+    api.get<{ count: number; jobs: BackupJob[] }>("/api/backup-jobs", { params }),
   deviceComplianceHistory: (deviceId: string) =>
     api.get<CompliancePostureHistory>(`/api/devices/${deviceId}/compliance/history`),
   auditDeviceViaGateway: (deviceId: string) => api.post(`/api/devices/${deviceId}/audit`),
@@ -804,7 +1089,18 @@ export const endpoints = {
     api.post(`/api/devices/${deviceId}/gateway-get-facts`, { protocol }),
   gatewayGetInterfaces: (deviceId: string, protocol?: string) =>
     api.post(`/api/devices/${deviceId}/gateway-get-interfaces`, { protocol }),
+  gatewayGetHealthMetrics: (deviceId: string, protocol?: string) =>
+    api.post(`/api/devices/${deviceId}/gateway-get-health-metrics`, { protocol }),
   gatewaySupportedOperations: () => api.get<{ read_only_operations: string[] }>("/api/devices/gateway/operations"),
+  metricsHistory: (deviceId: string, hours = 24) =>
+    api.get<{ device_id: string; count: number; snapshots: any[] }>(
+      `/api/devices/${deviceId}/metrics/history?hours=${hours}`
+    ),
+  metricsLatest: (deviceId: string) =>
+    api.get<{ device_id: string; snapshot: any | null }>(`/api/devices/${deviceId}/metrics/latest`),
+  metricsThresholds: () => api.get<Record<string, number>>("/api/metrics/thresholds"),
+  updateMetricsThresholds: (payload: Partial<Record<string, number>>) =>
+    api.put<Record<string, number>>("/api/metrics/thresholds", payload),
 
   schedules: () => api.get<AuditSchedule[]>("/api/schedules"),
   createSchedule: (payload: {
@@ -825,6 +1121,29 @@ export const endpoints = {
   alerts: (params?: { status?: string; severity?: string; category?: string }) =>
     api.get<{ count: number; alerts: Alert[] }>("/api/alerts", { params }),
   acknowledgeAlert: (id: string) => api.post<Alert>(`/api/alerts/${id}/acknowledge`),
+
+  // --- Enterprise alerting: channels / rules / push ---
+  alertCategories: () => api.get<{ categories: string[]; severities: string[] }>("/api/alerts/categories"),
+  alertChannels: () => api.get<{ count: number; channels: AlertChannel[] }>("/api/alerts/channels"),
+  createAlertChannel: (payload: AlertChannelCreate) => api.post<AlertChannel>("/api/alerts/channels", payload),
+  updateAlertChannel: (id: string, payload: Partial<AlertChannelCreate>) =>
+    api.patch<AlertChannel>(`/api/alerts/channels/${id}`, payload),
+  deleteAlertChannel: (id: string) => api.delete(`/api/alerts/channels/${id}`),
+  testAlertChannel: (id: string) =>
+    api.post<{ success: boolean; message: string }>(`/api/alerts/channels/${id}/test`),
+
+  alertRules: () => api.get<{ count: number; rules: AlertRule[] }>("/api/alerts/rules"),
+  createAlertRule: (payload: AlertRuleCreate) => api.post<AlertRule>("/api/alerts/rules", payload),
+  updateAlertRule: (id: string, payload: Partial<AlertRuleCreate>) =>
+    api.patch<AlertRule>(`/api/alerts/rules/${id}`, payload),
+  deleteAlertRule: (id: string) => api.delete(`/api/alerts/rules/${id}`),
+
+  pushVapidPublicKey: () => api.get<{ public_key: string }>("/api/alerts/push/vapid-public-key"),
+  pushSubscribe: (payload: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>
+    api.post<{ status: string; id: string }>("/api/alerts/push/subscribe", payload),
+  pushUnsubscribe: (endpoint: string) => api.post("/api/alerts/push/unsubscribe", { endpoint }),
+  pushSubscriptions: () =>
+    api.get<{ count: number; subscriptions: PushSubscriptionSummary[] }>("/api/alerts/push/subscriptions"),
 
   aiModels: () => api.get<AIModelsInfo>("/api/ai/models"),
   device: (id: string) => api.get<Device>(`/api/devices/${id}`),
@@ -848,4 +1167,52 @@ export const endpoints = {
   addGns3Server: (data: any) => api.post("/api/gns3/servers", data),
   gns3Labs: (serverId: string) => api.get(`/api/gns3/servers/${serverId}/labs`),
   importGns3Lab: (serverId: string, labId: string) => api.post(`/api/gns3/servers/${serverId}/labs/${labId}/import`),
+
+  // --- Unified Control Library ---
+  controls: (params?: { domain?: string; status?: string; limit?: number; offset?: number }) =>
+    api.get<{ count: number; controls: UnifiedControl[] }>("/api/controls", { params }),
+  createControl: (payload: {
+    name: string; objective?: string; domain?: string; source_text?: string;
+    normalized_description?: string; source_document?: string;
+    framework_mappings?: { framework: string; external_id: string; confidence?: number }[];
+  }) => api.post<UnifiedControl>("/api/controls", payload),
+  control: (id: string) => api.get<UnifiedControl>(`/api/controls/${id}`),
+  updateControl: (id: string, payload: Partial<{
+    name: string; objective: string; domain: string; source_text: string;
+    normalized_description: string; status: string;
+  }>) => api.patch<UnifiedControl>(`/api/controls/${id}`, payload),
+  controlPatterns: (id: string) =>
+    api.get<{ count: number; patterns: VendorConfigPattern[] }>(`/api/controls/${id}/patterns`),
+  addControlPattern: (id: string, payload: {
+    concept_id?: string; concept_name?: string; vendor: string; pattern: string; example_snippet?: string;
+  }) => api.post<VendorConfigPattern>(`/api/controls/${id}/patterns`, payload),
+  compileControl: (id: string) => api.post(`/api/controls/${id}/compile`),
+  pendingReviews: () => api.get<{ count: number; reviews: ControlReview[] }>("/api/controls/reviews/pending"),
+  decideReview: (controlId: string, payload: {
+    decision: "approved" | "rejected" | "corrected"; original_text?: string;
+    proposed_change?: string; correction?: Record<string, unknown>;
+  }) => api.post<ControlReview>(`/api/controls/reviews/${controlId}/decide`, payload),
+
+  // --- Document Ingestion ---
+  ingestDocument: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<DocumentIngestionJob>("/api/controls/ingest-document", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  ingestionStatus: (jobId: string) => api.get<DocumentIngestionJob>(`/api/controls/ingest-document/${jobId}`),
+
+  // --- Vulnerability Management ---
+  vulnerabilities: (params?: { severity?: string; kev_flag?: boolean; limit?: number; offset?: number }) =>
+    api.get<{ count: number; vulnerabilities: Vulnerability[] }>("/api/vulnerabilities", { params }),
+  vulnerability: (cveId: string) => api.get<Vulnerability>(`/api/vulnerabilities/${cveId}`),
+  deviceVulns: (deviceId: string, status?: string) =>
+    api.get<{ device_id: string; count: number; matches: DeviceVulnerabilityMatch[] }>(
+      `/api/devices/${deviceId}/vulns`, { params: { status } },
+    ),
+  correlateDeviceVulns: (deviceId: string) => api.post(`/api/devices/${deviceId}/vulns/correlate`),
+  updateVulnMatchStatus: (deviceId: string, matchId: string, payload: { status: string; justification?: string }) =>
+    api.patch<DeviceVulnerabilityMatch>(`/api/devices/${deviceId}/vulns/${matchId}`, payload),
+  syncVulnFeeds: () => api.post("/api/vulns/sync"),
 };

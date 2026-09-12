@@ -17,6 +17,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     items: [
       { to: "/devices", label: "Devices" },
+      { to: "/backups", label: "Config Backups" },
       { to: "/network-scans", label: "Network Scans & Discovery", roles: ["admin", "security_analyst", "operator"] },
       { to: "/schedules", label: "Schedules" },
       { to: "/gns3-integration", label: "GNS3 Virtual Sandbox", roles: ["admin", "security_analyst"] },
@@ -29,6 +30,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/drift", label: "Drift" },
       { to: "/validation", label: "Validation", roles: ["admin", "security_analyst", "operator"] },
       { to: "/reports", label: "Reports" },
+      { to: "/report-verification", label: "Report Verification" },
     ],
   },
   {
@@ -37,6 +39,8 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/topology", label: "Topology" },
       { to: "/evidence", label: "Evidence Ledger" },
       { to: "/alerts", label: "Alerts" },
+      { to: "/control-library", label: "Control Library", roles: ["admin", "security_analyst", "auditor"] },
+      { to: "/vulnerabilities", label: "Vulnerabilities" },
     ],
   },
   {

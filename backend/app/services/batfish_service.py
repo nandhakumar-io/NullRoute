@@ -514,6 +514,332 @@ def compare_network_snapshots(
     }
 
 
+# ---------------------------------------------------------------------------
+# Multi-device topology-group analysis (Datacenter/Rack/NetworkGroup) and
+# admin-defined "desired network behaviour" questions.
+#
+# This is the generalization of analyze_security_behavior() above (which
+# only ever loads a single device's config into a snapshot) to a whole
+# group of devices at once, so Batfish can compute real cross-device
+# forwarding/reachability instead of only intra-device ACL/route checks.
+# ---------------------------------------------------------------------------
+
+def group_snapshot_dir(group_id: str) -> str:
+    return os.path.join(BATFISH_SNAPSHOT_ROOT, f"group-{group_id}", "configs")
+
+
+def create_group_snapshot(group_id: str, device_configs: Dict[str, str]) -> str:
+    """Write every member device's latest raw config into one snapshot
+    directory. `device_configs` maps hostname -> raw config text. Returns
+    the snapshot root (parent of configs/)."""
+    cfg_dir = group_snapshot_dir(group_id)
+    shutil.rmtree(os.path.dirname(cfg_dir), ignore_errors=True)
+    os.makedirs(cfg_dir, exist_ok=True)
+    for hostname, raw_config in device_configs.items():
+        safe_hostname = re.sub(r"[^A-Za-z0-9_.-]", "_", hostname or "device")
+        with open(os.path.join(cfg_dir, f"{safe_hostname}.cfg"), "w") as f:
+            f.write(raw_config or "")
+    return os.path.dirname(cfg_dir)
+
+
+def delete_group_snapshot(group_id: str) -> None:
+    shutil.rmtree(os.path.join(BATFISH_SNAPSHOT_ROOT, f"group-{group_id}"), ignore_errors=True)
+
+
+# Supported admin-defined question types and the params each expects. Kept
+# as a fixed, structured menu (never free-text/eval) so results stay
+# deterministic and auditable -- Batfish decides the answer, not an LLM.
+QUESTION_TYPES = {
+    "reachability": {
+        "params": ["start_location", "end_location", "expected_reachable"],
+        "description": "Can traffic get from start_location to end_location? (e.g. 'Guest[Vlan100]' -> 'Core[Vlan10]')",
+    },
+    "acl_reachability": {
+        "params": ["node_regex"],
+        "description": "Are any ACL/filter lines on the matched nodes unreachable or shadowed?",
+    },
+    "filter_line_reachability": {
+        "params": ["node_regex", "filter_regex"],
+        "description": "Are any lines of the named filters/ACLs on the matched nodes unreachable?",
+    },
+    "ip_owners": {
+        "params": ["ip"],
+        "description": "Which node/interface currently owns a given IP address? Flags duplicate ownership.",
+    },
+    "subnet_multipath": {
+        "params": ["start_location", "end_location"],
+        "description": "Does traffic between two locations take multiple, possibly asymmetric, paths?",
+    },
+    "traceroute": {
+        "params": ["start_location", "header_dst_ip"],
+        "description": "Trace the hop-by-hop path a flow would take from start_location to a destination IP.",
+    },
+    "bgp_session_status": {
+        "params": ["node_regex"],
+        "description": "Are all configured BGP sessions on the matched nodes established?",
+    },
+    "undefined_references": {
+        "params": [],
+        "description": "Does any device reference an object (ACL, route-map, prefix-list...) that was never defined?",
+    },
+    "node_properties": {
+        "params": ["node_regex", "property_regex"],
+        "description": "Inspect a raw node property (e.g. NTP-Servers, DNS-Servers) across matched nodes.",
+    },
+}
+
+
+def run_named_question(bf, question_type: str, params: Dict[str, Any], name: str,
+                        control_id: str, severity: str = "MEDIUM") -> ReachabilityResult:
+    """Run one admin-defined 'desired network behaviour' question against an
+    already-initialized Batfish snapshot. Returns a ReachabilityResult so it
+    slots into the same finding/report pipeline as the built-in checks --
+    UNSUPPORTED/ERROR are always distinct from PASS, never coerced."""
+    params = params or {}
+    qtype = (question_type or "").strip().lower()
+    if qtype not in QUESTION_TYPES:
+        return ReachabilityResult(
+            status="BATFISH_UNSUPPORTED", control_id=control_id, title=name,
+            source_zone="CUSTOM", destination_zone="CUSTOM", severity=severity,
+            detail=f"Unknown question_type '{question_type}'. Supported: {sorted(QUESTION_TYPES)}",
+        )
+    try:
+        if qtype == "reachability":
+            start = params.get("start_location")
+            end = params.get("end_location")
+            expected = bool(params.get("expected_reachable", True))
+            if not start or not end:
+                return ReachabilityResult(
+                    status="BATFISH_UNSUPPORTED", control_id=control_id, title=name,
+                    source_zone=str(start or "?"), destination_zone=str(end or "?"), severity=severity,
+                    detail="start_location and end_location are both required for a reachability question.",
+                )
+            return test_reachability(
+                bf, [start], [end], control_id=control_id, title=name,
+                source_zone=str(start), destination_zone=str(end),
+                expected_reachable=expected, severity=severity,
+            )
+
+        if qtype == "acl_reachability":
+            return test_acl_behavior(bf, params.get("node_regex", ".*"), control_id, name)
+
+        if qtype == "filter_line_reachability":
+            df = bf.q.filterLineReachability(
+                nodes=params.get("node_regex", ".*"),
+                filters=params.get("filter_regex", ".*"),
+            ).answer().frame()
+            has_issue = len(df) > 0
+            return ReachabilityResult(
+                status="BATFISH_FAIL" if has_issue else "BATFISH_PASS", control_id=control_id, title=name,
+                source_zone="FILTER", destination_zone="FILTER", severity=severity,
+                evidence={"unreachable_line_count": len(df), "sample": df.astype(str).head(5).to_dict(orient="records")},
+                detail="Unreachable filter lines found" if has_issue else "All filter lines reachable",
+            )
+
+        if qtype == "ip_owners":
+            ip = params.get("ip")
+            if not ip:
+                return ReachabilityResult(
+                    status="BATFISH_UNSUPPORTED", control_id=control_id, title=name,
+                    source_zone="IP", destination_zone="IP", severity=severity, detail="`ip` param is required.",
+                )
+            df = bf.q.ipOwners().answer().frame()
+            matches = df[df.get("IP", df.get("Ip", "")).astype(str) == str(ip)] if len(df) else df
+            n_owners = len(matches)
+            return ReachabilityResult(
+                status="BATFISH_FAIL" if n_owners > 1 else "BATFISH_PASS", control_id=control_id, title=name,
+                source_zone=str(ip), destination_zone=str(ip), severity=severity,
+                evidence={"owner_count": n_owners, "owners": matches.astype(str).to_dict(orient="records")},
+                detail=f"{n_owners} node(s) own {ip}" + (" -- possible duplicate IP" if n_owners > 1 else ""),
+            )
+
+        if qtype == "subnet_multipath":
+            start, end = params.get("start_location"), params.get("end_location")
+            if not start or not end:
+                return ReachabilityResult(
+                    status="BATFISH_UNSUPPORTED", control_id=control_id, title=name,
+                    source_zone=str(start or "?"), destination_zone=str(end or "?"), severity=severity,
+                    detail="start_location and end_location are both required.",
+                )
+            df = bf.q.reachability(pathConstraints={"startLocation": start, "endLocation": end}).answer().frame()
+            multi = len(df) > 1
+            return ReachabilityResult(
+                status="BATFISH_FAIL" if multi else "BATFISH_PASS", control_id=control_id, title=name,
+                source_zone=str(start), destination_zone=str(end), severity=severity,
+                evidence={"path_count": len(df)}, detail=f"{len(df)} distinct path(s) found",
+            )
+
+        if qtype == "traceroute":
+            start = params.get("start_location")
+            dst = params.get("header_dst_ip")
+            if not start or not dst:
+                return ReachabilityResult(
+                    status="BATFISH_UNSUPPORTED", control_id=control_id, title=name,
+                    source_zone=str(start or "?"), destination_zone=str(dst or "?"), severity=severity,
+                    detail="start_location and header_dst_ip are both required.",
+                )
+            df = bf.q.traceroute(startLocation=start, headers={"dstIps": dst}).answer().frame()
+            return ReachabilityResult(
+                status="BATFISH_PASS", control_id=control_id, title=name,
+                source_zone=str(start), destination_zone=str(dst), severity=severity,
+                evidence={"traces": df.astype(str).head(10).to_dict(orient="records")},
+                detail=f"Traced {len(df)} flow(s) from {start} to {dst}",
+            )
+
+        if qtype == "bgp_session_status":
+            df = bf.q.bgpSessionStatus(nodes=params.get("node_regex", ".*")).answer().frame()
+            not_established = df[df.get("Established_Status", "") != "ESTABLISHED"] if len(df) else df
+            has_issue = len(not_established) > 0
+            return ReachabilityResult(
+                status="BATFISH_FAIL" if has_issue else "BATFISH_PASS", control_id=control_id, title=name,
+                source_zone="BGP", destination_zone="BGP", severity=severity,
+                evidence={"not_established": len(not_established), "sample": not_established.astype(str).head(5).to_dict(orient="records")},
+                detail="Some BGP sessions are not established" if has_issue else "All BGP sessions established",
+            )
+
+        if qtype == "undefined_references":
+            df = bf.q.undefinedReferences().answer().frame()
+            has_issue = len(df) > 0
+            return ReachabilityResult(
+                status="BATFISH_FAIL" if has_issue else "BATFISH_PASS", control_id=control_id, title=name,
+                source_zone="REFERENCES", destination_zone="REFERENCES", severity=severity,
+                evidence={"undefined_count": len(df), "sample": df.astype(str).head(5).to_dict(orient="records")},
+                detail="Undefined references found" if has_issue else "No undefined references",
+            )
+
+        if qtype == "node_properties":
+            df = bf.q.nodeProperties(
+                nodes=params.get("node_regex", ".*"),
+                properties=params.get("property_regex"),
+            ).answer().frame()
+            return ReachabilityResult(
+                status="BATFISH_PASS", control_id=control_id, title=name,
+                source_zone="NODE", destination_zone="NODE", severity=severity,
+                evidence={"rows": df.astype(str).to_dict(orient="records")},
+                detail=f"Fetched properties for {len(df)} node(s)",
+            )
+
+        return ReachabilityResult(
+            status="BATFISH_UNSUPPORTED", control_id=control_id, title=name,
+            source_zone="CUSTOM", destination_zone="CUSTOM", severity=severity,
+            detail=f"Question type '{qtype}' recognized but not yet wired to a runner.",
+        )
+    except Exception as e:
+        logger.exception("Custom Batfish question '%s' (%s) failed", name, qtype)
+        return ReachabilityResult(
+            status="BATFISH_ERROR", control_id=control_id, title=name,
+            source_zone="CUSTOM", destination_zone="CUSTOM", severity=severity,
+            detail=f"Batfish question error: {e}",
+        )
+
+
+def analyze_network_group(
+    group_id: str,
+    device_configs: Dict[str, str],
+    custom_questions: Optional[List[Dict[str, Any]]] = None,
+) -> BatfishAnalysisResult:
+    """Full-topology Batfish analysis for a NetworkGroup: loads every member
+    device's latest config into a single snapshot (so cross-device
+    forwarding is modeled correctly, unlike the single-device path above),
+    runs the same built-in segmentation/ACL/route checks per detected zone,
+    and then runs every enabled admin-defined BatfishQuestion for the group.
+
+    `custom_questions` is a list of dicts: {id, name, question_type, params,
+    severity}. Never raises -- degrades to BATFISH_UNAVAILABLE/ERROR like
+    analyze_security_behavior().
+    """
+    if not BATFISH_ENABLED:
+        return BatfishAnalysisResult(status="NOT_INTEGRATED", detail="BATFISH_ENABLED=false")
+    if not device_configs:
+        return BatfishAnalysisResult(status="BATFISH_UNSUPPORTED", detail="Group has no devices with a collected/uploaded config yet.")
+
+    try:
+        bf = _get_session()
+    except Exception as e:
+        logger.warning("Batfish session unavailable: %s", e)
+        return BatfishAnalysisResult(status="BATFISH_UNAVAILABLE", detail=str(e))
+
+    try:
+        hc = health_check()
+        if hc.get("status") == "unreachable":
+            return BatfishAnalysisResult(status="BATFISH_UNAVAILABLE", detail=str(hc.get("error")))
+
+        network = f"group-{group_id}"
+        bf.set_network(network)
+        snapshot_root = create_group_snapshot(group_id, device_configs)
+        snapshot_name = f"snapshot-{group_id}"
+        try:
+            bf.init_snapshot(snapshot_root, name=snapshot_name, overwrite=True)
+        except Exception as e:
+            logger.exception("Batfish group snapshot init failed for group %s", group_id)
+            return BatfishAnalysisResult(status="BATFISH_ERROR", network_name=network, detail=f"Snapshot init failed: {e}")
+
+        init_issues = get_init_issues(bf)
+        nodes = get_nodes(bf)
+        interfaces = get_interfaces(bf)
+        routes = get_routes(bf)
+
+        checks: List[ReachabilityResult] = []
+
+        # Aggregate zone detection across every member device's config so
+        # segmentation checks work even when zones are split across boxes.
+        combined_zones: Dict[str, List[str]] = {z: [] for z in _ZONE_PATTERNS}
+        for raw_config in device_configs.values():
+            zones = infer_zones(raw_config)
+            for z, ifaces in zones.items():
+                for i in ifaces:
+                    if i not in combined_zones[z]:
+                        combined_zones[z].append(i)
+
+        checks.append(test_reachability(
+            bf, combined_zones["GUEST"], combined_zones["MANAGEMENT"],
+            control_id="GROUP-SEGMENTATION-GUEST-MGMT-001", title="Guest network must not reach Management network",
+            source_zone="GUEST", destination_zone="MANAGEMENT", expected_reachable=False, severity="CRITICAL",
+        ))
+        checks.append(test_reachability(
+            bf, combined_zones["INTERNET"], combined_zones["MANAGEMENT"],
+            control_id="GROUP-SEGMENTATION-INET-MGMT-001", title="Internet must not reach Management network",
+            source_zone="INTERNET", destination_zone="MANAGEMENT", expected_reachable=False, severity="CRITICAL",
+        ))
+        checks.append(test_acl_behavior(bf, ".*", control_id="GROUP-ACL-EFFECTIVENESS-001", title="ACL effectiveness / shadowed rules (group)"))
+        checks.append(test_route_behavior(bf, control_id="GROUP-ROUTE-DEFAULT-001", title="Default route behavior (group)"))
+
+        # Admin-defined questions -- these are what makes this "the full
+        # potential" of the group scan: arbitrary desired-behaviour checks
+        # authored by the network admin, not hardcoded in this file.
+        for q in (custom_questions or []):
+            if not q.get("enabled", True):
+                continue
+            checks.append(run_named_question(
+                bf,
+                question_type=q.get("question_type"),
+                params=q.get("params") or {},
+                name=q.get("name") or q.get("question_type") or "Custom question",
+                control_id=f"CUSTOM-{q.get('id', uuid.uuid4().hex[:8])}",
+                severity=q.get("severity", "MEDIUM"),
+            ))
+
+        critical_violation = any(c.status == "BATFISH_FAIL" and c.severity == "CRITICAL" for c in checks)
+        any_fail = any(c.status == "BATFISH_FAIL" for c in checks)
+        any_error = any(c.status == "BATFISH_ERROR" for c in checks)
+        overall = "BATFISH_FAIL" if any_fail else ("BATFISH_ERROR" if any_error else "BATFISH_PASS")
+
+        return BatfishAnalysisResult(
+            status=overall, network_name=network, snapshot_name=snapshot_name,
+            init_issues=init_issues, nodes=nodes, interfaces=interfaces, routes=routes,
+            reachability_checks=checks, critical_violation=critical_violation,
+            detail=f"Group Batfish analysis complete for {len(device_configs)} device(s), {len(custom_questions or [])} custom question(s).",
+        )
+    except Exception as e:
+        logger.exception("Unhandled Batfish group analysis error for group %s", group_id)
+        return BatfishAnalysisResult(status="BATFISH_ERROR", detail=str(e))
+    finally:
+        try:
+            delete_group_snapshot(group_id)
+        except Exception:
+            pass
+
+
 # Backwards-compatible alias kept for code paths that still call the generic
 # helper name used elsewhere in the project.
 def compare_snapshots(bf, network: str, before_snapshot: str, after_snapshot: str) -> Dict[str, Any]:

@@ -51,6 +51,36 @@ SYS_OBJECT_ID_OID = "1.3.6.1.2.1.1.2.0"
 SYS_UPTIME_OID = "1.3.6.1.2.1.1.3.0"
 SYS_NAME_OID = "1.3.6.1.2.1.1.5.0"
 
+# HOST-RESOURCES-MIB (RFC 2790) -- vendor-agnostic CPU/memory, supported by
+# every one of this app's five target vendors' SNMP agents (Cisco, Juniper,
+# Arista, FortiGate, Palo Alto all implement HOST-RESOURCES-MIB alongside
+# their proprietary CPU/memory MIBs). Deliberately NOT using e.g. Cisco's
+# CISCO-PROCESS-MIB (cpmCPUTotal5min) here to keep one code path working
+# across vendors instead of a per-vendor OID table (RULE 11).
+HR_PROCESSOR_LOAD_TABLE = "1.3.6.1.2.1.25.3.3.1.2"     # hrProcessorLoad, walked per-CPU
+HR_STORAGE_DESCR_TABLE = "1.3.6.1.2.1.25.2.3.1.3"      # hrStorageDescr
+HR_STORAGE_ALLOC_UNITS_TABLE = "1.3.6.1.2.1.25.2.3.1.4"  # hrStorageAllocationUnits
+HR_STORAGE_SIZE_TABLE = "1.3.6.1.2.1.25.2.3.1.5"       # hrStorageSize
+HR_STORAGE_USED_TABLE = "1.3.6.1.2.1.25.2.3.1.6"       # hrStorageUsed
+# hrStorageType values that represent RAM (vs. disk/swap/removable media) --
+# we only want "Memory" and "Virtual Memory" for a health-panel summary.
+HR_STORAGE_RAM_TYPES = ("1.3.6.1.2.1.25.2.1.2", "1.3.6.1.2.1.25.2.1.3")
+
+# IF-MIB high-capacity (64-bit) counters (RFC 2863) -- ifHC* rather than the
+# 32-bit ifIn/OutOctets used nowhere else in this file, since a busy uplink
+# wraps a 32-bit octet counter in well under a minute and produces nonsense
+# deltas. Error/discard counters are still 32-bit only (no HC variant exists
+# in the standard) but wrap far less often at realistic error rates.
+_IF_HEALTH_COLUMNS: Dict[str, str] = {
+    "name":         "1.3.6.1.2.1.2.2.1.2",       # ifDescr (kept for correlation with get_interfaces' "name")
+    "in_octets_hc":  "1.3.6.1.2.1.31.1.1.1.6",   # ifHCInOctets
+    "out_octets_hc": "1.3.6.1.2.1.31.1.1.1.10",  # ifHCOutOctets
+    "in_errors":    "1.3.6.1.2.1.2.2.1.14",      # ifInErrors
+    "out_errors":   "1.3.6.1.2.1.2.2.1.20",      # ifOutErrors
+    "in_discards":  "1.3.6.1.2.1.2.2.1.13",      # ifInDiscards
+    "out_discards": "1.3.6.1.2.1.2.2.1.19",      # ifOutDiscards
+}
+
 # IF-MIB columns walked for get_interfaces()
 _IF_MIB_COLUMNS: Dict[str, str] = {
     "index":        "1.3.6.1.2.1.2.2.1.1",
@@ -297,4 +327,130 @@ class SNMPCollector(BaseCollector):
             vendor=device.vendor,
             hostname=device.hostname,
             data={"interfaces": interfaces, "interface_count": len(interfaces)},
+        )
+
+    @timed_structured
+    def get_health_metrics(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        """Live health/performance snapshot: per-CPU load (HOST-RESOURCES-MIB
+        hrProcessorLoad), RAM utilization (hrStorage, RAM-typed rows only),
+        and per-interface traffic/error/discard counters (IF-MIB high-
+        capacity counters). This is deliberately separate from get_facts()
+        (static identity) and get_interfaces() (admin/oper status) -- it's
+        the "is this device under load / dropping traffic right now" view
+        for the Device Detail health panel."""
+        if not PYSNMP_AVAILABLE:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error="pysnmp is not installed; SNMP probing unavailable in this environment",
+            )
+        secret = credentials.secret
+        try:
+            management_address = _validate_target(device)
+        except ValueError as e:
+            return StructuredResult(success=False, vendor=device.vendor, hostname=device.hostname, error=str(e))
+
+        def _walk_column(base_oid: str):
+            async def _walk():
+                rows = []
+                async for (error_indication, error_status, error_index, var_binds) in bulk_cmd(
+                    SnmpEngine(),
+                    _auth_data(secret),
+                    _transport(secret, management_address),
+                    ContextData(),
+                    0, 25,
+                    ObjectType(ObjectIdentity(base_oid)),
+                    lexicographicMode=False,
+                ):
+                    rows.append((error_indication, error_status, error_index, var_binds))
+                return rows
+            return _run_async(_walk())
+
+        def _column_values(base_oid: str, label: str) -> Dict[str, str]:
+            """Returns {table_index: value} for one MIB column, or raises a
+            plain Exception on any SNMP-level error (caller wraps it)."""
+            values: Dict[str, str] = {}
+            for error_indication, error_status, error_index, var_binds in _walk_column(base_oid):
+                if error_indication:
+                    raise RuntimeError(f"walking {label}: {error_indication}")
+                if error_status:
+                    raise RuntimeError(f"walking {label}: {error_status.prettyPrint()}")
+                for oid, value in var_binds:
+                    oid_str = str(oid)
+                    if not oid_str.startswith(base_oid + "."):
+                        continue
+                    idx = oid_str[len(base_oid) + 1:]
+                    values[idx] = value.prettyPrint() if hasattr(value, "prettyPrint") else str(value)
+            return values
+
+        try:
+            # --- CPU: hrProcessorLoad is a % (0-100) per logical processor ---
+            cpu_by_index = _column_values(HR_PROCESSOR_LOAD_TABLE, "hrProcessorLoad")
+            cpu_loads = []
+            for v in cpu_by_index.values():
+                try:
+                    cpu_loads.append(int(v))
+                except (TypeError, ValueError):
+                    continue
+            cpu_average_pct = round(sum(cpu_loads) / len(cpu_loads), 1) if cpu_loads else None
+
+            # --- Memory: hrStorage, filtered to RAM-typed rows only ---
+            storage_type = _column_values("1.3.6.1.2.1.25.2.3.1.2", "hrStorageType")  # hrStorageType
+            storage_descr = _column_values(HR_STORAGE_DESCR_TABLE, "hrStorageDescr")
+            storage_units = _column_values(HR_STORAGE_ALLOC_UNITS_TABLE, "hrStorageAllocationUnits")
+            storage_size = _column_values(HR_STORAGE_SIZE_TABLE, "hrStorageSize")
+            storage_used = _column_values(HR_STORAGE_USED_TABLE, "hrStorageUsed")
+
+            memory_total_bytes = 0
+            memory_used_bytes = 0
+            memory_rows = []
+            for idx, type_oid in storage_type.items():
+                if not any(type_oid == t or type_oid.endswith(t.split(".")[-1]) for t in HR_STORAGE_RAM_TYPES):
+                    continue
+                try:
+                    units = int(storage_units.get(idx, "1"))
+                    size = int(storage_size.get(idx, "0")) * units
+                    used = int(storage_used.get(idx, "0")) * units
+                except (TypeError, ValueError):
+                    continue
+                memory_total_bytes += size
+                memory_used_bytes += used
+                memory_rows.append({
+                    "description": storage_descr.get(idx, f"storage[{idx}]"),
+                    "total_bytes": size,
+                    "used_bytes": used,
+                })
+            memory_used_pct = (
+                round(100.0 * memory_used_bytes / memory_total_bytes, 1) if memory_total_bytes else None
+            )
+
+            # --- Interface traffic/errors: IF-MIB high-capacity counters ---
+            if_columns: Dict[str, Dict[str, str]] = {name: _column_values(oid, name) for name, oid in _IF_HEALTH_COLUMNS.items()}
+            by_if_index: Dict[str, Dict[str, Any]] = {}
+            for name, values in if_columns.items():
+                for idx, v in values.items():
+                    row = by_if_index.setdefault(idx, {"if_index": idx})
+                    row[name] = v
+            interface_health = sorted(
+                by_if_index.values(),
+                key=lambda r: int(r["if_index"]) if r.get("if_index", "").isdigit() else 0,
+            )
+        except Exception as e:  # noqa: BLE001 -- any SNMP-level failure degrades to a failed result, never a raise
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"SNMP error collecting health metrics: {e}", secret),
+            )
+
+        return StructuredResult(
+            success=True,
+            vendor=device.vendor,
+            hostname=device.hostname,
+            data={
+                "cpu_average_pct": cpu_average_pct,
+                "cpu_per_processor_pct": {k: (int(v) if v.isdigit() else v) for k, v in cpu_by_index.items()},
+                "memory_used_pct": memory_used_pct,
+                "memory_total_bytes": memory_total_bytes or None,
+                "memory_used_bytes": memory_used_bytes or None,
+                "memory_pools": memory_rows,
+                "interface_health": interface_health,
+            },
         )

@@ -30,6 +30,7 @@ SUBJECTS = {
     "GET_VERSION": ("netsec.device.audit.request", "netsec.device.audit.result"),
     "GET_INTERFACES": ("netsec.device.audit.request", "netsec.device.audit.result"),
     "GET_NEIGHBORS": ("netsec.device.audit.request", "netsec.device.audit.result"),
+    "GET_HEALTH_METRICS": ("netsec.device.audit.request", "netsec.device.audit.result"),
 }
 ERROR_SUBJECT = "netsec.device.error"
 

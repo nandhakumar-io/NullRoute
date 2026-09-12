@@ -59,6 +59,12 @@ class Device(Base):
     tags = Column(JSON, nullable=True)  # list[str]
     enabled = Column(Boolean, nullable=False, default=True)
 
+    # Physical/logical topology placement (all optional / independently
+    # settable): a device can sit in a rack inside a datacenter, and/or be a
+    # member of a NetworkGroup used for grouped Batfish analysis.
+    datacenter_id = Column(String, ForeignKey("datacenters.id"), nullable=True, index=True)
+    rack_id = Column(String, ForeignKey("racks.id"), nullable=True, index=True)
+
     scans = relationship("Scan", back_populates="device")
 
 
@@ -773,3 +779,385 @@ class Gns3Server(Base):
     initialized_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+
+# ---------------------------------------------------------------------------
+# Unified Control Layer (Part 1) — SCF/UCF/OSCAL-inspired control knowledge
+# base.  These tables are purely additive: they enrich OPA policy outputs and
+# generate/update Rego files in the OPA policy directory.  The OPA engine
+# itself is never replaced or bypassed (RULE 1/2/14).
+# ---------------------------------------------------------------------------
+
+class UnifiedControl(Base):
+    """One normalized security control drawn from CIS, NIST, ISO 27001, DISA
+    STIGs, or a vendor hardening guide.  `status` starts as 'pending_review'
+    and advances to 'approved' after a security engineer confirms the LLM
+    extraction.  A row here drives both the Rego policy compiler and the
+    multi-framework compliance matrix in audit reports.
+    """
+    __tablename__ = "unified_controls"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    objective = Column(Text, nullable=True)
+    domain = Column(String, nullable=True, index=True)  # management/logging/aaa/snmp/password/…
+    source_text = Column(Text, nullable=True)
+    normalized_description = Column(Text, nullable=True)
+    status = Column(String, default="pending_review", nullable=False, index=True)  # pending_review/approved
+    source_document = Column(String, nullable=True)
+    created_by = Column(String, nullable=True)
+    approved_by = Column(String, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    framework_mappings = relationship("FrameworkMapping", back_populates="control", cascade="all, delete-orphan")
+    config_concepts = relationship("ConfigConcept", back_populates="control", cascade="all, delete-orphan")
+    reviews = relationship("ControlReview", back_populates="control", cascade="all, delete-orphan")
+
+
+class FrameworkMapping(Base):
+    """Maps one UnifiedControl to an external framework control ID (e.g.
+    NIST AC-17, CIS L1-SSH-001, DISA-STIG-NET-001).  A single UnifiedControl
+    commonly maps to IDs in multiple frameworks simultaneously.
+    """
+    __tablename__ = "framework_mappings"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    control_id = Column(String, ForeignKey("unified_controls.id"), nullable=False, index=True)
+    framework = Column(String, nullable=False, index=True)  # NIST-800-53/CIS/ISO-27001/DISA-STIG
+    external_id = Column(String, nullable=False)
+    confidence = Column(Float, nullable=True)   # 0-1, LLM extraction confidence
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    control = relationship("UnifiedControl", back_populates="framework_mappings")
+
+
+class ConfigConcept(Base):
+    """An abstract security-parameter concept tied to a UnifiedControl —
+    e.g. `mgmt_protocol`, `idle_timeout`, `logging_server`.
+    ConfigConcepts are vendor-agnostic; vendor-specific regexes live in
+    VendorConfigPattern.
+    """
+    __tablename__ = "config_concepts"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    control_id = Column(String, ForeignKey("unified_controls.id"), nullable=False, index=True)
+    concept_name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    control = relationship("UnifiedControl", back_populates="config_concepts")
+    vendor_patterns = relationship("VendorConfigPattern", back_populates="concept", cascade="all, delete-orphan")
+
+
+class VendorConfigPattern(Base):
+    """The learnable mapping layer: a vendor-specific regex/pattern for one
+    ConfigConcept.  Engineers add rows here as new device configs are ingested;
+    the policy compiler uses these to generate Rego rules.
+    """
+    __tablename__ = "vendor_config_patterns"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    concept_id = Column(String, ForeignKey("config_concepts.id"), nullable=False, index=True)
+    vendor = Column(String, nullable=False, index=True)
+    pattern = Column(String, nullable=False)    # Python re-compatible regex
+    example_snippet = Column(Text, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    concept = relationship("ConfigConcept", back_populates="vendor_patterns")
+
+
+class ControlReview(Base):
+    """Audit trail of human corrections to LLM-extracted controls and
+    mappings.  `correction_json` stores the diff between the original
+    LLM proposal and the human-corrected value, usable as few-shot examples
+    for future LLM prompts (never used to change OPA outcomes — RULE 1).
+    """
+    __tablename__ = "control_reviews"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    control_id = Column(String, ForeignKey("unified_controls.id"), nullable=False, index=True)
+    reviewer = Column(String, nullable=False)
+    original_text = Column(Text, nullable=True)
+    proposed_change = Column(Text, nullable=True)
+    decision = Column(String, nullable=False)      # approved/rejected/corrected
+    correction_json = Column(JSON, nullable=True)  # structured diff for few-shot reuse
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    control = relationship("UnifiedControl", back_populates="reviews")
+
+
+# ---------------------------------------------------------------------------
+# Vulnerability Management Layer (Part 2) — CVE/NVD/KEV/PSIRT driven.
+# ---------------------------------------------------------------------------
+
+class Vulnerability(Base):
+    """One CVE record, upserted by the daily vuln_sync_worker from NVD,
+    CISA KEV, and vendor PSIRT feeds.  `cve_id` is the primary key so
+    upserts are idempotent.  `affected_cpe_ranges` is a JSON list of
+    CPE 2.3 strings / version-range dicts matching NVD's schema.
+    """
+    __tablename__ = "vulnerabilities"
+    cve_id = Column(String, primary_key=True)
+    cvss_score = Column(Float, nullable=True)
+    severity = Column(String, nullable=True, index=True)  # CRITICAL/HIGH/MEDIUM/LOW/NONE
+    description = Column(Text, nullable=True)
+    affected_cpe_ranges = Column(JSON, nullable=True)     # list[str | dict]
+    kev_flag = Column(Boolean, default=False, nullable=False)
+    published_date = Column(DateTime, nullable=True)
+    last_modified_date = Column(DateTime, nullable=True)
+    source = Column(String, default="nvd", nullable=False)  # nvd/cisa_kev/cisco_psirt/juniper_jsa/paloalto
+    remediation_advice = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    device_matches = relationship("DeviceVulnerabilityMatch", back_populates="vulnerability")
+
+
+class DeviceVulnerabilityMatch(Base):
+    """One potential CVE/device intersection created by the correlation task.
+    `status` starts as 'open' and advances through the review workflow.
+    `linked_control_id` ties the remediation to a UnifiedControl when one
+    exists (e.g. 'disable SNMPv1' → control enforcing SNMPv3).  Historical
+    rows are never deleted — status changes ARE the audit trail (RULE 15).
+    """
+    __tablename__ = "device_vulnerability_matches"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    cve_id = Column(String, ForeignKey("vulnerabilities.cve_id"), nullable=False, index=True)
+    matched_via = Column(String, nullable=False)    # cpe/keyword/psirt
+    risk_priority_score = Column(Float, nullable=True)  # CVSS × KEV boost × exposure factor
+    status = Column(String, default="open", nullable=False, index=True)  # open/mitigated/accepted_risk/false_positive
+    evidence = Column(JSON, nullable=True)
+    justification = Column(Text, nullable=True)
+    reviewed_by = Column(String, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    linked_control_id = Column(String, ForeignKey("unified_controls.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    vulnerability = relationship("Vulnerability", back_populates="device_matches")
+    linked_control = relationship("UnifiedControl")
+
+
+class DocumentIngestionJob(Base):
+    """Tracks one async document_ingestion_service run so the upload
+    endpoint can return immediately (parsing/LLM extraction can take a
+    while) and the UI can poll status via GET
+    /api/controls/ingest-document/{job_id}, matching the TrainingJob /
+    NetworkScanJob polling pattern already used elsewhere in this API.
+    """
+    __tablename__ = "document_ingestion_jobs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    source_path = Column(String, nullable=True)
+    status = Column(String, default="queued", nullable=False, index=True)  # queued/parsing/extracting/completed/failed
+    llm_used = Column(Boolean, default=False, nullable=False)
+    controls_created = Column(Integer, default=0, nullable=False)
+    sections_found = Column(Integer, default=0, nullable=False)
+    warning = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class DeviceMetricSnapshot(Base):
+    """One polled health/performance sample for a device (Phase 15 --
+    metrics history & trending). Populated by
+    app.workers.metrics_poller_worker on a fixed interval, independent of
+    on-demand gateway-get-health-metrics calls used by the Device Detail
+    "live" panel. Storing snapshots (instead of only the live value) is
+    what makes interface *utilization* possible -- ifHCIn/OutOctets are
+    cumulative counters, so utilization needs the delta between two
+    samples and the elapsed time, not a single point-in-time read -- and
+    is what powers CPU/memory/traffic trend charts and threshold alerting.
+    """
+    __tablename__ = "device_metric_snapshots"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    collected_at = Column(DateTime, default=datetime.utcnow, index=True)
+    source = Column(String, nullable=False, default="snmp")  # snmp/gnmi/restconf -- transport that produced this sample
+    success = Column(Boolean, nullable=False, default=True)
+    error = Column(Text, nullable=True)
+    cpu_average_pct = Column(Float, nullable=True)
+    memory_used_pct = Column(Float, nullable=True)
+    memory_total_bytes = Column(Float, nullable=True)
+    memory_used_bytes = Column(Float, nullable=True)
+    # Raw per-interface counters straight from the collector, keyed by
+    # if_index -- kept so utilization can always be recomputed against any
+    # prior snapshot, not just the immediately-preceding one.
+    interface_counters = Column(JSON, nullable=True)
+    # Derived per-interface utilization (%) computed against the previous
+    # snapshot for this device at insert time -- precomputed so the API/UI
+    # never needs to walk history to render a chart.
+    interface_utilization = Column(JSON, nullable=True)
+    environmental = Column(JSON, nullable=True)  # temperature/fan/power sensor readings, when the device exposes them
+
+    device = relationship("Device")
+
+
+class TenantSetting(Base):
+    """Generic per-tenant key/value config store (Phase 15's first user is
+    metrics alert thresholds; deliberately generic -- rather than a
+    single-purpose thresholds table -- so later per-tenant settings don't
+    each need their own table + migration)."""
+    __tablename__ = "tenant_settings"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    key = Column(String, nullable=False, index=True)
+    value = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Datacenter(Base):
+    """Top level of the physical/logical topology hierarchy: Datacenter ->
+    Rack -> Device. Purely organizational (site modeling for Batfish
+    grouping and UI navigation) — does not affect scan/compliance logic."""
+    __tablename__ = "datacenters"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    location = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    racks = relationship("Rack", back_populates="datacenter")
+
+
+class Rack(Base):
+    """A rack within a Datacenter. Devices are optionally assigned to a rack
+    for physical/topology organization and as a convenient unit to group
+    into a NetworkGroup for Batfish analysis."""
+    __tablename__ = "racks"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    datacenter_id = Column(String, ForeignKey("datacenters.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    row = Column(String, nullable=True)
+    unit_count = Column(Integer, nullable=True)  # e.g. 42U
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    datacenter = relationship("Datacenter", back_populates="racks")
+
+
+class NetworkGroup(Base):
+    """A user-defined 'block'/topology grouping of devices that should be
+    analyzed together as a single Batfish network snapshot -- e.g. "DC1
+    Core Fabric", "Branch-42 Edge", or an arbitrary logical topology that
+    spans racks/datacenters. A device may belong to at most one group at a
+    time (see NetworkGroupMember); a group may span multiple racks/DCs.
+    """
+    __tablename__ = "network_groups"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    datacenter_id = Column(String, ForeignKey("datacenters.id"), nullable=True)
+    rack_id = Column(String, ForeignKey("racks.id"), nullable=True)
+    last_batfish_status = Column(String, nullable=True)
+    last_batfish_run_at = Column(DateTime, nullable=True)
+    last_batfish_result = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    members = relationship("NetworkGroupMember", back_populates="group", cascade="all, delete-orphan")
+    questions = relationship("BatfishQuestion", back_populates="group", cascade="all, delete-orphan")
+
+
+class NetworkGroupMember(Base):
+    """Join table: which devices belong to a NetworkGroup / topology."""
+    __tablename__ = "network_group_members"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    group_id = Column(String, ForeignKey("network_groups.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    group = relationship("NetworkGroup", back_populates="members")
+
+
+class BatfishQuestion(Base):
+    """An admin-authored 'desired network behaviour' check for Batfish to
+    evaluate against a NetworkGroup's uploaded configs, e.g. "Guest VLAN
+    must never reach Management" or "Core-A must always reach Core-B".
+    `question_type` selects which Batfish question batfish_service runs;
+    `params` supplies its arguments. Kept structured (not free-text/eval)
+    so results stay deterministic and auditable, matching the rest of the
+    app's Batfish-is-authoritative design.
+    """
+    __tablename__ = "batfish_questions"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    group_id = Column(String, ForeignKey("network_groups.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    severity = Column(String, nullable=False, default="MEDIUM")
+    enabled = Column(Boolean, nullable=False, default=True)
+    # question_type: reachability | acl_reachability | filter_line_reachability
+    #   | ip_owners | subnet_multipath | traceroute | bgp_session_status
+    #   | undefined_references | node_properties
+    question_type = Column(String, nullable=False)
+    params = Column(JSON, nullable=True)  # e.g. {"start_location": "...", "end_location": "...", "expected_reachable": false}
+    created_by = Column(String, nullable=True)
+    last_status = Column(String, nullable=True)
+    last_result = Column(JSON, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    group = relationship("NetworkGroup", back_populates="questions")
+
+
+class EventTrigger(Base):
+    """Phase 16 -- user-configurable event-driven pipeline trigger.
+
+    Lets a tenant say "when <event_type> happens (optionally matching
+    <filter>), do <action_type>" without touching code -- e.g. "when
+    metrics.threshold_breached fires for a device tagged 'core', run
+    schedule X" or "when compliance.scan.completed fires with a FAIL
+    decision, create a CRITICAL alert". Evaluated by
+    app.services.event_trigger_service.dispatch(), called from
+    app.events.publish() itself (not a separate NATS consumer process) so
+    triggers fire identically whether or not a live NATS broker is present
+    -- the same offline-safe pattern app.gateway.publisher already uses
+    for job submission.
+    """
+    __tablename__ = "event_triggers"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    event_type = Column(String, nullable=False, index=True)  # e.g. "metrics.threshold_breached", "compliance.scan.completed"
+    # Simple, safe (non-eval) condition matcher: {"field": "decision", "op":
+    # "eq", "value": "FAIL"} or a list of such clauses (AND-ed together).
+    # See event_trigger_service._matches() for the supported operators.
+    filter = Column(JSON, nullable=True)
+    action_type = Column(String, nullable=False)  # run_schedule | create_alert
+    action_config = Column(JSON, nullable=True)  # {"schedule_id": "..."} or {"category","severity","title_template"}
+    cooldown_seconds = Column(Integer, nullable=False, default=0)  # suppress re-firing within this window
+    last_triggered_at = Column(DateTime, nullable=True)
+    trigger_count = Column(Integer, nullable=False, default=0)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EventTriggerLog(Base):
+    """One firing (or skipped/failed evaluation) of an EventTrigger --
+    audit trail for "why did this schedule run at 3am" style questions."""
+    __tablename__ = "event_trigger_logs"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    trigger_id = Column(String, ForeignKey("event_triggers.id"), nullable=False, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    event_type = Column(String, nullable=False)
+    event_payload = Column(JSON, nullable=True)
+    outcome = Column(String, nullable=False)  # fired | skipped_filter | skipped_cooldown | failed
+    action_result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

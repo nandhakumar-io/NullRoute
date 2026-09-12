@@ -22,7 +22,58 @@ SEVERITY_COLORS = {
 }
 
 
-def build_json_report(scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None) -> bytes:
+def build_compliance_matrix_section(findings: List[dict], framework_matrix: Dict[str, Dict[str, str]] | None = None) -> List[Dict[str, Any]]:
+    """Per-finding table with columns NIST-800-53 / CIS / ISO-27001 /
+    DISA-STIG, resolved from `framework_matrix` (see
+    control_service.get_framework_matrix). A finding's `control_id` is
+    looked up directly against the matrix; findings with no matching
+    UnifiedControl (i.e. not yet mapped through the Unified Control
+    Library) simply show as "-" for every framework column rather than
+    being dropped, so the matrix always covers every finding in the scan.
+    """
+    framework_matrix = framework_matrix or {}
+    frameworks = ("NIST-800-53", "CIS", "ISO-27001", "DISA-STIG")
+    rows = []
+    for f in findings:
+        control_id = f.get("control_id")
+        mapping = framework_matrix.get(control_id, {})
+        row = {
+            "control_id": control_id,
+            "title": f.get("title"),
+            "result": f.get("result"),
+            "severity": f.get("severity"),
+        }
+        for fw in frameworks:
+            row[fw] = mapping.get(fw, "-")
+        rows.append(row)
+    return rows
+
+
+def build_vulnerability_panel_section(vuln_matches: List[dict] | None = None) -> List[Dict[str, Any]]:
+    """Table of CVE, CVSS, KEV flag, status, linked control (if any) for a
+    device's DeviceVulnerabilityMatch rows. Accepts plain dicts (as
+    returned by routers/vulnerabilities.py's _match_dict serializer) so
+    this module never needs a direct SQLAlchemy import.
+    """
+    rows = []
+    for m in (vuln_matches or []):
+        vuln = m.get("vulnerability") or {}
+        rows.append({
+            "cve_id": m.get("cve_id"),
+            "cvss_score": vuln.get("cvss_score"),
+            "severity": vuln.get("severity"),
+            "kev_flag": vuln.get("kev_flag"),
+            "status": m.get("status"),
+            "risk_priority_score": m.get("risk_priority_score"),
+            "linked_control_id": m.get("linked_control_id"),
+        })
+    return rows
+
+
+def build_json_report(
+    scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None,
+    framework_matrix: Dict[str, Dict[str, str]] | None = None, vuln_matches: List[dict] | None = None,
+) -> bytes:
     payload = {
         "report_generated_at": datetime.utcnow().isoformat(),
         "device": device,
@@ -38,6 +89,8 @@ def build_json_report(scan: dict, device: dict, findings: List[dict], evidence: 
                               or f.get("parameter", "").find("->") != -1],
         "risk": {"risk_score": scan.get("risk_score"), "risk_level": scan.get("risk_level")},
         "evidence": evidence or {},
+        "compliance_matrix": build_compliance_matrix_section(findings, framework_matrix),
+        "vulnerability_matches": build_vulnerability_panel_section(vuln_matches),
     }
     return json.dumps(payload, indent=2, default=str).encode("utf-8")
 
@@ -53,7 +106,10 @@ def build_csv_report(findings: List[dict]) -> bytes:
     return buf.getvalue().encode("utf-8")
 
 
-def build_pdf_report(scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None) -> bytes:
+def build_pdf_report(
+    scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None,
+    framework_matrix: Dict[str, Dict[str, str]] | None = None, vuln_matches: List[dict] | None = None,
+) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=18 * mm)
     styles = getSampleStyleSheet()
@@ -145,6 +201,60 @@ def build_pdf_report(scan: dict, device: dict, findings: List[dict], evidence: D
     story.append(tbl)
     story.append(Spacer(1, 14))
 
+    # --- Compliance Matrix (multi-framework traceability) ----------------
+    matrix_rows = build_compliance_matrix_section(findings, framework_matrix)
+    if matrix_rows:
+        story.append(Paragraph("Compliance Matrix", h2))
+        matrix_header = [Paragraph(f"<b>{h}</b>", normal) for h in
+                          ("Control", "NIST-800-53", "CIS", "ISO-27001", "DISA-STIG")]
+        matrix_table_rows = [matrix_header]
+        for row in matrix_rows:
+            matrix_table_rows.append([
+                Paragraph(escape(str(row.get("control_id", ""))), normal),
+                Paragraph(escape(str(row.get("NIST-800-53", "-"))), normal),
+                Paragraph(escape(str(row.get("CIS", "-"))), normal),
+                Paragraph(escape(str(row.get("ISO-27001", "-"))), normal),
+                Paragraph(escape(str(row.get("DISA-STIG", "-"))), normal),
+            ])
+        matrix_tbl = Table(matrix_table_rows, colWidths=[100, 95, 95, 95, 95], repeatRows=1)
+        matrix_tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(matrix_tbl)
+        story.append(Spacer(1, 14))
+
+    # --- Vulnerability Panel (CVE/KEV correlation) ------------------------
+    vuln_rows = build_vulnerability_panel_section(vuln_matches)
+    if vuln_rows:
+        story.append(Paragraph("Vulnerability Panel", h2))
+        vuln_header = [Paragraph(f"<b>{h}</b>", normal) for h in
+                        ("CVE", "CVSS", "KEV", "Status", "Linked Control")]
+        vuln_table_rows = [vuln_header]
+        for row in vuln_rows:
+            vuln_table_rows.append([
+                Paragraph(escape(str(row.get("cve_id", ""))), normal),
+                Paragraph(escape(str(row.get("cvss_score", "-"))), normal),
+                Paragraph("YES" if row.get("kev_flag") else "no", normal),
+                Paragraph(escape(str(row.get("status", ""))), normal),
+                Paragraph(escape(str(row.get("linked_control_id") or "-")), normal),
+            ])
+        vuln_tbl = Table(vuln_table_rows, colWidths=[110, 60, 50, 100, 160], repeatRows=1)
+        vuln_style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ]
+        for i, row in enumerate(vuln_rows, start=1):
+            if row.get("kev_flag"):
+                vuln_style_cmds.append(("TEXTCOLOR", (2, i), (2, i), colors.HexColor("#b91c1c")))
+        vuln_tbl.setStyle(TableStyle(vuln_style_cmds))
+        story.append(vuln_tbl)
+        story.append(Spacer(1, 14))
+
     story.append(Paragraph("Evidence & Remediation Detail", h2))
     for f in findings:
         if f.get("result") != "FAIL":
@@ -186,9 +296,12 @@ def build_pdf_report(scan: dict, device: dict, findings: List[dict], evidence: D
     return buf.getvalue()
 
 
-def build_all_reports(scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None) -> Dict[str, bytes]:
+def build_all_reports(
+    scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None,
+    framework_matrix: Dict[str, Dict[str, str]] | None = None, vuln_matches: List[dict] | None = None,
+) -> Dict[str, bytes]:
     return {
-        "json": build_json_report(scan, device, findings, evidence),
+        "json": build_json_report(scan, device, findings, evidence, framework_matrix, vuln_matches),
         "csv": build_csv_report(findings),
-        "pdf": build_pdf_report(scan, device, findings, evidence),
+        "pdf": build_pdf_report(scan, device, findings, evidence, framework_matrix, vuln_matches),
     }

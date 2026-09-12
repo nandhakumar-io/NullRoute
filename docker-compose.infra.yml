@@ -1,0 +1,119 @@
+version: "3.9"
+
+# Hybrid dev compose — infrastructure services ONLY.
+# Frontend and backend run locally (npm run dev / uvicorn).
+# All container ports are bound to 127.0.0.1 so your local processes can reach them.
+
+services:
+  # ---------------------------------------------------------------- data ---
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: compliance-postgres
+    environment:
+      POSTGRES_USER: compliance
+      POSTGRES_PASSWORD: compliance
+      POSTGRES_DB: compliance
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U compliance"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: compliance-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: compliance
+      MINIO_ROOT_PASSWORD: compliance123
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # ------------------------------------------------------------ eventing ---
+  nats:
+    image: nats:2.10-alpine
+    container_name: compliance-nats
+    command: ["-js", "-m", "8222"]
+    ports: ["4222:4222", "8222:8222"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------- compliance ---
+  opa:
+    image: openpolicyagent/opa:latest-envoy
+    container_name: compliance-opa
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    volumes:
+      - ./policies:/policies:ro
+    ports: ["8181:8181"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  batfish:
+    image: batfish/allinone:test-2024.07.22.1569
+    container_name: compliance-batfish
+    ports: ["9996:9996", "9997:9997"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9996/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------- security ----
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: compliance-keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports: ["8081:8080"]
+
+  openbao:
+    image: openbao/openbao:latest
+    container_name: compliance-openbao
+    cap_add: [IPC_LOCK]
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: dev-root-token-change-me
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports: ["8200:8200"]
+
+  # ------------------------------------------------------------ observ ----
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: compliance-victoriametrics
+    ports: ["8428:8428"]
+    volumes:
+      - vmdata:/victoria-metrics-data
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: compliance-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    ports: ["3001:3000"]
+    volumes:
+      - grafanadata:/var/lib/grafana
+    depends_on: [victoriametrics]
+
+volumes:
+  pgdata:
+  miniodata:
+  vmdata:
+  grafanadata:

@@ -36,5 +36,23 @@ python-dotenv
 boto3==1.35.15
 azure-mgmt-network==25.0.0
 azure-identity==1.17.1
+azure-storage-blob==12.22.0
+paramiko==3.5.0
 google-cloud-compute==1.19.1
 google-auth==2.34.0
+pywebpush==2.0.1
+
+# Device transport libraries — collectors/snmp.py, netconf.py, gnmi.py all
+# soft-import these (module boots fine without them, collector calls just
+# return "<lib> is not installed" errors). Previously missing here, which
+# meant every SNMP/NETCONF/gNMI collection silently failed even though the
+# collector, gateway, and frontend wiring were all otherwise correct.
+pysnmp==7.1.16
+ncclient==0.6.15
+pygnmi==0.8.13
+
+# Unified Control Library — document_ingestion_service.py soft-imports
+# these (module boots and falls back to regex tag-stripping without them,
+# same pattern as the SNMP/NETCONF/gNMI libs above).
+pdfplumber==0.11.4
+beautifulsoup4==4.12.3

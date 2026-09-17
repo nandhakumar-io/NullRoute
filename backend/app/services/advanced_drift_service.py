@@ -12,18 +12,17 @@ nobody's set a per-device GoldenConfig for either of them) -- and
 records the result as a ConfigDrift row.
 
 Reuses existing building blocks rather than duplicating them:
-  - app.services.protocol_manager.ProtocolManager for the live config read
-    (NETCONF > RESTCONF > SSH, same as everywhere else)
-  - app.services.diff_engine.generate_diff for the unified diff
-  - app.services.risk_engine.analyze for risk scoring (the same weighted
-    rule set used to score a proposed change is used here to score how
-    risky the *drifted* config is)
-  - app.services.lambda x: x to read baseline configs
-  - app.services.audit_service.record_event / app.services.event_bus for
-    the same audit-trail + live-dashboard visibility every other action gets
-  - app.services.lambda *a, **k: (None, False), which now dispatches
-    HIGH/CRITICAL (and escalated) drift alerts to
-    notification_service itself
+  - app.services.collectors.registry.get_collector for the live config read
+    (same collector/credential-resolution path as routers/devices.py's
+    /collect and /scan endpoints -- RULE 11: no second collection
+    implementation)
+  - difflib.unified_diff for the diff, app.services.risk_engine for risk
+    scoring of the drifted config (the same weighted rule set used to
+    score a proposed change is used here to score how risky the *drifted*
+    config is)
+  - app.services.audit_service for the same audit-trail visibility every
+    other action gets, app.services.alert_service for HIGH/CRITICAL drift
+    alerts
 
 Called by:
   - app.api.drift (on-demand scan, GET .../drift/scan)
@@ -55,9 +54,6 @@ from app.models.db import Device, Scan
 from app.models.golden_config import GoldenConfig
 from app.models.db import Scan
 from app.services import audit_service, risk_engine, alert_service
-class DeviceJobFailedError(Exception): pass
-class DeviceJobTimeoutError(Exception): pass
-class ProtocolManager: pass
 
 # Compliance score starts at 100 (fully compliant) and is docked per
 # changed line plus a flat penalty for anything the risk engine flags,
@@ -216,31 +212,29 @@ def detect_drift(
     """
     baseline_label, baseline_config = _resolve_baseline_config(db, device, baseline)
 
-    # Routed through the Device Gateway (see app.services.device_job_service)
-    # rather than opening a Netmiko/NAPALM session in this process, same
-    # as remediate_drift below. Called from both a sync API route and a
-    # Celery task -- neither runs inside an asyncio event loop -- so the
-    # sync bridge (submit_job_sync) is safe to use here.
-    if True:
-        try:
-            job_result = device_job_service.submit_job_sync(
-                tenant_id=str(device.tenant_id),
-                device_id=str(device.id),
-                operation=device_job_service.DeviceOperation.GET_RUNNING_CONFIG,
-                params={},
-                requested_by=triggered_by,
-            )
-        except DeviceJobTimeoutError as exc:
-            raise RuntimeError(str(exc)) from exc
-        except DeviceJobFailedError as exc:
-            raise RuntimeError(exc.error or f"Failed to read live running configuration from {device.hostname}") from exc
-        live_config = job_result.output
-    else:
-        pm = ProtocolManager(db, device, operator=triggered_by)
-        live_result = pm.get_running_config()
-        if not live_result.success:
-            raise RuntimeError(live_result.error or f"Failed to read live running configuration from {device.hostname}")
-        live_config = live_result.output
+    # Live-collect the running config via the same collector registry +
+    # credential resolution path scans/collect already use (RULE 11: no
+    # second collection implementation) -- see routers/devices.py
+    # collect_configuration()/run_scan(). This previously called a
+    # `device_job_service.submit_job_sync(...)` that doesn't exist anywhere
+    # in this codebase (and a dead `ProtocolManager` stub in the unreachable
+    # branch below it), so every drift scan -- on-demand and the nightly
+    # Celery task -- raised NameError before ever reaching a device.
+    from app.services.collectors.registry import get_collector
+    from app.services.deployment_service import _resolve_credentials
+    from app.services import openbao_service
+
+    try:
+        credentials = _resolve_credentials(db, device, str(device.tenant_id))
+    except (ValueError, openbao_service.OpenBaoError) as exc:
+        raise RuntimeError(f"Could not resolve device credentials: {exc}") from exc
+
+    collector = get_collector(device.vendor, transport=device.protocol)
+    result = collector.collect_config(device, credentials)
+    del credentials
+    if not result.success or not result.raw_config:
+        raise RuntimeError(result.error or f"Failed to read live running configuration from {device.hostname}")
+    live_config = result.raw_config
 
     diff_text = "\n".join(difflib.unified_diff(baseline_config.splitlines(), live_config.splitlines()))
     added, removed, modified = _count_diff_lines(diff_text)
@@ -330,29 +324,36 @@ def detect_drift(
 
     alert = None
     if severity in ALERTING_SEVERITIES and (added or removed):
-        # Dedup-aware: a device that keeps drifting the same way on every
-        # scheduled sweep updates one standing alert instead of piling up
-        # a fresh row every sweep (see lambda *a, **k: (None, False)).
-        alert, is_new = lambda *a, **k: (None, False)(
-            db,
-            device_id=device.id,
-            severity="critical" if severity == DriftSeverity.CRITICAL else "warning",
-            source="drift",
-            category=f"Configuration Drift ({severity.value.title()})",
-            message=(
-                f"{device.hostname} has drifted from its {baseline_label}: "
-                f"{ai_summary} (compliance {compliance_score}/100, risk {drift_analysis.risk_score}/100)."
-            ),
-        )
+        # Uses the same alert_service.create_alert path every other alert
+        # in this codebase goes through (dispatch + configurable channel
+        # routing included) -- detect_drift() is documented sync-only
+        # (called from a sync API route and a Celery task, neither of
+        # which runs inside an asyncio event loop), so asyncio.run() is
+        # the safe bridge here, same as elsewhere in this codebase where a
+        # sync call site needs one of the async service functions.
+        import asyncio
 
-        # Notification fan-out now happens inside lambda *a, **k: (None, False).
+        try:
+            alert = asyncio.run(alert_service.create_alert(
+                db,
+                tenant_id=str(device.tenant_id),
+                category=f"Configuration Drift ({severity.value.title()})",
+                severity="CRITICAL" if severity == DriftSeverity.CRITICAL else "HIGH",
+                title=f"{device.hostname} configuration drift detected",
+                detail=(
+                    f"{device.hostname} has drifted from its {baseline_label}: "
+                    f"{ai_summary} (compliance {compliance_score}/100, risk {drift_analysis.risk_score}/100)."
+                ),
+                device_id=device.id,
+            ))
+        except Exception:
+            # An alert-dispatch failure must never fail the drift scan
+            # itself -- the ConfigDrift row above is already committed.
+            logger.exception("Failed to raise drift alert for device %s", device.id)
 
-    print(
-        "drift_detected",
-        device_id=str(device.id),
-        drift_id=str(drift.id),
-        severity=severity.value,
-        compliance_score=compliance_score,
+    logger.info(
+        "drift_detected device_id=%s drift_id=%s severity=%s compliance_score=%s",
+        device.id, drift.id, severity.value, compliance_score,
     )
 
     return DriftDetectionResult(
@@ -460,37 +461,21 @@ async def remediate_drift(db: Session, drift: ConfigDrift, device: Device, actor
     # Best-effort live read for the audit-trail/diff "before" side; a
     # failed read never blocks remediation -- it just falls back to the
     # drift record's own captured live_config-less diff_text context.
-    # Routed through the Device Gateway (see app.services.device_job_service)
-    # rather than opening a Netmiko session in this process -- the API
-    # must not decrypt device credentials or hold device connectivity
-    # itself.
+    # Uses the same collector registry + credential resolution path as
+    # detect_drift() above (RULE 11: no second collection implementation).
     current_config = None
-    if True:
-        try:
-            job_result = await device_job_service.submit_job(
-                tenant_id=str(device.tenant_id),
-                device_id=str(device.id),
-                operation=device_job_service.DeviceOperation.GET_RUNNING_CONFIG,
-                params={},
-                requested_by=str(actor.id),
-            )
-            current_config = job_result.output
-        except (DeviceJobTimeoutError, DeviceJobFailedError):
-            pass
-    else:
-        try:
-            
-            
+    try:
+        from app.services.collectors.registry import get_collector
+        from app.services.deployment_service import _resolve_credentials
 
-            ssh_password = credential_service.get_ssh_password(device)
-            netmiko_type = DEVICE_TYPE_MAP.get(
-                device.vendor.value if hasattr(device.vendor, "value") else device.vendor, "cisco_ios"
-            )
-            current_config, _ = deployment_engine.read_running_config(
-                netmiko_type, device.ip_address, device.ssh_username or "admin", ssh_password
-            )
-        except Exception:
-            pass
+        credentials = _resolve_credentials(db, device, str(device.tenant_id))
+        collector = get_collector(device.vendor, transport=device.protocol)
+        result = collector.collect_config(device, credentials)
+        del credentials
+        if result.success and result.raw_config:
+            current_config = result.raw_config
+    except Exception:
+        pass
 
     priority = "emergency" if drift.severity == DriftSeverity.CRITICAL else "high"
 

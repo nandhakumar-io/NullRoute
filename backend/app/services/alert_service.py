@@ -245,3 +245,31 @@ async def alert_evidence_integrity_failure(db: Session, tenant_id: str, scan_id:
         title="Evidence integrity verification failed",
         detail=detail, scan_id=scan_id, extra={"evidence_id": evidence_id},
     )
+
+
+async def alert_rollback_required(db: Session, tenant_id: str, device_id: str, deployment_id: str, detail: str) -> Alert:
+    """Raised the moment a DeploymentRecord lands in DRIFTED (push
+    succeeded, post-deploy hash didn't match the approved proposed config)
+    -- i.e. the device is running something nobody approved and a human
+    needs to decide whether to roll it back (services/rollback_service.py
+    never triggers itself, per the same RULE 4/5 human-approval discipline
+    deployment_service.py already follows)."""
+    return await create_alert(
+        db, tenant_id, "ROLLBACK_REQUIRED", "HIGH",
+        title="Deployment drifted from approved configuration -- rollback may be required",
+        detail=detail, device_id=device_id, extra={"deployment_id": deployment_id},
+    )
+
+
+async def alert_rollback_failed(db: Session, tenant_id: str, device_id: str, rollback_id: str, detail: str) -> Alert:
+    """CRITICAL: a rollback attempt did not leave the device in the known-
+    good pre-change state (push failed, or push reported success but
+    post-rollback verification didn't match). Section 12 of the
+    integration brief: never report rollback success without verification,
+    and a failed rollback is CRITICAL/manual-intervention, not a retryable
+    background condition."""
+    return await create_alert(
+        db, tenant_id, "ROLLBACK_FAILED", "CRITICAL",
+        title="Rollback failed -- device configuration state is unverified, manual intervention required",
+        detail=detail, device_id=device_id, extra={"rollback_id": rollback_id},
+    )

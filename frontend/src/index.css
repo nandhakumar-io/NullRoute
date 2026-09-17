@@ -123,6 +123,8 @@ html:not(.dark) .badge-low      { background-color: #e6f4ee; color: #0a6b4f; bor
 html:not(.dark) .badge-pass     { background-color: #e6f4ee; color: #0a6b4f; border-color: #bfe3d4; }
 html:not(.dark) .badge-fail     { background-color: #fbe9e7; color: #9f1c14; border-color: #f3c9c4; }
 html:not(.dark) .badge-na       { background-color: var(--surface-sunken); color: var(--ink-muted); border-color: var(--border); }
+html:not(.dark) .badge-deterministic { background-color: #e6eefc; color: #1e4d9b; border-color: #c3d7f5; }
+html:not(.dark) .badge-ai-interpreted { background-color: #f3e8fd; color: #7a2fc4; border-color: #e0c6f7; }
 
 html.dark .badge-critical { @apply bg-red-950 text-red-300 border-red-800; }
 html.dark .badge-high { @apply bg-orange-950 text-orange-300 border-orange-800; }
@@ -131,6 +133,8 @@ html.dark .badge-low { @apply bg-emerald-950 text-emerald-300 border-emerald-800
 html.dark .badge-pass { @apply bg-emerald-950 text-emerald-300 border-emerald-800; }
 html.dark .badge-fail { @apply bg-red-950 text-red-300 border-red-800; }
 html.dark .badge-na { @apply bg-slate-800 text-slate-400 border-slate-700; }
+html.dark .badge-deterministic { @apply bg-slate-800 text-sky-300 border-sky-800; }
+html.dark .badge-ai-interpreted { @apply bg-purple-950 text-purple-300 border-purple-700; }
 
 .btn-primary {
   @apply font-medium px-4 py-2 rounded-md transition-colors text-white;

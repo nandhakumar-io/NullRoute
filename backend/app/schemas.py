@@ -6,19 +6,27 @@ from pydantic import BaseModel
 
 class DeviceOut(BaseModel):
     id: str
-    hostname: Optional[str]
-    vendor: Optional[str]
-    model: Optional[str]
-    os: Optional[str]
-    version: Optional[str]
-    serial_number: Optional[str]
+    hostname: Optional[str] = None
+    vendor: Optional[str] = None
+    model: Optional[str] = None
+    os: Optional[str] = None
+    version: Optional[str] = None
+    serial_number: Optional[str] = None
     management_address: Optional[str] = None
     collection_status: Optional[str] = None
     last_collected_at: Optional[datetime] = None
     last_collection_error: Optional[str] = None
     last_collection_transport: Optional[str] = None
-    last_scan_at: Optional[datetime]
-    last_compliance_score: Optional[float]
+    last_scan_at: Optional[datetime] = None
+    last_compliance_score: Optional[float] = None
+    # Device inventory / management fields
+    name: Optional[str] = None
+    site: Optional[str] = None
+    environment: Optional[str] = None
+    protocol: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    enabled: bool = True
 
     class Config:
         from_attributes = True
@@ -67,9 +75,13 @@ class FindingOut(BaseModel):
     actual_value: Optional[str]
     result: str
     parameter: str
+    reason: Optional[str] = None
+    policy_version: Optional[str] = None
+    vendor: Optional[str] = None
     evidence_line: Optional[str]
     remediation: Optional[str]
     presentation_result: Optional[str] = None  # Phase 16: result OR "EXCEPTION_ACCEPTED"; never replaces `result`
+    created_at: Optional[datetime] = None  # Phase 1 security-audit UI: date filter + Finding Detail timestamp
 
     class Config:
         from_attributes = True
@@ -196,6 +208,15 @@ class MappingReviewIn(BaseModel):
     reviewer: str = "admin"
 
 
+class ComplianceMatrixRow(BaseModel):
+    control_id: str
+    title: str
+    vendors: Dict[str, Optional[float]]
+
+class ComplianceMatrix(BaseModel):
+    vendors: List[str]
+    rows: List[ComplianceMatrixRow]
+
 class DashboardStats(BaseModel):
     total_devices: int
     devices_scanned: int
@@ -218,6 +239,21 @@ class DashboardStats(BaseModel):
     opa_vs_batfish: Dict[str, int] = {}
     risk_distribution: Dict[str, int] = {}
     evidence_anchoring_status: Dict[str, int] = {}
+    # Part 2 §A/§F additions: REVIEW/UNVERIFIED counts and a per-vendor
+    # score breakdown (the multi-vendor proof from §9/§14 needs somewhere
+    # to actually show "same control, same result across vendors" at the
+    # fleet level, not just in a single scan's findings).
+    review_scans: int = 0
+    unverified_findings: int = 0
+    vendor_scores: Dict[str, float] = {}
+    # Phase 1 security-audit dashboard (SIH26155): two counts the existing
+    # metrics didn't expose on their own -- total findings across all
+    # results (not just the FAIL-only severity buckets above) and the
+    # tenant-wide configuration-drift count already tracked by DriftEvent
+    # (see routers/drift.py) surfaced here too so the dashboard doesn't
+    # need a second round-trip just to show the headline number.
+    total_findings: int = 0
+    configuration_drift_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +358,18 @@ class AuditLogOut(BaseModel):
     resource: str
     details: Optional[Dict[str, Any]] = None
     created_at: datetime
+
+    # Section 12 columns -- populated by app.services.audit_service and
+    # consumed directly by the Audit Log page's Who/Object/Source IP/Result
+    # columns. These were missing from this response_model, so FastAPI
+    # silently stripped them from every row even though the DB had them.
+    username: Optional[str] = None
+    object_type: Optional[str] = None
+    object_id: Optional[str] = None
+    source_ip: Optional[str] = None
+    result: Optional[str] = None
+    old_value: Optional[Dict[str, Any]] = None
+    new_value: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

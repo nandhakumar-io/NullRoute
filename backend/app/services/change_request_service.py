@@ -132,7 +132,7 @@ async def create_and_validate(
         baseline.device.hostname = baseline.device.hostname or device.hostname
         baseline.raw_config_hash = cr.proposed_config_hash
 
-        opa_decision = await evaluate_baseline_via_opa(f"cr:{cr.id}", baseline, "ALL")
+        opa_decision = await evaluate_baseline_via_opa(f"cr:{cr.id}", baseline, "ALL", db=db, tenant_id=tenant_id)
 
         bf_result = batfish_service.analyze_security_behavior(
             scan_id=f"cr-{cr.id}", vendor=vendor,

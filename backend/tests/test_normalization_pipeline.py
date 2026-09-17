@@ -48,6 +48,24 @@ end
 set server "10.10.10.10"
 """
 
+FORTIFW_POLICY_CONFIG = """
+config firewall policy
+    edit 1
+        set name "allow-web"
+        set srcintf "port1"
+        set dstintf "port2"
+        set action accept
+        set service "HTTP" "HTTPS"
+        set logtraffic all
+    next
+end
+"""
+
+PANOS_RULEBASE_CONFIG = """
+set rulebase security rules RULE1 from zone-a to zone-b source any destination any application any service any action allow
+set rulebase security rules RULE1 log-end yes
+"""
+
 PANOS_CONFIG = """
 set deviceconfig system hostname fw01
 set deviceconfig system service disable-telnet yes
@@ -141,6 +159,75 @@ async def test_juniper_vendor_syntax_normalizes_to_common_concept():
     assert any(s.address == "10.10.10.10" and s.severity == "warning" for s in baseline.logging.syslog_servers_detail)
     assert "10.10.10.20" in baseline.logging.ntp.servers
     assert any(v.name == "USERS" and v.id == 20 for v in baseline.vlans)
+
+
+@pytest.mark.asyncio
+async def test_cisco_and_juniper_ssh_v2_normalize_to_same_logical_parameter():
+    """SIH26155 Part 1 final acceptance criterion, made explicit as its own
+    test rather than left implicit across two separate test functions:
+    Cisco's 'ip ssh version 2' and Juniper's 'set system services ssh
+    protocol-version v2' are different vendor syntax for the identical
+    control, and MUST collapse to one vendor-neutral fact with independent
+    provenance for each source."""
+    cisco = parse_config("Cisco", CISCO_CONFIG)
+    juniper = parse_config("Juniper", JUNIPER_CONFIG)
+
+    assert cisco.flatten()["management.ssh.version"] == 2
+    assert juniper.flatten()["management.ssh.version"] == 2
+
+    cisco_prov = next(p for p in cisco.provenance if p.normalized_parameter == "management.ssh.version")
+    juniper_prov = next(p for p in juniper.provenance if p.normalized_parameter == "management.ssh.version")
+    assert cisco_prov.raw_command == "ip ssh version 2"
+    assert juniper_prov.raw_command == "set system services ssh protocol-version v2"
+    assert cisco_prov.vendor == "Cisco"
+    assert juniper_prov.vendor == "Juniper"
+    # Same logical fact, distinct raw evidence -- vendor syntax never
+    # leaked into the compliance-facing value.
+    assert cisco_prov.value == juniper_prov.value == 2
+
+
+@pytest.mark.asyncio
+async def test_fortinet_firewall_policy_extracted_not_dropped():
+    baseline = parse_config("Fortinet", FORTIFW_POLICY_CONFIG)
+    assert len(baseline.firewall_policies) == 1
+    policy = baseline.firewall_policies[0]
+    assert policy.name == "allow-web"
+    assert policy.action == "accept"
+    assert policy.source_zone == "port1"
+    assert policy.destination_zone == "port2"
+    assert "HTTP" in (policy.service or [])
+
+
+@pytest.mark.asyncio
+async def test_panos_firewall_policy_extracted_not_dropped():
+    baseline = parse_config("Palo Alto Networks", PANOS_RULEBASE_CONFIG)
+    assert len(baseline.firewall_policies) == 1
+    policy = baseline.firewall_policies[0]
+    assert policy.name == "RULE1"
+    assert policy.source_zone == "zone-a"
+    assert policy.destination_zone == "zone-b"
+    assert policy.action == "allow"
+
+
+def test_low_confidence_vendor_guess_forces_review_not_confident_match():
+    """Spec section 4: 'Low-confidence detection must not silently become a
+    confident vendor.' A weak-heuristic guess must always carry
+    review_required=True regardless of what vendor name it guessed."""
+    from app.services.vendor_detect import REVIEW_CONFIDENCE_THRESHOLD, detect_vendor
+
+    weak_cisco_text = "interface Vlan10\nspanning-tree mode rapid-pvst\n"
+    guess = detect_vendor(weak_cisco_text)
+    assert guess.confidence < REVIEW_CONFIDENCE_THRESHOLD
+    assert guess.review_required is True
+
+
+def test_confident_supported_vendor_guess_does_not_require_review():
+    from app.services.vendor_detect import detect_vendor
+
+    guess = detect_vendor(CISCO_CONFIG)
+    assert guess.vendor == "Cisco"
+    assert guess.confidence >= 0.75
+    assert guess.review_required is False
 
 
 @pytest.mark.asyncio

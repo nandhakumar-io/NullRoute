@@ -35,6 +35,9 @@ from sqlalchemy.orm import Session
 
 from app.models.db import Device, NetworkScanJob, Scan
 from app.services import network_discovery
+from app.services.deployment_service import _resolve_credentials
+from app.services.collectors.registry import get_collector, preferred_transport
+from app.services.pipeline import run_pipeline
 
 logger = logging.getLogger("network_scan_service")
 
@@ -65,10 +68,6 @@ async def execute_scan_job(db: Session, job: NetworkScanJob) -> None:
     """Runs every stage of `job` against the real backend, committing
     updated status after each real unit of work so GET /api/network-scans
     /{id} always reflects genuine progress."""
-    from app.routers.devices import CollectRequest, _resolve_credentials  # local import: avoids router<->service cycle
-    from app.services.collectors.registry import get_collector, preferred_transport
-    from app.services.pipeline import run_pipeline
-
     job.status = "RUNNING"
     job.started_at = datetime.utcnow()
     job.stages = init_stages()
@@ -149,7 +148,7 @@ async def execute_scan_job(db: Session, job: NetworkScanJob) -> None:
             continue
         try:
             transport = preferred_transport(device.vendor)
-            ref_row, credentials = _resolve_credentials(db, device, job.tenant_id, None, transport=transport)
+            credentials = _resolve_credentials(db, device, job.tenant_id)
             collector = get_collector(device.vendor, transport=transport)
             device.collection_status = "IN_PROGRESS"
             db.commit()

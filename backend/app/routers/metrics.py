@@ -120,3 +120,97 @@ def update_thresholds(
         db.add(row)
     db.commit()
     return {**metrics_service.DEFAULT_THRESHOLDS, **(row.value or {})}
+
+
+@router.get("/metrics/compliance-summary")
+def get_compliance_summary(
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """Fleet-wide KPI summary for the Dashboard: per-framework compliance %,
+    severity heatmap, top-5 non-compliant devices, AI pipeline health."""
+    from app.models.db import CommandMapping, Finding, ModelRegistryEntry, Scan
+
+    # ── Per-framework compliance scores ──────────────────────────────────
+    frameworks = ["CIS", "NIST", "STIG", "ISO27001", "ALL"]
+    framework_scores: dict = {}
+    for fw in frameworks:
+        scans = (
+            db.query(Scan)
+            .filter(
+                Scan.tenant_id == tenant_id,
+                Scan.compliance_score.isnot(None),
+                Scan.framework == fw,
+            )
+            .order_by(Scan.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        if scans:
+            framework_scores[fw] = round(sum(s.compliance_score for s in scans) / len(scans), 1)
+
+    # ── Severity heatmap (open FAIL findings) ────────────────────────────
+    severity_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    findings_q = (
+        db.query(Finding)
+        .join(Scan, Finding.scan_id == Scan.id)
+        .filter(Scan.tenant_id == tenant_id, Finding.result == "FAIL")
+        .all()
+    )
+    for f in findings_q:
+        sev = (f.severity or "").upper()
+        if sev in severity_counts:
+            severity_counts[sev] += 1
+
+    # ── Top-5 non-compliant devices ──────────────────────────────────────
+    from app.models.db import Device
+    devices = (
+        db.query(Device)
+        .filter(Device.tenant_id == tenant_id, Device.last_compliance_score.isnot(None))
+        .order_by(Device.last_compliance_score.asc())
+        .limit(5)
+        .all()
+    )
+    top_noncompliant = [
+        {
+            "device_id": d.id,
+            "hostname": d.hostname,
+            "vendor": d.vendor,
+            "compliance_score": d.last_compliance_score,
+        }
+        for d in devices
+    ]
+
+    # ── AI pipeline health ───────────────────────────────────────────────
+    pending_reviews = (
+        db.query(CommandMapping)
+        .filter(CommandMapping.status == "pending")
+        .count()
+    )
+    prod_model = (
+        db.query(ModelRegistryEntry)
+        .filter(ModelRegistryEntry.status == "PRODUCTION")
+        .order_by(ModelRegistryEntry.created_at.desc())
+        .first()
+    )
+
+    import httpx, os
+    ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+    try:
+        resp = httpx.get(f"{ollama_host}/api/tags", timeout=3.0)
+        ollama_reachable = resp.status_code == 200
+    except Exception:
+        ollama_reachable = False
+
+    return {
+        "framework_compliance": framework_scores,
+        "severity_heatmap": severity_counts,
+        "top_noncompliant_devices": top_noncompliant,
+        "ai_health": {
+            "ollama_reachable": ollama_reachable,
+            "ollama_host": ollama_host,
+            "production_model": prod_model.model_name if prod_model else None,
+            "production_model_macro_f1": (prod_model.metrics or {}).get("macro_f1") if prod_model else None,
+            "pending_hitl_reviews": pending_reviews,
+        },
+    }

@@ -45,6 +45,11 @@ export function ResultBadge({ result }: { result?: string | null }) {
     PASS: "badge-pass",
     FAIL: "badge-fail",
     NOT_APPLICABLE: "badge-na",
+    // UNVERIFIED means "not yet human-approved" (see IMPLEMENTATION_AUDIT.md
+    // §A) — deliberately amber (same treatment as MEDIUM severity), never
+    // green/pass or gray/n-a, so a reviewer can't mistake "not yet
+    // reviewed" for either a clean pass or an irrelevant control.
+    UNVERIFIED: "badge-medium",
   };
   const value = result || "UNKNOWN";
   return <span className={`badge ${cls[value] || "badge-na"}`}>{value.replace("_", " ")}</span>;

@@ -55,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "AI",
     icon: "spark",
     items: [
+      { to: "/review-queue", label: "Review Queue" },
       { to: "/ai-analysis", label: "AI Analysis" },
       { to: "/training", label: "Training Center", roles: ["admin", "security_analyst"] },
     ],

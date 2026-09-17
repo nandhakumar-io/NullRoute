@@ -3,12 +3,112 @@ import { endpoints, Topology as TopologyData } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
 import ForceGraph2D from "react-force-graph-2d";
 
+function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [groupName, setGroupName] = useState("Demo Network Block");
+  const [status, setStatus] = useState<"idle" | "uploading" | "grouping" | "scanning" | "done" | "error">("idle");
+  const [log, setLog] = useState<string[]>([]);
+  const [result, setResult] = useState<any>(null);
+
+  function addLog(line: string) {
+    setLog((l) => [...l, line]);
+  }
+
+  async function buildAndScan() {
+    if (files.length === 0) return;
+    setLog([]);
+    setResult(null);
+    try {
+      setStatus("uploading");
+      addLog(`Uploading ${files.length} configuration file(s)…`);
+      const uploadRes = await endpoints.bulkUploadConfigs(files);
+      const deviceIds = uploadRes.data.map((s) => s.device_id);
+      addLog(`Created ${deviceIds.length} device(s) from uploaded configs.`);
+
+      setStatus("grouping");
+      const groupRes = await endpoints.createTopologyGroup({
+        name: groupName || "Demo Network Block",
+        description: "Auto-built from uploaded configs for a Batfish demo run.",
+        device_ids: deviceIds,
+      });
+      addLog(`Created network group "${groupRes.data.name}" with ${deviceIds.length} member device(s).`);
+
+      setStatus("scanning");
+      addLog("Running Batfish analysis over the group snapshot…");
+      const scanRes = await endpoints.scanTopologyGroup(groupRes.data.id);
+      setResult(scanRes.data);
+      addLog(`Batfish scan complete — status: ${scanRes.data.status}.`);
+
+      setStatus("done");
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      onBuilt();
+    } catch (e: any) {
+      addLog(e?.response?.data?.detail || "Failed to build/scan the topology.");
+      setStatus("error");
+    }
+  }
+
+  const busy = status === "uploading" || status === "grouping" || status === "scanning";
+
+  return (
+    <div className="card mb-4">
+      <div className="font-semibold text-slate-200 mb-1">Build a Batfish Topology from Configs</div>
+      <div className="text-xs text-slate-500 mb-3">
+        Upload two or more vendor configs (see <code className="font-mono">sample_configs/</code> for
+        ready-made multi-vendor examples) to create devices, group them into one Batfish snapshot, and
+        run the built-in segmentation checks — no live device access required.
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".cfg,.conf,.txt,.xml,.json"
+          onChange={(e) => setFiles(Array.from(e.target.files || []))}
+          className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-cyan-950 file:text-cyan-300 file:text-xs"
+        />
+        <input
+          className="input text-sm w-56"
+          placeholder="Network group name"
+          value={groupName}
+          onChange={(e) => setGroupName(e.target.value)}
+        />
+        <button
+          onClick={buildAndScan}
+          disabled={files.length === 0 || busy}
+          className="btn-primary text-sm disabled:opacity-40"
+        >
+          {busy ? "Working…" : `Build + Scan (${files.length} file${files.length === 1 ? "" : "s"})`}
+        </button>
+      </div>
+      {log.length > 0 && (
+        <div className="mt-3 space-y-1 font-mono text-xs text-slate-400 border-t border-soc-border pt-2">
+          {log.map((line, i) => <div key={i}>› {line}</div>)}
+        </div>
+      )}
+      {result && (
+        <div className="mt-2 text-xs text-slate-400">
+          Scanned {result.scanned_devices?.length ?? 0} device(s)
+          {result.skipped_devices?.length > 0 && `, skipped ${result.skipped_devices.length}`} ·{" "}
+          {result.reachability_checks?.length ?? 0} segmentation check(s) evaluated.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Topology() {
   const [topology, setTopology] = useState<TopologyData | null>(null);
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
 
-  useEffect(() => {
+  function refresh() {
     endpoints.topology().then((r) => setTopology(r.data));
+  }
+
+  useEffect(() => {
+    refresh();
   }, []);
 
   if (!topology) return <Loading />;
@@ -60,8 +160,9 @@ export default function Topology() {
         subtitle="Devices and inferred adjacencies, derived from collected interface data (Phase 9)"
       />
       <div className="flex-1 px-8 pb-8 relative">
+        <BuildTopologyPanel onBuilt={refresh} />
         {nodes.length === 0 ? (
-          <EmptyState message="No devices yet. Upload or collect a configuration first." />
+          <EmptyState message="No devices yet. Upload configs above, or collect a configuration first." />
         ) : (
           <div className="h-[75vh] card p-0 border border-soc-border overflow-hidden rounded-xl bg-slate-900/50 flex">
             <div className="flex-1">

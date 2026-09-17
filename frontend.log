@@ -1,0 +1,77 @@
+nohup: ignoring input
+
+> compliance-auditor-frontend@0.1.0 dev
+> vite --host 0.0.0.0 --host --port 5173
+
+Port 5173 is in use, trying another one...
+
+  VITE v5.4.21  ready in 178 ms
+
+  ➜  Local:   http://localhost:5174/
+  ➜  Network: http://10.10.70.223:5174/
+  ➜  Network: http://100.75.175.88:5174/
+  ➜  Network: http://172.18.0.1:5174/
+  ➜  Network: http://172.26.0.1:5174/
+  ➜  Network: http://172.22.0.1:5174/
+  ➜  Network: http://172.29.0.1:5174/
+9:08:26 PM [vite] Internal server error: Failed to resolve import "../components/WhyPanel" from "src/pages/ScanDetail.tsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/kenpachi-zaraki/NetSecAuditor/frontend/src/pages/ScanDetail.tsx:8:25
+  33 |    decisionTone
+  34 |  } from "../components/ui";
+  35 |  import { WhyPanel } from "../components/WhyPanel";
+     |                            ^
+  36 |  const STAGES = ["uploaded", "parsed", "normalized", "opa_evaluating", "batfish_evaluating", "correlating", "completed", "ai_ready"];
+  37 |  const BATFISH_TONE = {
+      at TransformPluginContext._formatError (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 7)
+      at async TransformPluginContext.transform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+9:08:26 PM [vite] Pre-transform error: Failed to resolve import "../components/WhyPanel" from "src/pages/ScanDetail.tsx". Does the file exist?
+9:08:26 PM [vite] Pre-transform error: Failed to resolve import "../components/WhyPanel" from "src/pages/FindingDetail.tsx". Does the file exist?
+9:08:26 PM [vite] Pre-transform error: Failed to resolve import "../components/WhyPanel" from "src/pages/ControlDetail.tsx". Does the file exist?
+9:08:26 PM [vite] Internal server error: Failed to resolve import "../components/WhyPanel" from "src/pages/ControlDetail.tsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/kenpachi-zaraki/NetSecAuditor/frontend/src/pages/ControlDetail.tsx:5:64
+  20 |  import { endpoints } from "../api";
+  21 |  import { PageHeader, Loading, EmptyState } from "../components/ui";
+  22 |  import { WhyPanel, TraceabilityChain } from "../components/WhyPanel";
+     |                                               ^
+  23 |  const STATUS_TONE = {
+  24 |    pending_review: "bg-amber-500/20 text-amber-400",
+      at TransformPluginContext._formatError (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 7)
+      at async TransformPluginContext.transform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+9:08:26 PM [vite] Internal server error: Failed to resolve import "../components/WhyPanel" from "src/pages/FindingDetail.tsx". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/kenpachi-zaraki/NetSecAuditor/frontend/src/pages/FindingDetail.tsx:5:64
+  20 |  import { endpoints } from "../api";
+  21 |  import { PageHeader, Loading, EmptyState, SeverityBadge, ResultBadge } from "../components/ui";
+  22 |  import { WhyPanel, TraceabilityChain } from "../components/WhyPanel";
+     |                                               ^
+  23 |  export default function FindingDetail() {
+  24 |    _s();
+      at TransformPluginContext._formatError (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 7)
+      at async TransformPluginContext.transform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/kenpachi-zaraki/NetSecAuditor/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+9:08:54 PM [vite] hmr update /src/main.tsx, /src/index.css
+9:08:54 PM [vite] page reload src/pages/WhyPanel.tsx

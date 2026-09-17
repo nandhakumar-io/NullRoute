@@ -142,7 +142,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                 system_prompt = f"Write configuration CLI commands for {vendor} {os_family} to fix this security failing.\\nIssue: {f.title}\\nGuidance: {f.remediation}\\nActual Value: {f.actual_value}\\nOutput ONLY a JSON array of strings containing the commands exactly, without markdown fences or explanations."
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     resp = await client.post(
-                        f"{OLLAMA_HOST}/generate",
+                        f"{OLLAMA_HOST}/api/generate",
                         json={
                             "model": LLM_MODEL,
                             "prompt": system_prompt,
@@ -158,9 +158,13 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                         text = text.split("```")[-1].split("```")[0].strip()
                     generated = json.loads(text)
                     
-                    if not isinstance(generated, list):
+                    if isinstance(generated, dict):
+                        generated = [str(k) for k in generated.keys()]
+                    elif not isinstance(generated, list):
                         generated = [str(generated)]
             except Exception as e:
+                import traceback
+                llm_error_msg = f"Generative AI Exception: {str(e)}"
                 generated = []
 
             if generated:
@@ -202,9 +206,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     "guidance": f.remediation,
                     "note": (
                         "No validated CLI template exists yet for this vendor/control "
-                        "pair -- showing prose guidance only. Add a reviewed template "
-                        "in app/services/remediation_templates.py to enable CLI "
-                        "generation for this control; never fabricate one at request time."
+                        "pair -- showing prose guidance only. " + (f" [AI GENERATION FAILED: {llm_error_msg}]" if 'llm_error_msg' in locals() else "The AI generator did not produce syntax.")
                     ),
                 })
 

@@ -4,8 +4,8 @@ x-common-env: &common-env
   DATABASE_URL: postgresql+psycopg2://compliance:compliance@postgres:5432/compliance
   NATS_URL: nats://nats:4222
   OPA_URL: http://opa:8181
-  OLLAMA_HOST: http://ollama:11434
-  OLLAMA_MODEL: qwen3:8b
+  OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
   OLLAMA_EMBED_MODEL: bge-m3
   AI_CONFIDENCE_THRESHOLD: "0.75"
   BATFISH_ENABLED: "true"
@@ -121,24 +121,9 @@ services:
       retries: 10
 
 
-  # ---------------------------------------------------------- security -----
-  keycloak:
-    image: quay.io/keycloak/keycloak:25.0
-    container_name: compliance-keycloak
-    command: start-dev
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-    ports: ["8081:8080"]
 
-  openbao:
-    image: openbao/openbao:latest
-    container_name: compliance-openbao
-    cap_add: [IPC_LOCK]
-    environment:
-      BAO_DEV_ROOT_TOKEN_ID: dev-root-token-change-me
-      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
-    ports: ["8200:8200"]
+
+  # ---------------------------------------------------------- security -----
 
   # Hyperledger Fabric evidence-anchoring bridge (sections 14, 18-19).
   # Internal-only: no port is published to the host by default because
@@ -279,6 +264,28 @@ services:
       dockerfile: backend/Dockerfile
     container_name: compliance-evidence-verification-worker
     command: ["python", "-m", "app.workers.evidence_verification_worker"]
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # Executes QUEUED TrainingJob rows (app/workers/training_worker.py --
+  # Loop 2 offline DistilBERT fine-tuning). Previously absent from this
+  # compose file: training_service.py/training_worker.py were fully
+  # implemented, but nothing ran the worker, so a job created via
+  # POST /api/training/jobs would sit at QUEUED forever (section 22 of the
+  # integration brief). CPU fine-tuning is deliberate (see
+  # training_service.py's module docstring) -- no GPU reservation needed
+  # for the demo dataset size.
+  training-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-training-worker
+    command: ["python", "-m", "app.workers.training_worker"]
     environment:
       <<: *common-env
     depends_on:

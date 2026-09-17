@@ -1,8 +1,20 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-load_dotenv(".env", override=True)
+# override=False (the default) is deliberate: an already-set environment
+# variable -- e.g. DATABASE_URL exported by the shell, set in
+# docker-compose, or monkeypatched by a pytest fixture -- must always win
+# over whatever is checked into backend/.env. This was previously
+# `override=True`, which silently clobbered every test fixture's
+# `monkeypatch.setenv("DATABASE_URL", "sqlite:///...")` (set immediately
+# before `from app.main import app`) back to backend/.env's real Postgres
+# URL. Every "isolated" sqlite-backed test across the suite was actually
+# running against the shared Postgres database, causing order-dependent
+# failures (e.g. a UNIQUE/dedup check tripping on a row a previous test
+# run left behind) that looked like real application bugs.
+load_dotenv(".env")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +28,7 @@ from app.routers import (
     alerts, credentials, datasets, device_gateway, drift,
     exceptions, system_health, training_jobs, streaming, gns3,
     backups, controls, vulnerabilities, document_ingestion, report_verification,
-    metrics, event_triggers, topology_groups, rag,
+    metrics, event_triggers, topology_groups, rag, custom_controls,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -38,10 +50,40 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS_ALLOWED_ORIGINS (spec section 54: audit CORS). A literal "*" can't
+# legally be paired with allow_credentials=True per the CORS spec --
+# Starlette's CORSMiddleware handles that combination by echoing back
+# whatever Origin header the request sent, which silently grants every
+# origin on the internet permission to make credentialed requests. This was
+# previously hard-coded as allow_origin_regex=".*" + allow_credentials=True,
+# which is exactly that unrestricted-wildcard-with-credentials bug (see
+# tests/test_cors_configuration.py). Behavior now:
+#   - unset / empty  -> no cross-origin access granted at all
+#   - "*"            -> wildcard access, but credentials forced OFF
+#   - a comma-separated allow-list -> only those origins, WITH credentials
+_cors_env = os.environ.get("CORS_ALLOWED_ORIGINS", "").strip()
+if _cors_env == "*":
+    # Wildcard: grant cross-origin access to all origins, but MUST NOT
+    # pair with credentials (CORS spec prohibits it; Starlette echoes back
+    # the actual Origin header in that case, silently granting all origins).
+    _cors_origins: list[str] = ["*"]
+    _cors_credentials = False
+elif _cors_env:
+    # Explicit allow-list: only those origins, with credentials allowed.
+    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    _cors_credentials = True
+else:
+    # No CORS_ALLOWED_ORIGINS configured -> no cross-origin access at all.
+    # Credentials must also be False here: Starlette echoes the request
+    # Origin back as allow-origin when credentials=True even with an empty
+    # allow_origins list, which defeats the "no cross-origin" intent.
+    _cors_origins = []
+    _cors_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,6 +123,7 @@ app.include_router(report_verification.router)
 app.include_router(metrics.router)
 app.include_router(event_triggers.router)
 app.include_router(event_triggers.webhook_router)
+app.include_router(custom_controls.router)
 
 @app.get("/health")
 def health():

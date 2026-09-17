@@ -1,6 +1,6 @@
 import { useEffect, useState, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { endpoints, DashboardStats, DashboardMetrics, DashboardRange, Device, Finding, BackupFleetSummary } from "../api";
+import { endpoints, DashboardStats, DashboardMetrics, DashboardRange, Device, Finding, BackupFleetSummary, ComplianceMatrix } from "../api";
 import { PageHeader, StatCard, Loading, StatusBadge, ScoreRing, CollapsibleCard } from "../components/ui";
 import RagChatPanel from "../components/RagChatPanel";
 import { useTheme } from "../theme";
@@ -53,6 +53,73 @@ function PostureChip({ label, value, tone }: { label: string; value: ReactNode; 
   );
 }
 
+/** Cross-vendor compliance heatmap: rows are controls, columns are
+ * vendors, cell shade is PASS rate. This is the single visual that proves
+ * the "unified, not vendor-siloed" pitch -- the exact same control row is
+ * evaluated against every vendor's own native syntax and lands in the
+ * same table. Blank cells mean that control simply wasn't applicable /
+ * evaluated for that vendor yet, not a failure. */
+function heatColor(pct: number | null, isLight: boolean): string {
+  if (pct == null) return isLight ? "#f1f5f9" : "#1e2a44";
+  if (pct >= 90) return isLight ? "#bbf7d0" : "#065f46";
+  if (pct >= 75) return isLight ? "#d9f99d" : "#3f6212";
+  if (pct >= 50) return isLight ? "#fef08a" : "#854d0e";
+  if (pct >= 25) return isLight ? "#fed7aa" : "#9a3412";
+  return isLight ? "#fecaca" : "#7f1d1d";
+}
+
+function ComplianceMatrixHeatmap({ matrix, isLight }: { matrix: ComplianceMatrix; isLight: boolean }) {
+  if (matrix.rows.length === 0) {
+    return <div className="text-slate-500 text-sm">No cross-vendor findings yet — scan devices from at least two vendors to populate this matrix.</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr>
+            <th className="text-left px-2 py-1.5 text-slate-500 font-semibold uppercase tracking-wide sticky left-0 bg-inherit">Control</th>
+            {matrix.vendors.map((v) => (
+              <th key={v} className="px-2 py-1.5 text-slate-500 font-semibold uppercase tracking-wide text-center whitespace-nowrap">{v}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {matrix.rows.map((row) => (
+            <tr key={row.control_id}>
+              <td className="px-2 py-1 font-mono text-slate-300 whitespace-nowrap" title={row.title}>
+                {row.control_id}
+              </td>
+              {matrix.vendors.map((v) => {
+                const val = row.vendors[v];
+                return (
+                  <td key={v} className="px-1 py-1 text-center">
+                    <div
+                      className="rounded px-2 py-1 font-semibold"
+                      style={{ background: heatColor(val, isLight), color: val == null ? "#64748b" : isLight ? "#0f172a" : "#e2e8f0" }}
+                      title={`${row.control_id} on ${v}: ${val == null ? "not evaluated" : `${val}% pass`}`}
+                    >
+                      {val == null ? "—" : `${val}%`}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex items-center gap-3 mt-3 text-[10px] text-slate-500">
+        <span>Same control, evaluated natively per vendor syntax:</span>
+        {[["≥90%", 92], ["75-89%", 80], ["50-74%", 60], ["25-49%", 35], ["<25%", 10]].map(([label, v]) => (
+          <span key={label as string} className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded-sm inline-block" style={{ background: heatColor(v as number, isLight) }} />
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { theme } = useTheme();
   const isLight = theme === "light";
@@ -74,9 +141,11 @@ export default function Dashboard() {
   const [criticalFindings, setCriticalFindings] = useState<Finding[]>([]);
   const [backupSummary, setBackupSummary] = useState<BackupFleetSummary | null>(null);
   const [openAlertCount, setOpenAlertCount] = useState<number | null>(null);
+  const [matrix, setMatrix] = useState<ComplianceMatrix | null>(null);
 
   useEffect(() => {
     endpoints.dashboard().then((r) => setStats(r.data)).catch(() => setStats(null));
+    endpoints.complianceMatrix().then((r) => setMatrix(r.data)).catch(() => setMatrix(null));
     endpoints.backupSummary().then((r) => setBackupSummary(r.data)).catch(() => setBackupSummary(null));
     endpoints.alerts({ status: "OPEN" }).then((r) => setOpenAlertCount(r.data.count)).catch(() => setOpenAlertCount(null));
     endpoints.devices({ limit: 50, sort_by: "last_compliance_score", sort_dir: "asc" })
@@ -170,7 +239,25 @@ export default function Dashboard() {
 
       {/* At-a-glance posture strip -- the "so what do I need to know right now" row */}
       <div className="px-8 flex flex-wrap gap-2 mb-6">
-        <PostureChip label="overall compliance" value={`${overallScore}%`} tone={postureTone} />
+        <PostureChip label="global network compliance" value={`${overallScore}%`} tone={postureTone} />
+        <PostureChip
+          label="devices out of baseline"
+          value={`${stats.devices_out_of_baseline} Critical`}
+          tone={stats.devices_out_of_baseline > 0 ? "critical" : "good"}
+        />
+        <PostureChip
+          label="MTTR"
+          value={
+            stats.mttr_hours == null
+              ? "—"
+              : `${stats.mttr_hours < 1 ? `${Math.round(stats.mttr_hours * 60)}m` : `${stats.mttr_hours.toFixed(1)}h`}${
+                  stats.mttr_improvement_pct != null
+                    ? ` (${stats.mttr_improvement_pct > 0 ? "↓" : "↑"}${Math.abs(stats.mttr_improvement_pct)}%)`
+                    : ""
+                }`
+          }
+          tone={stats.mttr_improvement_pct != null && stats.mttr_improvement_pct > 0 ? "good" : "neutral"}
+        />
         <PostureChip label="open critical" value={stats.critical_findings} tone={stats.critical_findings > 0 ? "critical" : "good"} />
         <PostureChip label="open high" value={stats.high_findings} tone={stats.high_findings > 0 ? "high" : "good"} />
         <PostureChip label="devices never scanned" value={neverScanned} tone={neverScanned > 0 ? "medium" : "good"} />
@@ -193,6 +280,23 @@ export default function Dashboard() {
           value={`${criticalCount} / ${highCount}`}
           tone="critical"
         />
+      </div>
+
+      {/* Cross-Vendor Compliance Matrix -- the "unified, not siloed" proof:
+          same control row, evaluated natively against every vendor's own
+          config syntax, side by side. */}
+      <div className="px-8 mt-4">
+        <CollapsibleCard
+          title="Cross-Vendor Compliance Matrix"
+          subtitle="Same control catalog evaluated natively across every vendor's syntax — one normalized model, not vendor silos"
+          storageKey="crossVendorMatrix"
+        >
+          {!matrix ? (
+            <div className="text-slate-500 text-sm h-[80px] flex items-center justify-center">Loading…</div>
+          ) : (
+            <ComplianceMatrixHeatmap matrix={matrix} isLight={isLight} />
+          )}
+        </CollapsibleCard>
       </div>
 
       <div className="px-8 mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">

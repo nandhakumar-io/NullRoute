@@ -110,71 +110,103 @@ def build_pdf_report(
     scan: dict, device: dict, findings: List[dict], evidence: Dict[str, Any] | None = None,
     framework_matrix: Dict[str, Dict[str, str]] | None = None, vuln_matches: List[dict] | None = None,
 ) -> bytes:
+    from xml.sax.saxutils import escape
+    from reportlab.platypus import PageBreak
+    from app.services.remediation_templates import get_template
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=18 * mm, bottomMargin=18 * mm)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("TitleX", parent=styles["Title"], textColor=colors.HexColor("#0f172a"))
+    title_style = ParagraphStyle("TitleX", parent=styles["Title"], textColor=colors.HexColor("#0f172a"), fontSize=22, spaceAfter=6)
+    cover_label = ParagraphStyle("CoverLabel", parent=styles["Normal"], fontSize=8, textColor=colors.HexColor("#64748b"))
+    cover_value = ParagraphStyle("CoverValue", parent=styles["Normal"], fontSize=11, textColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold")
+    confidential_style = ParagraphStyle("Confidential", parent=styles["Normal"], fontSize=9, textColor=colors.HexColor("#b91c1c"), fontName="Helvetica-Bold")
     h2 = ParagraphStyle("H2", parent=styles["Heading2"], textColor=colors.HexColor("#1e3a8a"))
+    h3 = ParagraphStyle("H3", parent=styles["Heading3"], textColor=colors.HexColor("#334155"), fontSize=10)
     normal = styles["Normal"]
+    mono = ParagraphStyle("Mono", parent=normal, fontName="Courier", fontSize=9, textColor=colors.HexColor("#1e3a8a"))
 
     story = []
-    story.append(Paragraph("Network Security Compliance Report", title_style))
-    story.append(Spacer(1, 6))
-    story.append(Paragraph(f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}", normal))
-    story.append(Spacer(1, 12))
 
-    # --- Executive summary (section 31) ---------------------------------
+    # ── COVER PAGE ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 30))
+    story.append(Paragraph("Network Security", title_style))
+    story.append(Paragraph("Compliance Audit Report", title_style))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph("CONFIDENTIAL — INTERNAL USE ONLY", confidential_style))
+    story.append(Spacer(1, 24))
+
+    cover_rows = [
+        ["Device Hostname", device.get("hostname", "—")],
+        ["Vendor", device.get("vendor", "—")],
+        ["Model", device.get("model", "—") or "—"],
+        ["OS / Firmware Version", f"{device.get('os', '—')} {device.get('version', '')}".strip()],
+        ["Serial Number", device.get("serial_number", "NOT PROVIDED") or "NOT PROVIDED"],
+        ["Management IP", device.get("ip_address", "—") or "—"],
+        ["Audit Framework(s)", scan.get("framework", "ALL")],
+        ["Audit Date (UTC)", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")],
+        ["Scan ID", scan.get("id", "—")],
+        ["Auditor / System", scan.get("created_by", "System")],
+        ["Overall Compliance Score", f"{scan.get('compliance_score', 0)}%"],
+        ["Risk Level", scan.get("risk_level", "—") or "—"],
+        ["Final Decision", scan.get("final_decision", "—") or "—"],
+    ]
+    cover_tbl = Table(cover_rows, colWidths=[155, 295])
+    cover_tbl.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+    ]))
+    story.append(cover_tbl)
+    story.append(Spacer(1, 24))
+
+    # Coloured compliance score badge
+    score = scan.get("compliance_score", 0)
+    badge_color = "#15803d" if score >= 80 else "#b45309" if score >= 50 else "#b91c1c"
+    score_style = ParagraphStyle("Score", parent=h2, textColor=colors.HexColor(badge_color), fontSize=20)
+    story.append(Paragraph(f"Compliance Score: <b>{score}%</b>", score_style))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
+        "This report was generated automatically by the NetSecAuditor AI-Compliance Engine. "
+        "All remediation steps require human review and administrator approval before implementation.",
+        normal,
+    ))
+    story.append(PageBreak())
+
+    # ── EXECUTIVE SUMMARY ────────────────────────────────────────────────────
     story.append(Paragraph("Executive Summary", h2))
     fail_count = sum(1 for f in findings if f.get("result") == "FAIL")
+    pass_count = sum(1 for f in findings if f.get("result") == "PASS")
     exec_rows = [
         ["Framework", scan.get("framework", "ALL")],
-        ["Overall Compliance Score", f"{scan.get('compliance_score', 0)}%"],
-        ["Findings (FAIL)", str(fail_count)],
-        ["OPA Decision", scan.get("opa_decision") or "-"],
-        ["Batfish Status", scan.get("batfish_status") or "-"],
-        ["Risk Score / Level", f"{scan.get('risk_score', '-')} / {scan.get('risk_level', '-')}"],
-        ["Final Decision", scan.get("final_decision") or "-"],
+        ["Overall Compliance Score", f"{score}%"],
+        ["Findings — PASS", str(pass_count)],
+        ["Findings — FAIL", str(fail_count)],
+        ["OPA Decision", scan.get("opa_decision") or "—"],
+        ["Batfish Status", scan.get("batfish_status") or "—"],
+        ["Risk Score / Level", f"{scan.get('risk_score', '—')} / {scan.get('risk_level', '—')}"],
+        ["Final Decision", scan.get("final_decision") or "—"],
     ]
     et = Table(exec_rows, colWidths=[160, 290])
     et.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
     ]))
     story.append(et)
     story.append(Spacer(1, 14))
 
-    story.append(Paragraph("Device Identification", h2))
-    dev_rows = [
-        ["Hostname", device.get("hostname", "-")],
-        ["Vendor", device.get("vendor", "-")],
-        ["Model", device.get("model", "-")],
-        ["OS / Version", f"{device.get('os', '-')} {device.get('version', '')}"],
-        ["Serial Number", device.get("serial_number", "-")],
-    ]
-    t = Table(dev_rows, colWidths=[130, 320])
-    t.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-    ]))
-    story.append(t)
-    story.append(Spacer(1, 14))
-
-    score = scan.get("compliance_score", 0)
-    story.append(Paragraph(f"Overall Compliance Score: <b>{score}%</b>", h2))
-    story.append(Paragraph(f"Framework: {scan.get('framework', 'ALL')} &nbsp;|&nbsp; Scan ID: {scan.get('id', '-')}", normal))
-    story.append(Spacer(1, 14))
-
-    from xml.sax.saxutils import escape
-
     story.append(Paragraph("Findings", h2))
     header = [
-        Paragraph("<b>Control</b>", normal), 
-        Paragraph("<b>Severity</b>", normal), 
-        Paragraph("<b>Result</b>", normal), 
-        Paragraph("<b>Expected</b>", normal), 
-        Paragraph("<b>Actual</b>", normal)
+        Paragraph("<b>Control</b>", normal),
+        Paragraph("<b>Severity</b>", normal),
+        Paragraph("<b>Result</b>", normal),
+        Paragraph("<b>Expected</b>", normal),
+        Paragraph("<b>Actual</b>", normal),
     ]
     rows = [header]
     for f in findings:
@@ -183,42 +215,48 @@ def build_pdf_report(
             Paragraph(escape(str(f.get("severity", ""))), normal),
             Paragraph(f"<b>{escape(str(f.get('result', '')))}</b>", normal),
             Paragraph(escape(str(f.get("expected_value", ""))), normal),
-            Paragraph(escape(str(f.get("actual_value", ""))), normal)
+            Paragraph(escape(str(f.get("actual_value", ""))), normal),
         ])
     tbl = Table(rows, colWidths=[90, 55, 55, 120, 120], repeatRows=1)
     style_cmds = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 9),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
     ]
     for i, f in enumerate(findings, start=1):
         if f.get("result") == "FAIL":
             style_cmds.append(("TEXTCOLOR", (2, i), (2, i), SEVERITY_COLORS.get(f.get("severity", ""), colors.red)))
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fff5f5")))
         elif f.get("result") == "PASS":
             style_cmds.append(("TEXTCOLOR", (2, i), (2, i), colors.HexColor("#15803d")))
     tbl.setStyle(TableStyle(style_cmds))
     story.append(tbl)
     story.append(Spacer(1, 14))
 
-    # --- Compliance Matrix (multi-framework traceability) ----------------
+    # ── COMPLIANCE MATRIX ─────────────────────────────────────────────────────
     matrix_rows = build_compliance_matrix_section(findings, framework_matrix)
     if matrix_rows:
-        story.append(Paragraph("Compliance Matrix", h2))
+        story.append(Paragraph("Multi-Framework Compliance Matrix", h2))
         matrix_header = [Paragraph(f"<b>{h}</b>", normal) for h in
-                          ("Control", "NIST-800-53", "CIS", "ISO-27001", "DISA-STIG")]
+                         ("Control", "NIST-800-53", "CIS", "ISO-27001", "DISA-STIG")]
         matrix_table_rows = [matrix_header]
         for row in matrix_rows:
             matrix_table_rows.append([
                 Paragraph(escape(str(row.get("control_id", ""))), normal),
-                Paragraph(escape(str(row.get("NIST-800-53", "-"))), normal),
-                Paragraph(escape(str(row.get("CIS", "-"))), normal),
-                Paragraph(escape(str(row.get("ISO-27001", "-"))), normal),
-                Paragraph(escape(str(row.get("DISA-STIG", "-"))), normal),
+                Paragraph(escape(str(row.get("NIST-800-53", "—"))), normal),
+                Paragraph(escape(str(row.get("CIS", "—"))), normal),
+                Paragraph(escape(str(row.get("ISO-27001", "—"))), normal),
+                Paragraph(escape(str(row.get("DISA-STIG", "—"))), normal),
             ])
         matrix_tbl = Table(matrix_table_rows, colWidths=[100, 95, 95, 95, 95], repeatRows=1)
         matrix_tbl.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
@@ -226,24 +264,25 @@ def build_pdf_report(
         story.append(matrix_tbl)
         story.append(Spacer(1, 14))
 
-    # --- Vulnerability Panel (CVE/KEV correlation) ------------------------
+    # ── VULNERABILITY PANEL ───────────────────────────────────────────────────
     vuln_rows = build_vulnerability_panel_section(vuln_matches)
     if vuln_rows:
-        story.append(Paragraph("Vulnerability Panel", h2))
+        story.append(Paragraph("Vulnerability Panel (CVE / KEV Correlation)", h2))
         vuln_header = [Paragraph(f"<b>{h}</b>", normal) for h in
-                        ("CVE", "CVSS", "KEV", "Status", "Linked Control")]
+                       ("CVE", "CVSS", "KEV", "Status", "Linked Control")]
         vuln_table_rows = [vuln_header]
         for row in vuln_rows:
             vuln_table_rows.append([
                 Paragraph(escape(str(row.get("cve_id", ""))), normal),
-                Paragraph(escape(str(row.get("cvss_score", "-"))), normal),
+                Paragraph(escape(str(row.get("cvss_score", "—"))), normal),
                 Paragraph("YES" if row.get("kev_flag") else "no", normal),
                 Paragraph(escape(str(row.get("status", ""))), normal),
-                Paragraph(escape(str(row.get("linked_control_id") or "-")), normal),
+                Paragraph(escape(str(row.get("linked_control_id") or "—")), normal),
             ])
         vuln_tbl = Table(vuln_table_rows, colWidths=[110, 60, 50, 100, 160], repeatRows=1)
         vuln_style_cmds = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("FONTSIZE", (0, 0), (-1, -1), 8),
@@ -255,32 +294,63 @@ def build_pdf_report(
         story.append(vuln_tbl)
         story.append(Spacer(1, 14))
 
-    story.append(Paragraph("Evidence & Remediation Detail", h2))
-    for f in findings:
-        if f.get("result") != "FAIL":
-            continue
-        story.append(Paragraph(f"<b>{escape(str(f.get('control_id', '')))} — {escape(str(f.get('title', '')))}</b> ({escape(str(f.get('severity', '')))})", normal))
-        
-        safe_ev = escape(str(f.get('evidence_line', '')))
-        safe_rem = escape(str(f.get('remediation', '')))
-        story.append(Paragraph(f"Evidence: <font face='Courier'>{safe_ev}</font>", normal))
-        story.append(Paragraph(f"Suggested remediation (administrator approval required): {safe_rem}", normal))
-        story.append(Spacer(1, 8))
+    # ── EVIDENCE & REMEDIATION DETAIL ──────────────────────────────────────────
+    vendor = device.get("vendor")
+    fail_findings = [f for f in findings if f.get("result") == "FAIL"]
+    if fail_findings:
+        story.append(Paragraph("Evidence &amp; Remediation Detail", h2))
+        for f in fail_findings:
+            control_id = str(f.get("control_id", ""))
+            title = str(f.get("title", control_id))
+            severity = str(f.get("severity", ""))
 
-    # --- Evidence & Fabric anchoring (sections 11, 17, 19, 31) -----------
-    story.append(Paragraph("Evidence & Blockchain Anchoring", h2))
+            # Severity-colored header
+            sev_color = SEVERITY_COLORS.get(severity, colors.HexColor("#374151"))
+            heading_style = ParagraphStyle(
+                "FHead", parent=normal, fontName="Helvetica-Bold", fontSize=10,
+                textColor=sev_color,
+            )
+            story.append(Paragraph(f"{escape(control_id)} — {escape(title)} [{severity}]", heading_style))
+
+            safe_ev = escape(str(f.get("evidence_line", "—")))
+            story.append(Paragraph(f"Evidence: <font face='Courier'>{safe_ev}</font>", normal))
+            story.append(Spacer(1, 4))
+
+            # Try to get a validated CLI template first
+            tmpl = get_template(control_id, vendor)
+            if tmpl:
+                story.append(Paragraph("<b>Remediation Steps (Validated CLI Sequence):</b>", h3))
+                story.append(Paragraph(f"<i>{escape(tmpl.description)}</i>", normal))
+                story.append(Spacer(1, 2))
+                all_cmds = tmpl.commands + (["! Save configuration:"] + tmpl.save_commands if tmpl.save_commands else [])
+                for step_num, cmd in enumerate(all_cmds, 1):
+                    story.append(Paragraph(
+                        f"{step_num}. <font face='Courier'>{escape(cmd)}</font>", normal
+                    ))
+                if tmpl.reference:
+                    story.append(Paragraph(f"<i>Reference: {escape(tmpl.reference)}</i>", cover_label))
+            else:
+                # Fall back to prose remediation from the finding
+                safe_rem = escape(str(f.get("remediation", "No remediation guidance available.")))
+                story.append(Paragraph("<b>Remediation Guidance (requires administrator review):</b>", h3))
+                story.append(Paragraph(safe_rem, normal))
+            story.append(Spacer(1, 12))
+
+    # ── EVIDENCE & BLOCKCHAIN ANCHORING ──────────────────────────────────────
+    story.append(Paragraph("Evidence &amp; Blockchain Anchoring", h2))
     ev = evidence or {}
     evid_rows = [
-        ["Evidence ID", scan.get("evidence_id") or "-"],
-        ["Evidence SHA-256", ev.get("evidence_hash") or "-"],
+        ["Evidence ID", scan.get("evidence_id") or "—"],
+        ["Evidence SHA-256", ev.get("evidence_hash") or "—"],
         ["Fabric Status", ev.get("fabric_status") or "NOT_ANCHORED"],
-        ["Fabric Transaction ID", ev.get("fabric_tx_id") or "-"],
-        ["Fabric Block Number", str(ev.get("fabric_block_number") or "-")],
+        ["Fabric Transaction ID", ev.get("fabric_tx_id") or "—"],
+        ["Fabric Block Number", str(ev.get("fabric_block_number") or "—")],
     ]
     evt = Table(evid_rows, colWidths=[160, 290])
     evt.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
         ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f1f5f9")),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
     ]))
     story.append(evt)

@@ -431,34 +431,12 @@ def _security_diff_lines(config: str) -> List[str]:
     return picked
 
 
-def compare_network_snapshots(
-    scan_id: str,
-    current_devices: Optional[List[Dict[str, Any]]],
-    proposed_devices: Optional[List[Dict[str, Any]]],
-    network_name: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Best-effort CURRENT-vs-PROPOSED network diff.
-
-    Real Batfish comparison is optional and may not be available in local/unit-test
-    environments. This function therefore provides the same structural contract the
-    rest of the app expects: a deterministic status plus delta metadata that can be
-    inspected by the change-request review flow without blocking creation.
-    """
-    if not current_devices and not proposed_devices:
-        return {
-            "status": "BATFISH_UNSUPPORTED",
-            "detail": "No current or proposed device snapshots were provided.",
-            "network_name": network_name or f"scan-{scan_id}",
-            "current_snapshot": None,
-            "proposed_snapshot": None,
-            "node_delta": {"added": [], "removed": []},
-            "route_delta": {"current_count": 0, "proposed_count": 0, "count_delta": 0},
-            "differential_reachability": {"status": "BATFISH_PASS", "changed_flow_count": 0, "sample": []},
-        }
-
-    current_map = _coerce_snapshot_devices(current_devices)
-    proposed_map = _coerce_snapshot_devices(proposed_devices)
-
+def _text_diff_route_and_node_delta(
+    current_map: Dict[str, str], proposed_map: Dict[str, str],
+) -> Any:
+    """Node/route deltas are cheap and vendor-agnostic -- always computed
+    this way (real or fallback path), unlike reachability which needs an
+    actual Batfish snapshot to mean anything."""
     current_nodes = sorted(current_map)
     proposed_nodes = sorted(proposed_map)
     added = sorted(set(proposed_nodes) - set(current_nodes))
@@ -471,58 +449,229 @@ def compare_network_snapshots(
     for cfg in proposed_map.values():
         proposed_routes += len(re.findall(r"(?i)\b(?:ip\s+route|route\s+|network\s+\d+|prefix-list|static\s+route)\b", cfg))
 
-    route_delta = {
-        "current_count": current_routes,
-        "proposed_count": proposed_routes,
+    return {"added": added, "removed": removed}, {
+        "current_count": current_routes, "proposed_count": proposed_routes,
         "count_delta": proposed_routes - current_routes,
     }
+
+
+def _compare_network_snapshots_heuristic(
+    scan_id: str, current_map: Dict[str, str], proposed_map: Dict[str, str],
+    network_name: Optional[str], status_prefix: str, detail: str,
+) -> Dict[str, Any]:
+    """Text-diff fallback used ONLY when a real Batfish comparison could not
+    be run (disabled/unreachable/unsupported vendor/error) -- section 7:
+    UNSUPPORTED/UNAVAILABLE must never silently become PASS, so the
+    top-level `status` here is always the Batfish-outage status, never
+    BATFISH_PASS/BATFISH_FAIL; `differential_reachability` still reports
+    the best-effort text-based signal so a reviewer isn't left with nothing,
+    but it is labeled accordingly and must not be read as a real reachability
+    verdict."""
+    node_delta, route_delta = _text_diff_route_and_node_delta(current_map, proposed_map)
 
     differentials: List[str] = []
     changed_flow_count = 0
     for hostname in sorted(set(current_map) & set(proposed_map)):
-        cur_cfg = current_map[hostname]
-        prop_cfg = proposed_map[hostname]
-        current_lines = set(_security_diff_lines(cur_cfg))
-        proposed_lines = set(_security_diff_lines(prop_cfg))
+        current_lines = set(_security_diff_lines(current_map[hostname]))
+        proposed_lines = set(_security_diff_lines(proposed_map[hostname]))
         delta = sorted(proposed_lines - current_lines) + sorted(current_lines - proposed_lines)
         if delta:
             differentials.extend(delta)
             changed_flow_count += len(delta)
 
-    if added or removed or route_delta["count_delta"] or changed_flow_count:
-        status = "BATFISH_FAIL"
-        changed_flow_count = max(changed_flow_count, 1 if (added or removed or route_delta["count_delta"]) else 0)
-        reachable_status = "BATFISH_FAIL"
-    else:
-        status = "BATFISH_PASS"
-        reachable_status = "BATFISH_PASS"
-
-    reachability = {
-        "status": reachable_status,
-        "changed_flow_count": changed_flow_count,
-        "sample": differentials[:10],
-    }
-
     return {
-        "status": status,
+        "status": status_prefix,
+        "detail": detail,
         "network_name": network_name or f"scan-{scan_id}",
-        "current_snapshot": "current-" + str(scan_id),
-        "proposed_snapshot": "proposed-" + str(scan_id),
-        "node_delta": {"added": added, "removed": removed},
+        "current_snapshot": None,
+        "proposed_snapshot": None,
+        "node_delta": node_delta,
         "route_delta": route_delta,
-        "differential_reachability": reachability,
+        "differential_reachability": {
+            "status": status_prefix,
+            "changed_flow_count": changed_flow_count,
+            "sample": differentials[:10],
+            "method": "TEXT_DIFF_FALLBACK",
+        },
+        "flow_diffs": [],
     }
 
 
-# ---------------------------------------------------------------------------
-# Multi-device topology-group analysis (Datacenter/Rack/NetworkGroup) and
-# admin-defined "desired network behaviour" questions.
-#
-# This is the generalization of analyze_security_behavior() above (which
-# only ever loads a single device's config into a snapshot) to a whole
-# group of devices at once, so Batfish can compute real cross-device
-# forwarding/reachability instead of only intra-device ACL/route checks.
-# ---------------------------------------------------------------------------
+# Critical zone-pair flows checked BEFORE and AFTER on real Batfish
+# snapshots -- same pairs analyze_security_behavior() checks for a single
+# snapshot, so a change request gets the identical behavioral coverage a
+# scan does (RULE 11), just run twice and diffed.
+_COMPARE_FLOW_PAIRS = [
+    ("GUEST", "MANAGEMENT", "SEGMENTATION-GUEST-MGMT-001", "Guest network must not reach Management network", "CRITICAL"),
+    ("INTERNET", "MANAGEMENT", "SEGMENTATION-INET-MGMT-001", "Internet must not reach Management network", "CRITICAL"),
+    ("USER", "SERVER", "SEGMENTATION-USER-SERVER-001", "User VLAN to Server VLAN reachability", "MEDIUM"),
+]
+
+
+def compare_network_snapshots(
+    scan_id: str,
+    current_devices: Optional[List[Dict[str, Any]]],
+    proposed_devices: Optional[List[Dict[str, Any]]],
+    network_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """CURRENT-vs-PROPOSED network behavioral diff (section 6/7/8 of the
+    Part 3 integration brief).
+
+    Builds TWO real Batfish snapshots -- one from `current_devices`, one
+    from `proposed_devices`, in the SAME network -- and runs the SAME
+    zone-pair reachability questions analyze_security_behavior() runs
+    against each, then diffs the before/after reachability per flow (e.g.
+    "GUEST -> MANAGEMENT: BEFORE=BLOCKED, AFTER=REACHABLE"). This is a real
+    dataplane comparison, not a text diff of the two configs.
+
+    Falls back to a labeled text-diff heuristic (never disguised as a real
+    reachability verdict -- see _compare_network_snapshots_heuristic) when
+    Batfish is disabled, unreachable, or errors, so a Batfish outage
+    degrades a change request's review to "reduced information", never to
+    a fabricated PASS (section 7).
+    """
+    if not current_devices and not proposed_devices:
+        return {
+            "status": "BATFISH_UNSUPPORTED",
+            "detail": "No current or proposed device snapshots were provided.",
+            "network_name": network_name or f"scan-{scan_id}",
+            "current_snapshot": None,
+            "proposed_snapshot": None,
+            "node_delta": {"added": [], "removed": []},
+            "route_delta": {"current_count": 0, "proposed_count": 0, "count_delta": 0},
+            "differential_reachability": {"status": "BATFISH_PASS", "changed_flow_count": 0, "sample": []},
+            "flow_diffs": [],
+        }
+
+    current_map = _coerce_snapshot_devices(current_devices)
+    proposed_map = _coerce_snapshot_devices(proposed_devices)
+    node_delta, route_delta = _text_diff_route_and_node_delta(current_map, proposed_map)
+
+    if not BATFISH_ENABLED:
+        return _compare_network_snapshots_heuristic(
+            scan_id, current_map, proposed_map, network_name,
+            "NOT_INTEGRATED", "BATFISH_ENABLED=false -- falling back to text-diff comparison.",
+        )
+
+    try:
+        bf = _get_session()
+        hc = health_check()
+        if hc.get("status") == "unreachable":
+            raise RuntimeError(str(hc.get("error")))
+    except Exception as e:
+        logger.warning("Batfish unavailable for snapshot compare (scan %s): %s", scan_id, e)
+        return _compare_network_snapshots_heuristic(
+            scan_id, current_map, proposed_map, network_name,
+            "BATFISH_UNAVAILABLE", f"Batfish session/coordinator unreachable: {e}",
+        )
+
+    current_snapshot_name = None
+    proposed_snapshot_name = None
+    try:
+        network = create_network(bf, scan_id)
+
+        current_root = None
+        for hostname, cfg in current_map.items():
+            current_root = create_snapshot(scan_id, hostname, cfg, variant="current")
+        proposed_root = None
+        for hostname, cfg in proposed_map.items():
+            proposed_root = create_snapshot(scan_id, hostname, cfg, variant="proposed")
+
+        if current_root is None or proposed_root is None:
+            # One side has zero devices -- nothing to diff behaviorally,
+            # but node/route delta (all-added or all-removed) still stands.
+            return {
+                "status": "BATFISH_UNSUPPORTED",
+                "detail": "Behavioral comparison requires at least one device on each side.",
+                "network_name": network, "current_snapshot": None, "proposed_snapshot": None,
+                "node_delta": node_delta, "route_delta": route_delta,
+                "differential_reachability": {"status": "BATFISH_UNSUPPORTED", "changed_flow_count": 0, "sample": []},
+                "flow_diffs": [],
+            }
+
+        current_snapshot_name = init_snapshot(bf, current_root, scan_id, variant="current")
+        proposed_snapshot_name = init_snapshot(bf, proposed_root, scan_id, variant="proposed")
+
+        current_zones = infer_zones("\n".join(current_map.values()))
+        proposed_zones = infer_zones("\n".join(proposed_map.values()))
+
+        flow_diffs: List[Dict[str, Any]] = []
+        for src_zone, dst_zone, control_id, title, severity in _COMPARE_FLOW_PAIRS:
+            src_before, dst_before = current_zones.get(src_zone) or [], current_zones.get(dst_zone) or []
+            src_after, dst_after = proposed_zones.get(src_zone) or [], proposed_zones.get(dst_zone) or []
+            if not (src_before and dst_before) and not (src_after and dst_after):
+                continue  # zone pair present on neither side -- nothing to claim (never fabricate)
+
+            before_reachable = None
+            if src_before and dst_before:
+                bf.set_snapshot(current_snapshot_name)
+                r = test_reachability(bf, src_before, dst_before, f"{control_id}-BEFORE", title,
+                                       src_zone, dst_zone, expected_reachable=False, severity=severity)
+                if r.status not in ("BATFISH_UNSUPPORTED", "BATFISH_ERROR"):
+                    before_reachable = r.reachable
+
+            after_reachable = None
+            if src_after and dst_after:
+                bf.set_snapshot(proposed_snapshot_name)
+                r = test_reachability(bf, src_after, dst_after, f"{control_id}-AFTER", title,
+                                       src_zone, dst_zone, expected_reachable=False, severity=severity)
+                if r.status not in ("BATFISH_UNSUPPORTED", "BATFISH_ERROR"):
+                    after_reachable = r.reachable
+
+            def _label(v: Optional[bool]) -> str:
+                return "UNKNOWN" if v is None else ("REACHABLE" if v else "BLOCKED")
+
+            changed = before_reachable is not None and after_reachable is not None and before_reachable != after_reachable
+            newly_reachable = bool(changed and after_reachable)
+            flow_diffs.append({
+                "control_id": control_id, "title": title,
+                "source_zone": src_zone, "destination_zone": dst_zone, "severity": severity,
+                "before": _label(before_reachable), "after": _label(after_reachable),
+                "changed": changed,
+                "result": "CRITICAL NETWORK IMPACT" if (newly_reachable and severity == "CRITICAL")
+                          else ("NETWORK IMPACT" if changed else "NO IMPACT"),
+            })
+
+        critical_new_exposure = any(f["changed"] and f["after"] == "REACHABLE" and f["severity"] == "CRITICAL" for f in flow_diffs)
+        any_flow_changed = any(f["changed"] for f in flow_diffs)
+        behavioral_change = bool(node_delta["added"] or node_delta["removed"] or any_flow_changed)
+
+        status = "BATFISH_FAIL" if behavioral_change else "BATFISH_PASS"
+        reachability = {
+            "status": "BATFISH_FAIL" if any_flow_changed else "BATFISH_PASS",
+            "changed_flow_count": sum(1 for f in flow_diffs if f["changed"]),
+            "sample": [f"{f['source_zone']} -> {f['destination_zone']}: {f['before']} -> {f['after']}"
+                       for f in flow_diffs if f["changed"]][:10],
+            "method": "BATFISH_REACHABILITY",
+        }
+
+        return {
+            "status": status,
+            "detail": "CRITICAL NETWORK IMPACT: new reachability introduced by this change." if critical_new_exposure
+                       else ("Behavioral differences detected between current and proposed configuration." if behavioral_change
+                             else "No behavioral differences detected."),
+            "network_name": network,
+            "current_snapshot": current_snapshot_name,
+            "proposed_snapshot": proposed_snapshot_name,
+            "node_delta": node_delta,
+            "route_delta": route_delta,
+            "differential_reachability": reachability,
+            "flow_diffs": flow_diffs,
+        }
+    except Exception as e:
+        logger.exception("Batfish snapshot compare failed for scan %s", scan_id)
+        return _compare_network_snapshots_heuristic(
+            scan_id, current_map, proposed_map, network_name,
+            "BATFISH_ERROR", f"Batfish comparison raised an error: {e}",
+        )
+    finally:
+        try:
+            if current_snapshot_name:
+                delete_snapshot(scan_id, variant="current")
+            if proposed_snapshot_name:
+                delete_snapshot(scan_id, variant="proposed")
+        except Exception:
+            pass
 
 def group_snapshot_dir(group_id: str) -> str:
     return os.path.join(BATFISH_SNAPSHOT_ROOT, f"group-{group_id}", "configs")

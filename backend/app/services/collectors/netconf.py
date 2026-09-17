@@ -73,9 +73,10 @@ def _xml_to_cli_text(xml_string: str) -> str:
     will handle the unrecognised lines.
     """
     try:
+        from lxml import etree
         # Remove XML namespaces so tags are simpler
         clean = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", xml_string)
-        root = ET.fromstring(clean)
+        root = etree.fromstring(clean.encode('utf-8'))
         lines = []
         for elem in root.iter():
             tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
@@ -83,7 +84,7 @@ def _xml_to_cli_text(xml_string: str) -> str:
             if text:
                 lines.append(f"{tag} {text}")
         return "\n".join(lines)
-    except ET.ParseError:
+    except Exception:
         # If XML is malformed strip tags with regex
         return re.sub(r"<[^>]+>", " ", xml_string)
 
@@ -113,7 +114,9 @@ def _get_juniper_cli_config(m) -> str:
     </command>
     """
     try:
-        reply = m.dispatch(rpc_xml)
+        from lxml import etree
+        parser = etree.XMLParser(strip_cdata=False)
+        reply = m.dispatch(etree.fromstring(rpc_xml.encode('utf-8'), parser=parser))
         raw = reply.xml if hasattr(reply, "xml") else str(reply)
         # Extract text content from the <output> wrapper Junos returns for
         # a text-format command RPC.

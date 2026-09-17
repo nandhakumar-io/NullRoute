@@ -171,11 +171,19 @@ def update_match_status(
 # ---------------------------------------------------------------------------
 
 @router.post("/api/vulns/sync", dependencies=[Depends(ADMIN_ONLY)])
-async def trigger_sync(db: Session = Depends(get_db)):
-    """Manual trigger of the full NVD/KEV/PSIRT sync -- the same
+async def trigger_sync(nvd_max_pages: Optional[int] = None, full: bool = False, db: Session = Depends(get_db)):
+    """Manual trigger of the NVD/KEV/PSIRT sync -- the same
     vuln_sync_service.sync_all() the background worker calls on its 24h
-    poll loop. Runs synchronously and returns the per-feed results; NVD
-    sync can take a while on a full catalog pull, so this is intended for
-    operator-triggered "sync now" use, not routine polling from the UI.
+    poll loop.
+
+    Unbounded, a full NVD catalog pull is hundreds of thousands of CVEs
+    and (at NVD's unauthenticated 5 req/30s rate limit) can take hours --
+    far past any browser/gateway request timeout, which made the "Sync
+    NVD/KEV" button in the UI appear to hang/fail. The background worker
+    (workers/vuln_sync_worker.py) is the right place for a full,
+    unbounded pull on its 24h loop; this endpoint defaults to a small
+    page cap so an operator-triggered "sync now" click actually returns.
+    Pass `full=true` (or an explicit `nvd_max_pages`) to override.
     """
-    return await vuln_sync_service.sync_all(db)
+    effective_pages = nvd_max_pages if nvd_max_pages is not None else (None if full else 10)
+    return await vuln_sync_service.sync_all(db, nvd_max_pages=effective_pages)

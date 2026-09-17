@@ -113,10 +113,21 @@ class Finding(Base):
     severity = Column(String)  # CRITICAL/HIGH/MEDIUM/LOW
     expected_value = Column(String)
     actual_value = Column(String)
-    result = Column(String)  # PASS/FAIL/NOT_APPLICABLE
+    result = Column(String)  # PASS/FAIL/NOT_APPLICABLE/UNVERIFIED (see policies/common/evaluate.rego)
     parameter = Column(String)
+    reason = Column(Text, nullable=True)  # human-readable OPA reason_for() string
+    policy_version = Column(String, nullable=True)  # exact policy revision that produced this finding
+    vendor = Column(String, nullable=True, index=True)  # denormalized from Scan/Device for direct filtering
     evidence_line = Column(Text)
     remediation = Column(Text)
+    # Trust-boundary provenance for the Evidence Trace view: which engine
+    # produced the raw_line -> normalized_parameter mapping this finding was
+    # evaluated against. 'parser' = deterministic vendor parser (no AI
+    # involved); 'ai' = RAG/LLM interpretation (see NormalizedParameter in
+    # models/baseline.py) with a confidence score. Null for findings with no
+    # single-parameter provenance (e.g. Batfish reachability findings).
+    source = Column(String, nullable=True)  # 'parser' | 'ai'
+    confidence = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     scan = relationship("Scan", back_populates="findings")
@@ -695,6 +706,10 @@ class DeploymentRecord(Base):
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    # Whether this deployment has been rolled back (set True by rollback_service
+    # only after a VERIFIED rollback -- so dr.rolled_back=True is a confirmed
+    # revert, never speculation). Starts False so older rows are unaffected.
+    rolled_back = Column(Boolean, nullable=False, default=False)
     # OpenConfig/gNMI deployment metadata (spec sections 26/47/53) -- never
     # credentials, only what was requested/returned.
     request_hash = Column(String, nullable=True)
@@ -923,6 +938,49 @@ class ControlReview(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     control = relationship("UnifiedControl", back_populates="reviews")
+
+
+class CustomControl(Base):
+    """Part 2 §10 "custom policy": a tenant-defined control expressed in the
+    SAME parameter/operator/expected/severity shape as the built-in catalog
+    (app/policies/controls.py), evaluated against the SAME flattened
+    SecurityBaselineModel every built-in control is — no vendor parser
+    change, no OPA bundle rebuild/reload required.
+
+    This is deliberately a narrower, simpler mechanism than the
+    UnifiedControl/VendorConfigPattern subsystem above: UnifiedControl is
+    for extracting a full control (including vendor-specific detection
+    regexes) out of a hardening-guide document via LLM, then compiling it
+    into its own generated Rego package — powerful, but today that compiled
+    package is never queried by policies/baseline.rego's actual decision
+    entrypoint, so it can't yet produce a live Finding/score (see
+    IMPLEMENTATION_AUDIT.md §C). CustomControl rows, by contrast, are read
+    at evaluation time and passed to OPA as input.custom_controls
+    (see services/custom_control_service.py and
+    policies/common/custom.rego) — approved rows are live on the very next
+    scan, with framework="CUSTOM" findings that flow through the exact same
+    Finding/score/dashboard path as every other control.
+
+    A CustomControl and a compiled UnifiedControl can coexist; unifying them
+    into one authoring workflow is a reasonable follow-up (see audit §C)
+    but is out of scope here.
+    """
+    __tablename__ = "custom_controls"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    control_id = Column(String, nullable=False)  # e.g. "CUSTOM-SSH-001"; unique per tenant
+    title = Column(String, nullable=False)
+    parameter = Column(String, nullable=False)  # dotted path on the flattened baseline
+    operator = Column(String, nullable=False)   # eq/ne/gte/lte/in/exists/not_true — same vocabulary as controls.py
+    expected_json = Column(JSON, nullable=False)  # JSON-encoded `expected` value (any JSON type)
+    severity = Column(String, nullable=False, default="MEDIUM")  # CRITICAL/HIGH/MEDIUM/LOW
+    remediation = Column(Text, nullable=True)
+    status = Column(String, default="pending_review", nullable=False, index=True)  # pending_review/approved/rejected
+    created_by = Column(String, nullable=True)
+    approved_by = Column(String, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -1202,3 +1260,40 @@ class EventTriggerLog(Base):
     action_result = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class RollbackRecord(Base):
+    """Phase 15b -- one rollback attempt for a DRIFTED or VERIFIED
+    DeploymentRecord. A rollback is only ever initiated by an authenticated
+    human (RULE 4/5, same as deployment_service). Never reports success
+    without re-collecting and re-hashing the device's actual configuration
+    (section 12 of the Part 3 integration brief).
+
+    `status` lifecycle:
+      PENDING  -> ROLLED_BACK (push succeeded) -> VERIFIED (hash matches)
+                                                -> CRITICAL_MANUAL_INTERVENTION_REQUIRED (hash mismatch)
+               -> CRITICAL_MANUAL_INTERVENTION_REQUIRED (push failed / no config / no creds)
+    """
+    __tablename__ = "rollback_records"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    deployment_record_id = Column(String, ForeignKey("deployment_records.id"), nullable=False, index=True)
+    change_request_id = Column(String, ForeignKey("change_requests.id"), nullable=False, index=True)
+    device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
+    initiated_by = Column(String, nullable=True)
+    reason = Column(Text, nullable=True)
+    transport = Column(String, nullable=True)   # ssh/netconf/gnmi -- inherited from the original deployment
+    # The configuration hash we are rolling BACK TO (cr.current_config_hash).
+    # Stored here so the verification step has a target that is immutable
+    # once the rollback row is created, even if the CR row is later updated.
+    target_config_hash = Column(String, nullable=True)
+    status = Column(String, default="PENDING", nullable=False, index=True)
+    # Result of re-collecting the device config after the rollback push.
+    post_rollback_hash = Column(String, nullable=True)
+    post_rollback_verified = Column(Boolean, nullable=True)
+    # Scan created by re-running the compliance pipeline on the post-rollback
+    # config (same evidence-trail pattern as deployment_service).
+    post_rollback_scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)

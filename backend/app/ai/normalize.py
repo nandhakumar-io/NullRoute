@@ -153,7 +153,7 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                f"{OLLAMA_HOST}/generate",
+                f"{OLLAMA_HOST}/api/generate",
                 json={
                     "model": LLM_MODEL,
                     "system": SYSTEM_PROMPT,
@@ -178,11 +178,22 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
                 reasoning=parsed.get("reasoning"),
             )
     except Exception:
+        # AI FAILURE MODE (spec section 12): Ollama/Qwen3 unreachable. The
+        # offline keyword heuristic below is a much weaker signal than an
+        # actual RAG-grounded LLM interpretation and MUST NOT be allowed to
+        # silently cross CONFIDENCE_THRESHOLD and skip human review — that
+        # would be exactly the forbidden "AI unavailable -> fabricated
+        # result -> PASS" failure mode. So: cap its confidence strictly below
+        # the review threshold and force needs_human_review regardless of
+        # what the heuristic itself computed, and tag model_version so this
+        # is distinguishable from a genuine Qwen3 response in provenance.
         result = _offline_heuristic_interpret(line)
         if retrieved_knowledge:
             result.retrieved_knowledge = [k["pattern"] for k in retrieved_knowledge] + result.retrieved_knowledge
-            result.confidence = min(result.confidence + 0.1, 0.95)
-            result.needs_human_review = result.confidence < CONFIDENCE_THRESHOLD
+        result.confidence = min(result.confidence, max(CONFIDENCE_THRESHOLD - 0.05, 0.0))
+        result.needs_human_review = True
+        result.model_version = f"{result.model_version}+qwen3_unavailable"
+        result.reasoning = "Qwen3/Ollama unavailable — degraded to offline keyword heuristic; forced to human review."
         return result
 
 
@@ -233,13 +244,15 @@ async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Opt
     return BlockInterpretationResult(vendor=vendor, block_text=block_text, facts=facts, unknown_lines=unknown_lines)
 
 
-def to_normalized_parameter(interp: AIInterpretation) -> NormalizedParameter:
+def to_normalized_parameter(interp: AIInterpretation, vendor: Optional[str] = None) -> NormalizedParameter:
     return NormalizedParameter(
         raw_command=interp.raw_command,
         normalized_parameter=interp.normalized_parameter,
         value=interp.value,
         confidence=interp.confidence,
         source="ai",
+        vendor=vendor,
+        parser_version=None,  # AI-derived facts are versioned by model_version, not parser_version
         retrieved_knowledge=interp.retrieved_knowledge,
         model_version=interp.model_version,
         human_validated=not interp.needs_human_review,
@@ -247,7 +260,7 @@ def to_normalized_parameter(interp: AIInterpretation) -> NormalizedParameter:
 
 
 def to_normalized_parameters(block_result: BlockInterpretationResult) -> List[NormalizedParameter]:
-    return [to_normalized_parameter(fact) for fact in block_result.facts]
+    return [to_normalized_parameter(fact, vendor=block_result.vendor) for fact in block_result.facts]
 
 
 def compute_coverage(baseline) -> dict:
@@ -264,7 +277,12 @@ def compute_coverage(baseline) -> dict:
                 matched = True
                 break
         if not matched:
-            for value in baseline.extra_parameters.get("unknown_evidence", []) or []:
+            # Consolidated onto the model's typed `unknown_evidence` list
+            # (see _apply_to_baseline in services/pipeline.py for why the
+            # old extra_parameters["unknown_evidence"] key was never
+            # actually populated by the writer).
+            for entry in baseline.unknown_evidence or []:
+                value = entry.get("raw_command") or entry.get("value") if isinstance(entry, dict) else entry
                 if isinstance(value, str) and (line in value or value in line):
                     matched = True
                     break
@@ -274,7 +292,7 @@ def compute_coverage(baseline) -> dict:
     deterministic_facts = sum(1 for p in provenance if p.source == "parser")
     ai_facts = sum(1 for p in provenance if p.source == "ai")
     unknown_blocks = baseline.extra_parameters.get("_unknown_blocks", [])
-    unknown_lines = len(unknown_blocks) + len(baseline.extra_parameters.get("unknown_evidence", []))
+    unknown_lines = len(unknown_blocks) + len(baseline.unknown_evidence)
     discarded = max(0, len(all_input) - covered)
     return {
         "input_lines": len(all_input),

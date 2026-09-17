@@ -24,7 +24,7 @@ def upgrade():
     op.create_table(
         "network_scan_jobs",
         sa.Column("id", sa.String(), primary_key=True),
-        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False, index=True),
+        sa.Column("tenant_id", sa.String(), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("name", sa.String(), nullable=True),
         sa.Column("target_cidr", sa.String(), nullable=True),
         sa.Column("run_discovery", sa.Boolean(), server_default=sa.false()),

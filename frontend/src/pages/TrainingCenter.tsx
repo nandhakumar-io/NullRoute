@@ -44,13 +44,45 @@ export default function TrainingCenter() {
   }, [activeTab]);
 
   // --- Reviews Tab ---
+  // Categorised dropdown of all known normalized security parameters
+  const SECURITY_CATEGORIES: Record<string, string[]> = {
+    "Management — SSH": [
+      "management.ssh.enabled", "management.ssh.version", "management.ssh.idle_timeout", "management.ssh.port",
+    ],
+    "Management — Telnet": ["management.telnet.enabled"],
+    "Management — HTTP/HTTPS": [
+      "management.http.enabled", "management.http.https_only", "management.http.port",
+    ],
+    "Management — General": ["management.banner_configured"],
+    "Logging": [
+      "logging.enabled", "logging.remote_syslog", "logging.log_level", "logging.ntp_synced",
+    ],
+    "AAA": [
+      "aaa.enabled", "aaa.authentication_method", "aaa.accounting_enabled", "aaa.local_fallback",
+    ],
+    "Password Policy": [
+      "password_policy.min_length", "password_policy.complexity_required", "password_policy.encrypted_storage",
+    ],
+    "SNMP": ["snmp.enabled", "snmp.community_strings_default"],
+    "Interfaces": ["interfaces.unused_ports_disabled", "interfaces.port_security_enabled"],
+    "Routing / ACLs": ["routing.ospf.enabled", "acls", "vlans"],
+    "Unknown / Other": ["extra_parameters.unknown_evidence"],
+  };
+
   async function review(id: string, action: "approve" | "correct" | "reject") {
     await endpoints.reviewMapping(id, { 
       action, 
       normalized_parameter: edits[id] ? edits[id] : undefined,
-      normalized_facts: edits[id] ? { [edits[id]]: "some_value" } : undefined, // simplified for ui
+      normalized_facts: edits[id] ? { [edits[id]]: "some_value" } : undefined,
       correction_reason: correctionReasons[id]
     });
+    load();
+  }
+
+  async function bulkApproveHighConfidence() {
+    if (!pending) return;
+    const highConf = pending.filter((m) => m.confidence >= 0.85);
+    await Promise.all(highConf.map((m) => endpoints.reviewMapping(m.id, { action: "approve" })));
     load();
   }
 
@@ -126,47 +158,85 @@ export default function TrainingCenter() {
               <EmptyState message="No unknown commands awaiting review. The AI is confident about everything it has seen so far." />
             ) : (
               <div className="space-y-4">
-                {pending.map((m) => (
-                  <div key={m.id} className="card">
-                    <div className="flex items-start justify-between gap-6">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs text-slate-500 mb-1">Unknown command · {m.vendor}</div>
-                        <pre className="bg-black/40 rounded-lg px-3 py-2 text-sm text-emerald-300 overflow-x-auto">{m.raw_command_pattern}</pre>
+                {/* Bulk action header */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm text-slate-400">
+                    <span className="font-semibold text-slate-200">{pending.length}</span> commands awaiting review ·{" "}
+                    <span className="text-emerald-400 font-semibold">
+                      {pending.filter((m) => m.confidence >= 0.85).length}
+                    </span>{" "}
+                    high-confidence (≥85%)
+                  </div>
+                  <button
+                    onClick={bulkApproveHighConfidence}
+                    disabled={pending.filter((m) => m.confidence >= 0.85).length === 0}
+                    className="btn-primary text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ✓ Bulk Approve High-Confidence (≥85%)
+                  </button>
+                </div>
 
-                        <div className="mt-3 text-xs text-slate-500">AI suggestion</div>
-                        <div className="text-sm text-slate-300">{m.ai_suggested_meaning}</div>
+                {pending.map((m) => {
+                  const confPct = Math.round(m.confidence * 100);
+                  const confColor = m.confidence >= 0.85 ? "#10b981" : m.confidence >= 0.60 ? "#f59e0b" : "#ef4444";
+                  return (
+                    <div key={m.id} className="card">
+                      <div className="flex items-start justify-between gap-6">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-slate-500 mb-1">Unknown command · <span className="text-amber-400">{m.vendor}</span></div>
+                          <pre className="bg-black/40 rounded-lg px-3 py-2 text-sm text-emerald-300 overflow-x-auto">{m.raw_command_pattern}</pre>
 
-                        <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
-                          <span>Confidence: <span className="text-amber-400 font-semibold">{Math.round(m.confidence * 100)}%</span></span>
-                          <span>Example value: <span className="text-slate-300">{m.example_value}</span></span>
+                          <div className="mt-3 text-xs text-slate-500">AI suggestion</div>
+                          <div className="text-sm text-slate-300">{m.ai_suggested_meaning}</div>
+
+                          {/* Confidence bar */}
+                          <div className="mt-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs text-slate-500">Confidence</span>
+                              <span className="text-xs font-semibold" style={{ color: confColor }}>{confPct}%</span>
+                              <span className="text-xs text-slate-600">· Example value: <span className="text-slate-300">{m.example_value}</span></span>
+                            </div>
+                            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${confPct}%`, background: confColor }} />
+                            </div>
+                          </div>
+
+                          {/* Categorized dropdown instead of free-text */}
+                          <div className="mt-4">
+                            <label className="block text-xs text-slate-500 mb-1">Map to security parameter (pick a category, then the parameter)</label>
+                            <select
+                              defaultValue={m.normalized_parameter}
+                              onChange={(e) => setEdits((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                              className="w-full bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600 font-mono"
+                            >
+                              {Object.entries(SECURITY_CATEGORIES).map(([group, params]) => (
+                                <optgroup key={group} label={group}>
+                                  {params.map((p) => (
+                                    <option key={p} value={p}>{p}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="mt-3">
+                            <label className="block text-xs text-slate-500 mb-1">Reason for correction (required for corrections)</label>
+                            <input
+                              onChange={(e) => setCorrectionReasons((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                              className="w-full bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600"
+                              placeholder="Why was the AI wrong?"
+                            />
+                          </div>
                         </div>
 
-                        <div className="mt-4">
-                          <label className="block text-xs text-slate-500 mb-1">Correct mapped parameter (optional)</label>
-                          <input
-                            defaultValue={m.normalized_parameter}
-                            onChange={(e) => setEdits((prev) => ({ ...prev, [m.id]: e.target.value }))}
-                            className="w-full bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600 font-mono"
-                          />
+                        <div className="flex flex-col gap-2 shrink-0 w-32">
+                          <button onClick={() => review(m.id, "approve")} className="btn-primary text-sm w-full">✓ Approve</button>
+                          <button onClick={() => review(m.id, "correct")} className="btn-secondary text-sm w-full bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30">✎ Correct</button>
+                          <button onClick={() => review(m.id, "reject")} className="btn-secondary text-sm w-full">✕ Reject</button>
                         </div>
-                        <div className="mt-3">
-                          <label className="block text-xs text-slate-500 mb-1">Reason for correction (required for corrections)</label>
-                          <input
-                            onChange={(e) => setCorrectionReasons((prev) => ({ ...prev, [m.id]: e.target.value }))}
-                            className="w-full bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-600"
-                            placeholder="Why was the AI wrong?"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2 shrink-0 w-32">
-                        <button onClick={() => review(m.id, "approve")} className="btn-primary text-sm w-full">✓ Approve</button>
-                        <button onClick={() => review(m.id, "correct")} className="btn-secondary text-sm w-full bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30">✎ Correct</button>
-                        <button onClick={() => review(m.id, "reject")} className="btn-secondary text-sm w-full">✕ Reject</button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

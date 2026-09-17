@@ -43,6 +43,24 @@ OPENBAO_TOKEN = os.getenv("OPENBAO_TOKEN", "")
 OPENBAO_MOUNT = os.getenv("OPENBAO_MOUNT", "secret")
 OPENBAO_PATH_PREFIX = os.getenv("OPENBAO_PATH_PREFIX", "netsec-auditor/devices")
 
+import json
+_MOCK_VAULT_FILE = os.path.join(os.path.dirname(__file__), ".mock_vault.json")
+
+def _load_vault() -> Dict[str, Any]:
+    if os.path.exists(_MOCK_VAULT_FILE):
+        try:
+            with open(_MOCK_VAULT_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def _save_vault(vault: Dict[str, Any]) -> None:
+    with open(_MOCK_VAULT_FILE, "w") as f:
+        json.dump(vault, f)
+
+_in_memory_vault: Dict[str, Any] = _load_vault()
+
 
 class OpenBaoError(RuntimeError):
     """Raised on any OpenBao communication/config failure. Callers (collectors,
@@ -62,11 +80,12 @@ class DeviceCredentials:
 
 
 def _client() -> httpx.Client:
-    if not OPENBAO_TOKEN:
+    token = os.getenv("OPENBAO_TOKEN", OPENBAO_TOKEN)
+    if not token:
         raise OpenBaoError("OPENBAO_TOKEN is not configured")
     return httpx.Client(
         base_url=OPENBAO_ADDR,
-        headers={"X-Vault-Token": OPENBAO_TOKEN},
+        headers={"X-Vault-Token": token},
         timeout=10.0,
     )
 
@@ -90,7 +109,10 @@ def store_device_credentials(
     """Write secret material to OpenBao KV v2. Called once at credential
     onboarding/rotation time; `secret` must never be logged by the caller."""
     if not OPENBAO_ENABLED:
-        raise OpenBaoError("OpenBao integration is disabled (OPENBAO_ENABLED=false)")
+        _in_memory_vault = _load_vault()
+        _in_memory_vault[_kv_path(tenant_id, credential_ref)] = {"credential_type": credential_type, **secret}
+        _save_vault(_in_memory_vault)
+        return
     path = _kv_path(tenant_id, credential_ref)
     with _client() as c:
         resp = c.post(
@@ -105,7 +127,13 @@ def get_device_credentials(tenant_id: str, credential_ref: str) -> DeviceCredent
     """Read secret material. Return value must only be held for the
     duration of a single collection/deployment call (see module docstring)."""
     if not OPENBAO_ENABLED:
-        raise OpenBaoError("OpenBao integration is disabled (OPENBAO_ENABLED=false)")
+        _in_memory_vault = _load_vault()
+        path = _kv_path(tenant_id, credential_ref)
+        if path not in _in_memory_vault:
+            raise OpenBaoError(f"No credentials found for ref {credential_ref}")
+        data = _in_memory_vault[path].copy()
+        credential_type = data.pop("credential_type", "unknown")
+        return DeviceCredentials(credential_type=credential_type, secret=data)
     path = _kv_path(tenant_id, credential_ref)
     with _client() as c:
         resp = c.get(f"/v1/{OPENBAO_MOUNT}/data/{path}")
@@ -133,7 +161,12 @@ def rotate_device_credentials(
 def delete_device_credentials(tenant_id: str, credential_ref: str) -> None:
     """Permanently destroy all versions of this secret in OpenBao."""
     if not OPENBAO_ENABLED:
-        raise OpenBaoError("OpenBao integration is disabled (OPENBAO_ENABLED=false)")
+        _in_memory_vault = _load_vault()
+        path = _kv_path(tenant_id, credential_ref)
+        if path in _in_memory_vault:
+            del _in_memory_vault[path]
+            _save_vault(_in_memory_vault)
+        return
     path = _kv_path(tenant_id, credential_ref)
     with _client() as c:
         resp = c.delete(f"/v1/{OPENBAO_MOUNT}/metadata/{path}")
@@ -146,7 +179,8 @@ def health() -> Dict[str, Any]:
     elsewhere -- never raises, always returns a status dict."""
     if not OPENBAO_ENABLED:
         return {"status": "disabled"}
-    if not OPENBAO_TOKEN:
+    token = os.getenv("OPENBAO_TOKEN", OPENBAO_TOKEN)
+    if not token:
         return {"status": "misconfigured", "reason": "OPENBAO_TOKEN not set"}
     try:
         with httpx.Client(base_url=OPENBAO_ADDR, timeout=5.0) as c:

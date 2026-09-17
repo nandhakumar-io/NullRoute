@@ -263,6 +263,11 @@ async def _check_device_gateway() -> ServiceHealth:
 
 
 async def _check_ai() -> ServiceHealth:
+    """Combined summary kept for backward compatibility with existing
+    dashboard consumers of the 'ai' key. Spec section 12 requires the four
+    AI pipeline stages to be independently visible, not folded into one
+    flag -- see _check_distilbert/_check_minilm/_check_qwen3/_check_rag
+    below, which are the ones the AI status panel should actually read."""
     from app.ai.model_registry import get_registry
 
     registry = get_registry()
@@ -279,6 +284,89 @@ async def _check_ai() -> ServiceHealth:
                           detail="Neither model loaded -- see /api/ai/health for detail")
 
 
+async def _check_distilbert() -> ServiceHealth:
+    """Spec section 12: DistilBERT status must be independently exposed --
+    it drives intent classification in app/ai/service.py::analyze_command
+    and must never be conflated with the embedder or the Qwen3/RAG path."""
+    from app.ai.model_registry import get_registry
+
+    registry = get_registry()
+    if not registry.enabled:
+        return ServiceHealth("DistilBERT (intent classifier)", "optional", STATUS_DISABLED, detail="AI_ENABLED=false")
+    if registry.classifier is not None:
+        return ServiceHealth("DistilBERT (intent classifier)", "optional", STATUS_HEALTHY,
+                              detail=f"{registry.classifier.backend_name} loaded")
+    return ServiceHealth("DistilBERT (intent classifier)", "optional", STATUS_UNAVAILABLE,
+                          detail="Classifier not loaded -- analyze_command() falls back to UNKNOWN/requires_review")
+
+
+async def _check_minilm() -> ServiceHealth:
+    """Spec section 12: MiniLM (semantic embeddings) status, independent of
+    DistilBERT and of the pgvector store it feeds."""
+    from app.ai.model_registry import get_registry
+
+    registry = get_registry()
+    if not registry.enabled:
+        return ServiceHealth("MiniLM (embeddings)", "optional", STATUS_DISABLED, detail="AI_ENABLED=false")
+    if registry.embedder is not None:
+        return ServiceHealth("MiniLM (embeddings)", "optional", STATUS_HEALTHY,
+                              detail=f"{registry.embedder.backend_name} loaded")
+    return ServiceHealth("MiniLM (embeddings)", "optional", STATUS_UNAVAILABLE,
+                          detail="Embedder not loaded -- semantic retrieval falls back to keyword overlap")
+
+
+async def _check_qwen3() -> ServiceHealth:
+    """Spec section 12: Qwen3/Ollama status. This is the path
+    app/ai/normalize.py::interpret_line degrades away from on failure --
+    when this is down, unknown-block interpretation runs the offline
+    keyword heuristic and every fact is forced to human review (never a
+    silent PASS -- see interpret_line's except-branch)."""
+    import httpx
+
+    from app.ai.normalize import LLM_MODEL, OLLAMA_HOST
+
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{OLLAMA_HOST}/api/tags")
+            resp.raise_for_status()
+            models = [m.get("name", "") for m in resp.json().get("models", [])]
+            if any(LLM_MODEL in m for m in models):
+                return ServiceHealth("Qwen3 (Ollama)", "optional", STATUS_HEALTHY,
+                                      detail=f"{LLM_MODEL} available at {OLLAMA_HOST}")
+            return ServiceHealth("Qwen3 (Ollama)", "optional", STATUS_DEGRADED,
+                                  detail=f"Ollama reachable but {LLM_MODEL} not pulled -- interpret_line() will degrade per-call")
+    except Exception as e:  # noqa: BLE001 -- health probe, never raises to caller
+        return ServiceHealth("Qwen3 (Ollama)", "optional", STATUS_UNAVAILABLE,
+                              detail=f"Unreachable at {OLLAMA_HOST}: {e}. Unknown blocks route to offline heuristic + forced human review.")
+
+
+async def _check_rag() -> ServiceHealth:
+    """Spec section 12: RAG/pgvector retrieval status -- distinct from
+    Qwen3 itself. Degrades to in-process cosine/substring match on SQLite
+    or when the pgvector extension/index isn't present (see
+    services/vector_search.py); that degrade is not silent to the caller,
+    but it IS a materially weaker retrieval signal, so it's worth its own
+    status line rather than being invisible inside 'postgres'."""
+    try:
+        from sqlalchemy import text
+
+        from app.db import SessionLocal
+
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'"))
+            row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")).first()
+            if row:
+                return ServiceHealth("RAG (pgvector)", "optional", STATUS_HEALTHY, detail="pgvector extension present")
+            return ServiceHealth("RAG (pgvector)", "optional", STATUS_DEGRADED,
+                                  detail="pgvector extension not found -- retrieval degrades to in-process cosine/substring match")
+        finally:
+            db.close()
+    except Exception as e:  # noqa: BLE001 -- e.g. SQLite backend has no pg_extension catalog
+        return ServiceHealth("RAG (pgvector)", "optional", STATUS_DEGRADED,
+                              detail=f"Could not verify pgvector extension ({e}) -- assume in-process fallback retrieval")
+
+
 _PROBES: List[tuple[str, Callable[[], Any]]] = [
     ("postgres", lambda: asyncio.to_thread(_check_postgres)),
     ("nats", _check_nats),
@@ -290,6 +378,10 @@ _PROBES: List[tuple[str, Callable[[], Any]]] = [
     ("fabric", _check_fabric),
     ("device_gateway", _check_device_gateway),
     ("ai", _check_ai),
+    ("ai_distilbert", _check_distilbert),
+    ("ai_minilm", _check_minilm),
+    ("ai_qwen3", _check_qwen3),
+    ("ai_rag", _check_rag),
 ]
 
 

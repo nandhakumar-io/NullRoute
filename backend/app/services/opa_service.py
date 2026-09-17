@@ -242,10 +242,18 @@ async def evaluate_baseline(
     framework: str,
     flattened_baseline: Dict[str, Any],
     metadata: Optional[Dict[str, Any]] = None,
+    custom_controls: Optional[List[Dict[str, Any]]] = None,
 ) -> OPADecision:
     """Evaluate a full baseline against OPA. Raises OPAUnavailableError /
     OPAMalformedResponseError on failure — callers MUST catch these and use
-    fail_closed_decision(), never a Python re-implementation, per RULE 14."""
+    fail_closed_decision(), never a Python re-implementation, per RULE 14.
+
+    custom_controls: approved tenant CustomControl rows, already shaped by
+    services/custom_control_service.py::for_opa_input(). Passed through as
+    input.custom_controls, which policies/common/custom.rego and
+    policies/baseline.rego's compliance.custom import evaluate live — no
+    bundle reload needed for a newly approved custom control to take
+    effect. Empty/omitted is fine; the Rego side handles no controls."""
     sanitized = sanitize_baseline(flattened_baseline)
     input_doc = {
         "scan_id": scan_id,
@@ -254,6 +262,7 @@ async def evaluate_baseline(
         "framework": framework or "ALL",
         "baseline": sanitized,
         "metadata": metadata or {},
+        "custom_controls": custom_controls or [],
     }
     raw = await _post_evaluate(input_doc)
     return normalize_opa_result(raw, scan_id)
@@ -262,12 +271,13 @@ async def evaluate_baseline(
 async def evaluate_security_policy(
     scan_id: str, device: Dict[str, Any], vendor: str, framework: str,
     flattened_baseline: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None,
+    custom_controls: Optional[List[Dict[str, Any]]] = None,
 ) -> OPADecision:
     """Alias for evaluate_baseline — kept as a distinct name because the
     problem statement lists it as a required entrypoint; today it evaluates
     the same policy set. Split out if/when policy scoping needs to diverge
     (e.g. a narrower "security policy only" bundle)."""
-    return await evaluate_baseline(scan_id, device, vendor, framework, flattened_baseline, metadata)
+    return await evaluate_baseline(scan_id, device, vendor, framework, flattened_baseline, metadata, custom_controls)
 
 
 async def evaluate_control(

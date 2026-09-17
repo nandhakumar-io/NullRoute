@@ -236,16 +236,22 @@ export interface BulkDeviceResult {
 
 export interface Finding {
   id: string;
+  scan_id?: string;
   framework: string;
   control_id: string;
   title: string;
   severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   expected_value: string | null;
   actual_value: string | null;
-  result: "PASS" | "FAIL" | "NOT_APPLICABLE";
+  result: "PASS" | "FAIL" | "NOT_APPLICABLE" | "UNVERIFIED";
   parameter: string;
+  reason?: string | null;
+  policy_version?: string | null;
+  vendor?: string | null;
   evidence_line: string | null;
   remediation: string | null;
+  presentation_result?: string | null;
+  created_at?: string | null;
 }
 
 export interface Scan {
@@ -311,6 +317,15 @@ export interface DashboardStats {
   opa_vs_batfish: Record<string, number>;
   risk_distribution: Record<string, number>;
   evidence_anchoring_status: Record<string, number>;
+  // Part 2 §A/§F additions: REVIEW/UNVERIFIED counts (previously
+  // uncountable because the states didn't exist) and a per-vendor score
+  // breakdown for the multi-vendor proof (§9).
+  review_scans: number;
+  unverified_findings: number;
+  vendor_scores: Record<string, number>;
+  // Phase 1 security-audit dashboard (SIH26155).
+  total_findings: number;
+  configuration_drift_count: number;
 }
 
 export interface AuditLogEntry {
@@ -362,6 +377,36 @@ export interface CommandMapping {
   ai_suggested_meaning: string | null;
   confidence: number;
   status: string;
+}
+
+// --- Unified Review Queue (Section 10) ---
+// Advisory-only surfacing of every AIAnalysis row across every scan that the
+// hybrid decision engine flagged `requires_review`. Never a compliance
+// PASS/FAIL -- that authority stays with OPA/Batfish. The frontend unifies
+// this with pending CommandMapping rows (Training Center) into one queue so
+// a reviewer has a single place to triage everything awaiting human sign-off.
+export interface ReviewQueueItem {
+  id: string;
+  scan_id: string;
+  device_id: string | null;
+  device_hostname: string | null;
+  vendor: string | null;
+  intent: string;
+  classifier_confidence: number;
+  semantic_similarity: number;
+  nearest_intent: string | null;
+  nearest_vendor: string | null;
+  models_agree: boolean;
+  decision: "KNOWN_CANDIDATE" | "UNKNOWN" | "REQUIRES_REVIEW";
+  reason: string | null;
+  model_version: string | null;
+  inference_latency_ms: number | null;
+  created_at: string;
+}
+
+export interface ReviewQueueResponse {
+  count: number;
+  items: ReviewQueueItem[];
 }
 
 export interface BatfishReachabilityCheck {
@@ -541,6 +586,18 @@ export interface TopologyLink {
 export interface Topology {
   nodes: TopologyNode[];
   links: TopologyLink[];
+}
+
+export interface TopologyGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  datacenter_id: string | null;
+  rack_id: string | null;
+  device_ids: string[];
+  last_batfish_status: string | null;
+  last_batfish_run_at: string | null;
+  created_at: string;
 }
 
 export interface SnapshotDiff {
@@ -944,8 +1001,20 @@ export interface ModelRegistryEntry {
   training_job_id: string | null;
 }
 
+export interface ComplianceMatrixRow {
+  control_id: string;
+  title: string;
+  vendors: Record<string, number | null>;
+}
+
+export interface ComplianceMatrix {
+  vendors: string[];
+  rows: ComplianceMatrixRow[];
+}
+
 export const endpoints = {
   dashboard: () => api.get<DashboardStats>("/api/dashboard"),
+  complianceMatrix: () => api.get<ComplianceMatrix>("/api/dashboard/compliance-matrix"),
   dashboardMetrics: (range: DashboardRange) =>
     api.get<DashboardMetrics>("/api/dashboard/metrics", { params: { range } }),
   auditLog: (params?: {
@@ -1001,11 +1070,13 @@ export const endpoints = {
   snapshotDiff: (scanId: string) => api.get<SnapshotDiff>(`/api/scans/${scanId}/snapshot-diff`),
   opaAnalysis: (scanId: string) => api.get<OpaAnalysis>(`/api/scans/${scanId}/opa`),
   aiAnalysis: (scanId: string) => api.get<ScanAIAnalysis>(`/api/scans/${scanId}/ai`),
-  aiRemediation: (scanId: string) => api.get<any>(`/api/scans/${scanId}/remediation`),
+  aiRemediation: (scanId: string) => api.get<any>(`/api/scans/${scanId}/remediation/generate-cli`),
   aiHealth: () => api.get<AIHealth>("/api/ai/health"),
+  reviewQueue: (limit = 100) => api.get<ReviewQueueResponse>("/api/ai/review-queue", { params: { limit } }),
   systemHealth: () => api.get<SystemHealth>("/api/system/health"),
-  findings: (params?: { scan_id?: string; severity?: string; result?: string }) =>
+  findings: (params?: { scan_id?: string; severity?: string; result?: string; vendor?: string }) =>
     api.get<Finding[]>("/api/findings", { params }),
+  finding: (findingId: string) => api.get<Finding>(`/api/findings/${findingId}`),
   uploadConfig: (file: File, framework: string, hostname?: string) => {
     const form = new FormData();
     form.append("file", file);
@@ -1013,6 +1084,21 @@ export const endpoints = {
     if (hostname) form.append("hostname", hostname);
     return api.post<ScanDetail>("/api/scans/upload", form);
   },
+  bulkUploadConfigs: (files: File[], framework = "ALL") => {
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    form.append("framework", framework);
+    return api.post<ScanDetail[]>("/api/scans/bulk-upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+
+  // --- Topology groups (Datacenter/Rack/NetworkGroup + Batfish) ---------
+  topologyGroups: () => api.get<TopologyGroup[]>("/api/topology/groups"),
+  topologyGroup: (id: string) => api.get<TopologyGroup>(`/api/topology/groups/${id}`),
+  createTopologyGroup: (payload: { name: string; description?: string; device_ids: string[] }) =>
+    api.post<TopologyGroup>("/api/topology/groups", payload),
+  scanTopologyGroup: (id: string) => api.post<any>(`/api/topology/groups/${id}/scan`),
   
   // Training Center Layer 3+
   pendingMappings: () => api.get<CommandMapping[]>("/api/training/pending"),
@@ -1230,7 +1316,10 @@ export const endpoints = {
   correlateDeviceVulns: (deviceId: string) => api.post(`/api/devices/${deviceId}/vulns/correlate`),
   updateVulnMatchStatus: (deviceId: string, matchId: string, payload: { status: string; justification?: string }) =>
     api.patch<DeviceVulnerabilityMatch>(`/api/devices/${deviceId}/vulns/${matchId}`, payload),
-  syncVulnFeeds: () => api.post("/api/vulns/sync"),
+  syncVulnFeeds: (opts?: { full?: boolean }) =>
+    api.post<{ synced_at: string; feeds: Array<{ status: string; source: string; upserted?: number; flagged?: number; error?: string; reason?: string }> }>(
+      "/api/vulns/sync", null, { params: opts },
+    ),
 
   // --- RAG chat (Ask NetSecAuditor) ---
   ragQuery: (question: string, top_k = 5) =>

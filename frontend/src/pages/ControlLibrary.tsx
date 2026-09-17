@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   endpoints,
   UnifiedControl,
@@ -237,6 +238,9 @@ function ControlLibraryTab() {
                   )}
                 </div>
                 <div className="flex flex-col gap-2 shrink-0 w-40">
+                  <Link to={`/control-library/${c.id}`} className="btn-secondary text-xs w-full text-center">
+                    View Detail →
+                  </Link>
                   <button onClick={() => openTagModal(c.id)} className="btn-secondary text-xs w-full">
                     Tag Pattern
                   </button>

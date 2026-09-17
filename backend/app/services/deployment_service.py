@@ -254,14 +254,23 @@ async def deploy_change_request(
         if dr.transport == "gnmi":
             from app.services.observability import record_gnmi_verification_failure
             record_gnmi_verification_failure()
+        drift_detail = (
+            f"Post-deployment configuration hash does not match the approved proposed configuration "
+            f"(change_request={cr.id}, deployment={dr.id})."
+        )
         try:
-            await alert_service.alert_collection_failure(
-                db, cr.tenant_id, device.id,
-                f"Post-deployment configuration hash does not match the approved proposed configuration "
-                f"(change_request={cr.id}, deployment={dr.id}).",
-            )
+            await alert_service.alert_collection_failure(db, cr.tenant_id, device.id, drift_detail)
         except Exception:  # noqa: BLE001
             logger.warning("Failed to dispatch post-deploy drift alert", exc_info=True)
+        # Section 12: a DRIFTED deployment is exactly the "VERIFY -> FAIL"
+        # state that may need a rollback -- raise the dedicated alert so an
+        # operator sees "rollback may be required" distinctly from generic
+        # drift, without this module ever triggering the rollback itself
+        # (RULE 4/5; see services/rollback_service.py).
+        try:
+            await alert_service.alert_rollback_required(db, cr.tenant_id, device.id, dr.id, drift_detail)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to dispatch rollback-required alert", exc_info=True)
 
     dr.completed_at = datetime.utcnow()
     db.commit()

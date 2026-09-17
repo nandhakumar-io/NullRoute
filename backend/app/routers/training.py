@@ -1,11 +1,12 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.db import AuditLog, CommandMapping
+from app.models.db import CommandMapping
 from app.schemas import CommandMappingOut, MappingReviewIn
+from app.services import hitl_service
 
 from app.auth.dependencies import get_current_tenant, get_current_user, require_role
 
@@ -43,10 +44,23 @@ def list_approved(db: Session = Depends(get_db), tenant_id: str = Depends(get_cu
 def review_mapping(
     mapping_id: str,
     payload: MappingReviewIn,
+    request: Request,
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    _user=Depends(require_role("admin", "security_analyst")),
+    user=Depends(require_role("admin", "security_analyst")),
 ):
+    """Approve/correct/reject a pending command mapping.
+
+    Delegates to `hitl_service`, which is the single place this actually
+    persists: it updates the `CommandMapping` row *and* writes the
+    corresponding `TrainingExample` (redacted raw text, normalized facts,
+    human_action, correction_reason) that Loop 2 dataset building reads
+    from, generates the pgvector embedding, and records the audit log.
+    Previously this endpoint only flipped `CommandMapping.status` and
+    tried to hand-edit a JSON file at a developer's hardcoded local path
+    — it never created a TrainingExample at all, so nothing downstream
+    (dataset snapshots, model retraining) ever saw these reviews.
+    """
     mapping = (
         _tenant_scoped_mappings_query(db, tenant_id)
         .filter(CommandMapping.id == mapping_id)
@@ -55,46 +69,23 @@ def review_mapping(
     if not mapping:
         raise HTTPException(404, "Mapping not found")
 
-    if payload.action == "approve" or payload.action == "correct":
-        mapping.status = "approved"
-        if payload.normalized_parameter:
-            mapping.normalized_parameter = payload.normalized_parameter
-        mapping.confidence = max(mapping.confidence, 0.95)  # human-confirmed
-        
-        import os, json
-        from app.ai import model_registry
-        dataset_path = "/home/kenpachi-zaraki/NetSecAuditor/backend/ai_reference_dataset.json"
-        
-        new_intent = mapping.normalized_parameter or mapping.ai_suggested_meaning
-        if new_intent and os.path.exists(dataset_path):
-            try:
-                with open(dataset_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                data.append({
-                    "text": mapping.raw_command_pattern,
-                    "intent": new_intent,
-                    "vendor": mapping.vendor
-                })
-                with open(dataset_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, indent=2)
-                
-                reg = model_registry.initialize()
-                if reg.embedder and reg.embedder.reference_dataset_path:
-                    from app.ai.embeddings import _load_reference_dataset
-                    reg.embedder.examples = _load_reference_dataset(reg.embedder.reference_dataset_path)
-            except Exception as e:
-                import logging
-                logging.error(f"Failed to inject training data: {e}")
+    normalized_facts = dict(payload.normalized_facts or {})
+    if payload.normalized_parameter and "facts" not in normalized_facts:
+        normalized_facts["facts"] = [{"parameter": payload.normalized_parameter}]
+
+    if payload.action == "approve":
+        mapping = hitl_service.approve_mapping(
+            db, mapping, normalized_facts, payload.correction_reason, user, request
+        )
+    elif payload.action == "correct":
+        mapping = hitl_service.correct_mapping(
+            db, mapping, normalized_facts, payload.correction_reason, user, request
+        )
     elif payload.action == "reject":
-        mapping.status = "rejected"
+        mapping = hitl_service.reject_mapping(
+            db, mapping, payload.correction_reason, user, request
+        )
     else:
         raise HTTPException(400, "action must be 'approve', 'correct', or 'reject'")
 
-    from datetime import datetime
-    mapping.reviewed_by = payload.reviewer
-    mapping.reviewed_at = datetime.utcnow()
-    db.add(AuditLog(actor=payload.reviewer, action=f"training.{payload.action}",
-                     resource=mapping_id, details={"normalized_parameter": mapping.normalized_parameter}))
-    db.commit()
-    db.refresh(mapping)
     return mapping

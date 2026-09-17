@@ -79,6 +79,49 @@ class ACLRule(BaseModel):
     action: Optional[str] = None
 
 
+class FirewallPolicy(BaseModel):
+    """Vendor-neutral representation of a zone/rulebase firewall policy
+    (FortiOS `config firewall policy`, PAN-OS `set rulebase security rules`,
+    Cisco zone-based `class-map`/`policy-map`, etc). Deliberately separate
+    from ACLRule: an ACL is an ordered permit/deny match list bound to an
+    interface, a firewall policy is a stateful zone/app/service rule — the
+    two must not be collapsed into one shape or compliance controls that
+    apply to only one of them (e.g. "default deny between zones") cannot be
+    evaluated correctly."""
+    name: str
+    action: Optional[str] = None  # allow/deny/drop
+    source_zone: Optional[str] = None
+    destination_zone: Optional[str] = None
+    source: Optional[List[str]] = None
+    destination: Optional[List[str]] = None
+    service: Optional[List[str]] = None
+    application: Optional[List[str]] = None
+    logging_enabled: Optional[bool] = None
+    enabled: Optional[bool] = None
+
+
+class CryptoConfig(BaseModel):
+    """TLS/SSH/certificate posture — kept distinct from management.ssh so
+    cipher/protocol-strength controls can be evaluated independently of
+    whether the management protocol itself is merely enabled."""
+    min_tls_version: Optional[str] = None
+    weak_ciphers_disabled: Optional[bool] = None
+    ssh_key_exchange_algorithms: Optional[List[str]] = None
+    certificate_expiry_checked: Optional[bool] = None
+    self_signed_cert_in_use: Optional[bool] = None
+
+
+class ServicesConfig(BaseModel):
+    """Generic enabled/disabled service inventory for services that don't
+    warrant their own typed section (ftp, tftp, finger, cdp/lldp, http proxy,
+    etc). Management-plane protocols with dedicated compliance controls
+    (ssh/telnet/http) stay in ManagementConfig — this is the catch-all so
+    vendor-specific service toggles don't get dropped into extra_parameters
+    where the rule engine can't reliably find them."""
+    enabled_services: List[str] = Field(default_factory=list)
+    disabled_services: List[str] = Field(default_factory=list)
+
+
 class SyslogServer(BaseModel):
     address: str
     severity: Optional[str] = None
@@ -174,8 +217,14 @@ class NormalizedParameter(BaseModel):
     value: Any
     confidence: float = 1.0
     source: str = Field(description="'parser' (deterministic) or 'ai' (RAG/LLM)")
+    vendor: Optional[str] = None
+    line_number: Optional[int] = None
+    parser_version: Optional[str] = None
     retrieved_knowledge: Optional[List[str]] = None
-    model_version: Optional[str] = None
+    model_version: Optional[str] = Field(
+        default=None,
+        description="AI model version/tag when source='ai'. Distinct from parser_version.",
+    )
     human_validated: bool = False
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
@@ -191,6 +240,9 @@ class SecurityBaselineModel(BaseModel):
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     vlans: List[VLAN] = Field(default_factory=list)
     acls: List[ACLRule] = Field(default_factory=list)
+    firewall_policies: List[FirewallPolicy] = Field(default_factory=list)
+    crypto: CryptoConfig = Field(default_factory=CryptoConfig)
+    services: ServicesConfig = Field(default_factory=ServicesConfig)
 
     cloud_constructs: CloudVPC = Field(default_factory=CloudVPC)
     kube_constructs: KubernetesNetworkPolicy = Field(default_factory=KubernetesNetworkPolicy)
@@ -201,6 +253,13 @@ class SecurityBaselineModel(BaseModel):
     # Full evidence trail: every raw line -> normalized parameter mapping
     # that contributed to this baseline.
     provenance: List[NormalizedParameter] = Field(default_factory=list)
+
+    # Unresolved input carried forward for Part 2/3 and human review. Each
+    # entry documents WHY something couldn't be normalized (low-confidence
+    # vendor detection, a block no parser/AI path could interpret, an AI
+    # pipeline stage that was unavailable, etc). Never silently dropped —
+    # see services/pipeline.py and ai/normalize.py.
+    unknown_evidence: List[Dict[str, Any]] = Field(default_factory=list)
 
     raw_config_hash: Optional[str] = None
     normalized_at: datetime = Field(default_factory=datetime.utcnow)

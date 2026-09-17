@@ -133,8 +133,11 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
     # If we didn't load from a numpy file, encode each reference example via the API
     # Since this blocks startup, let's just make sure we do it.
     if not examples[0].vector:
-        for ex in examples:
-            ex.vector = encode(ex.text)
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+            vectors = list(executor.map(encode, [ex.text for ex in examples]))
+            for ex, vec in zip(examples, vectors):
+                ex.vector = vec
             
     return LoadedEmbedder(
         backend_name="remote-minilm",

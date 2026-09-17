@@ -42,7 +42,7 @@ def _tenant(db):
 
 
 def _device(db, tenant_id, **kwargs):
-    d = Device(tenant_id=tenant_id, hostname=kwargs.pop("hostname", "sw1"), **kwargs)
+    d = Device(tenant_id=tenant_id, hostname=kwargs.pop("hostname", "sw1"), vendor=kwargs.pop("vendor", "cisco"), **kwargs)
     db.add(d)
     db.commit()
     db.refresh(d)
@@ -60,18 +60,17 @@ def _job(db, tenant_id, **kwargs):
 
 
 def _patch_collection_chain(monkeypatch, *, collection_result, pipeline_side_effect=None):
-    """Patches the exact three call sites execute_scan_job local-imports
-    from: app.routers.devices._resolve_credentials/CollectRequest,
-    app.services.collectors.registry.get_collector, and
-    app.services.pipeline.run_pipeline."""
-    import app.routers.devices as devices_router
+    """Patches the three call sites execute_scan_job uses at module level:
+    network_scan_service._resolve_credentials, get_collector, and run_pipeline."""
+    import app.services.network_scan_service as svc
     import app.services.collectors.registry as registry
     import app.services.pipeline as pipeline
 
-    monkeypatch.setattr(devices_router, "_resolve_credentials", lambda db, device, tenant_id, ref, transport=None: (None, {}))
-    monkeypatch.setattr(registry, "get_collector", lambda vendor, transport=None: SimpleNamespace(
+    monkeypatch.setattr(svc, "_resolve_credentials", lambda db, device, tenant_id, credential_ref_id=None: type("Creds", (), {"secret": {}})())
+    monkeypatch.setattr(svc, "get_collector", lambda vendor, transport=None: SimpleNamespace(
         collect_config=lambda device, creds: collection_result
     ))
+    monkeypatch.setattr(svc, "preferred_transport", lambda vendor: "ssh")
 
     async def _fake_pipeline(db, scan, raw_text, framework="ALL"):
         if pipeline_side_effect:

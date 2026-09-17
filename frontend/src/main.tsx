@@ -43,7 +43,10 @@ import NetworkScanDetail from "./pages/NetworkScanDetail";
 import SystemHealth from "./pages/SystemHealth";
 import Gns3Integration from "./pages/Gns3Integration";
 import ControlLibrary from "./pages/ControlLibrary";
+import ControlDetail from "./pages/ControlDetail";
 import VulnerabilityDashboard from "./pages/VulnerabilityDashboard";
+import FindingDetail from "./pages/FindingDetail";
+import ReviewQueue from "./pages/ChangeRequest";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -72,6 +75,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="scans/:scanId/opa" element={<PolicyEvaluation />} />
           <Route path="validation" element={<Validation />} />
           <Route path="compliance" element={<Compliance />} />
+          <Route path="findings/:findingId" element={<FindingDetail />} />
           <Route path="training" element={<TrainingCenter />} />
           <Route path="reports" element={<Reports />} />
           <Route path="report-verification" element={<ReportVerification />} />
@@ -82,10 +86,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="drift" element={<Drift />} />
           <Route path="schedules" element={<Schedules />} />
           <Route path="alerts" element={<Alerts />} />
+          <Route path="review-queue" element={<ReviewQueue />} />
           <Route path="ai-analysis" element={<AiAnalysisOverview />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="gns3-integration" element={<Gns3Integration />} />
           <Route path="control-library" element={<ControlLibrary />} />
+          <Route path="control-library/:controlId" element={<ControlDetail />} />
           <Route path="vulnerabilities" element={<VulnerabilityDashboard />} />
         </Route>
       </Routes>

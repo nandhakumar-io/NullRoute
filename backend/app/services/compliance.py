@@ -20,8 +20,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.orm import Session
+
 from app.models.baseline import SecurityBaselineModel
-from app.services import opa_service
+from app.services import custom_control_service, opa_service
 from app.services.opa_service import OPADecision, OPAMalformedResponseError, OPAUnavailableError
 
 
@@ -47,20 +49,47 @@ def _find_evidence(baseline: SecurityBaselineModel, parameter: Optional[str]) ->
     return "(parameter not found in source configuration — evaluated as absent/default)"
 
 
+def _find_provenance(baseline: SecurityBaselineModel, parameter: Optional[str]):
+    """Look up the NormalizedParameter (raw_line -> value mapping) behind a
+    finding's parameter, so the Evidence Trace view can show whether it came
+    from the deterministic parser or an AI interpretation, and at what
+    confidence. Returns None when there's no single-parameter provenance to
+    show (e.g. Batfish reachability findings)."""
+    if parameter:
+        for p in baseline.provenance:
+            if p.normalized_parameter == parameter:
+                return p
+    return None
+
+
 async def evaluate_baseline_via_opa(
-    scan_id: str, baseline: SecurityBaselineModel, framework: Optional[str] = "ALL",
+    scan_id: str,
+    baseline: SecurityBaselineModel,
+    framework: Optional[str] = "ALL",
+    db: Optional[Session] = None,
+    tenant_id: Optional[str] = None,
 ) -> OPADecision:
     """Call OPA; fail closed (never fall back to Python) if it can't be
-    reached or returns something malformed."""
+    reached or returns something malformed.
+
+    db/tenant_id are optional so existing call sites that don't have a
+    tenant in scope keep working unchanged, but pass both whenever
+    available: it's what loads a tenant's approved CustomControl rows
+    (services/custom_control_service.py::for_opa_input) into
+    input.custom_controls — without it, tenant-defined custom controls are
+    silently skipped for that evaluation, same as before this was wired
+    up. See IMPLEMENTATION_AUDIT.md §C."""
     flattened = baseline.flatten()
     device = {
         "vendor": baseline.device.vendor, "os": baseline.device.os,
         "model": baseline.device.model, "hostname": baseline.device.hostname,
     }
+    custom_controls = custom_control_service.for_opa_input(db, tenant_id) if (db and tenant_id) else []
     try:
         return await opa_service.evaluate_baseline(
             scan_id=scan_id, device=device, vendor=baseline.device.vendor or "Unknown",
             framework=framework or "ALL", flattened_baseline=flattened,
+            custom_controls=custom_controls,
         )
     except (OPAUnavailableError, OPAMalformedResponseError) as e:
         return opa_service.fail_closed_decision(scan_id, reason=str(e))
@@ -73,6 +102,7 @@ def opa_decision_to_findings(decision: OPADecision, baseline: SecurityBaselineMo
     findings: List[Dict[str, Any]] = []
     vendor = baseline.device.vendor or ""
     for f in decision.findings:
+        prov = _find_provenance(baseline, f.get("parameter"))
         findings.append({
             "framework": f.get("framework", "SYSTEM"),
             "control_id": f["control_id"],
@@ -84,6 +114,8 @@ def opa_decision_to_findings(decision: OPADecision, baseline: SecurityBaselineMo
             "result": f["result"],
             "evidence_line": _find_evidence(baseline, f.get("parameter")),
             "remediation": _remediation_for(f.get("remediation"), vendor),
+            "source": prov.source if prov else None,
+            "confidence": prov.confidence if prov else None,
         })
     return findings
 

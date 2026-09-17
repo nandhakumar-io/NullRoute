@@ -10,9 +10,9 @@ into `unknown_lines` and handed to the AI/RAG normalization pipeline
 from __future__ import annotations
 
 import re
-from typing import Callable, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
-from app.models.baseline import (ACLRule, AAAConfig, NormalizedParameter, RadiusServer,
+from app.models.baseline import (ACLRule, AAAConfig, FirewallPolicy, NormalizedParameter, RadiusServer,
                                  SecurityBaselineModel, SyslogServer, TACACSServer, VLAN)
 
 Rule = Tuple[re.Pattern, str, Callable[[re.Match], object]]
@@ -217,20 +217,38 @@ def _record_match(baseline: SecurityBaselineModel, pattern, param: str, value, r
     )
 
 
+PARSER_VERSION = "parser-v1"
+
+
 def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -> SecurityBaselineModel:
     """Run the deterministic parser for a known vendor. Any line not touched
     by a rule is collected as an 'unknown' candidate for the AI/RAG pipeline
     (see ai/normalize.py) and, if confidence stays low, the Training Center.
     """
     baseline = SecurityBaselineModel(device={"vendor": vendor, "os": "unknown"})
-    rules = []
+    rules = VENDOR_RULES.get(vendor, [])
     raw_lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     baseline.extra_parameters["_input_lines"] = raw_lines
-    baseline.extra_parameters["_unknown_lines"] = list(raw_lines)
-    baseline.extra_parameters["_unknown_blocks"] = list(raw_lines)
-    return baseline
+    baseline.extra_parameters["_unknown_lines"] = []
+    baseline.extra_parameters["_unknown_blocks"] = []
 
     matched_lines = set()
+
+    # Best-effort raw-line -> 1-based source line number lookup for
+    # provenance (spec section 9). Duplicate lines resolve to their first
+    # occurrence, which is an accepted approximation for evidentiary purposes
+    # — exact per-match offsets would require switching every regex to
+    # line-by-line matching, which most vendor rules above are not written
+    # for (several intentionally match multi-line spans).
+    _line_number_index: Dict[str, int] = {}
+    for _i, _l in enumerate(raw_text.splitlines(), start=1):
+        _stripped = _l.strip()
+        if _stripped and _stripped not in _line_number_index:
+            _line_number_index[_stripped] = _i
+
+    def _line_number(raw: str) -> Optional[int]:
+        first_line = raw.strip().splitlines()[0].strip() if raw.strip() else ""
+        return _line_number_index.get(first_line)
 
     def add_provenance(param: str, value: object, raw: str):
         baseline.provenance.append(
@@ -240,6 +258,9 @@ def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -
                 value=value,
                 confidence=1.0,
                 source="parser",
+                vendor=vendor,
+                line_number=_line_number(raw),
+                parser_version=PARSER_VERSION,
                 model_version=model_version,
                 human_validated=True,
             )
@@ -394,6 +415,91 @@ def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -
                     baseline.logging.syslog_servers_detail.append(item)
                     add_provenance("logging.syslog_servers_detail", item.model_dump(), line)
                     matched_lines.add(line)
+
+        # `config firewall policy` / `edit <id>` ... `next` blocks. These are
+        # stateful zone/service rules, not ACLs — kept in firewall_policies
+        # (see models/baseline.py FirewallPolicy) so zone-based compliance
+        # controls (e.g. "no any/any/allow") can be evaluated without the
+        # compliance layer needing to know FortiOS syntax.
+        in_fw_policy_block = False
+        current_edit_lines: List[str] = []
+        for line in raw_lines:
+            if line.startswith("config firewall policy"):
+                in_fw_policy_block = True
+                matched_lines.add(line)
+                continue
+            if not in_fw_policy_block:
+                continue
+            if line == "end":
+                in_fw_policy_block = False
+                continue
+            if line.startswith("edit "):
+                current_edit_lines = [line]
+                matched_lines.add(line)
+                continue
+            if line == "next":
+                if current_edit_lines:
+                    block_text = "\n".join(current_edit_lines)
+
+                    def _get(field_re):
+                        mm = re.search(field_re, block_text)
+                        return mm.group(1) if mm else None
+
+                    def _get_list(field_re):
+                        mm = re.search(field_re, block_text)
+                        return re.findall(r'"([^"]+)"', mm.group(0)) if mm else None
+
+                    edit_id = re.match(r"edit\s+(\S+)", current_edit_lines[0])
+                    policy = FirewallPolicy(
+                        name=_get(r'set name\s+"([^"]+)"') or (edit_id.group(1) if edit_id else "unnamed"),
+                        action=_get(r"set action\s+(\S+)") or "deny",  # FortiOS default is implicit deny
+                        source_zone=_get(r'set srcintf\s+"([^"]+)"'),
+                        destination_zone=_get(r'set dstintf\s+"([^"]+)"'),
+                        service=_get_list(r"set service\s+(.+)"),
+                        logging_enabled=("set logtraffic" in block_text) or None,
+                        enabled=("set status disable" not in block_text),
+                    )
+                    baseline.firewall_policies.append(policy)
+                    add_provenance("firewall_policies", policy.model_dump(), block_text)
+                    matched_lines.update(current_edit_lines)
+                matched_lines.add(line)
+                current_edit_lines = []
+                continue
+            current_edit_lines.append(line)
+
+    elif vendor == "Palo Alto Networks":
+        # `set rulebase security rules <name> ...` — PAN-OS's `set`-format
+        # config repeats the rule name on every line for that rule, so group
+        # by rule name first rather than trying to match one line at a time.
+        rule_lines: Dict[str, List[str]] = {}
+        for line in raw_lines:
+            m = re.match(r"set rulebase security rules\s+(\S+)\s+(.*)", line)
+            if m:
+                rule_lines.setdefault(m.group(1), []).append(m.group(2))
+                matched_lines.add(line)
+        for name, fields in rule_lines.items():
+            block_text = " ".join(fields)
+
+            def _pf(field_re, text=block_text):
+                mm = re.search(field_re, text)
+                return mm.group(1) if mm else None
+
+            def _pf_list(field_re, text=block_text):
+                mm = re.search(field_re, text)
+                return mm.group(1).split() if mm else None
+
+            policy = FirewallPolicy(
+                name=name,
+                action=_pf(r"\baction\s+(\S+)") or "deny",
+                source_zone=_pf(r"\bfrom\s+(\S+)"),
+                destination_zone=_pf(r"\bto\s+(\S+)"),
+                service=_pf_list(r"\bservice\s+((?:\S+\s*)+?)(?:\s+(?:action|application|log-end)\b|$)"),
+                application=_pf_list(r"\bapplication\s+((?:\S+\s*)+?)(?:\s+(?:action|service|log-end)\b|$)"),
+                logging_enabled=("log-end yes" in block_text) or None,
+                enabled=True,
+            )
+            baseline.firewall_policies.append(policy)
+            add_provenance("firewall_policies", policy.model_dump(), f"set rulebase security rules {name} ...")
 
     for line in raw_lines:
         if line in matched_lines or any(pattern.match(line) for pattern, _, _ in rules):

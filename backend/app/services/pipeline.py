@@ -29,9 +29,19 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         # 1. Vendor/OS detection ------------------------------------------------
         guess = detect_vendor(raw_text)
         device: Device = db.query(Device).get(scan.device_id)
-        if guess.vendor != "Unknown":
+        # Only let a confident, in-scope guess set device identity. A
+        # review_required guess (low confidence OR an unsupported vendor) must
+        # never silently become a trusted vendor — it is recorded on the scan
+        # for visibility/audit but does NOT populate device.vendor/os, and it
+        # forces the config down the unknown-block/AI path in step 2 below
+        # rather than a vendor-specific deterministic parser.
+        if not guess.review_required and guess.vendor != "Unknown":
             device.vendor = device.vendor or guess.vendor
             device.os = device.os or guess.os
+        scan.vendor_detection_confidence = guess.confidence
+        scan.vendor_detection_method = guess.detection_method
+        scan.vendor_detection_evidence = guess.evidence
+        scan.vendor_review_required = guess.review_required
         db.commit()
 
         scan.raw_config_hash = hashlib.sha256(raw_text.encode()).hexdigest()
@@ -40,7 +50,21 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         await events.publish("config.uploaded", {"scan_id": scan.id, "device_id": scan.device_id})
 
         # 2. Deterministic parsing ----------------------------------------------
-        baseline: SecurityBaselineModel = parse_config(device.vendor or guess.vendor, raw_text)
+        # A review_required guess never reaches parse_config with a vendor
+        # name — "Unknown" routes the whole config through block-preservation
+        # + the AI/RAG unknown pipeline (step 3) instead of guessing which
+        # vendor parser to (mis)apply.
+        effective_vendor = "Unknown" if guess.review_required else (device.vendor or guess.vendor)
+        baseline: SecurityBaselineModel = parse_config(effective_vendor, raw_text)
+        if guess.review_required:
+            baseline.unknown_evidence.append({
+                "reason": "vendor_detection_review_required",
+                "guessed_vendor": guess.vendor,
+                "platform": guess.platform,
+                "confidence": guess.confidence,
+                "detection_method": guess.detection_method,
+                "evidence": guess.evidence,
+            })
         baseline.device.hostname = baseline.device.hostname or device.hostname
         baseline.device.model = device.model
         baseline.device.version = device.version
@@ -77,8 +101,9 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
             ))
 
             retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line)
-            interp = await interpret_line(device.vendor or guess.vendor, line, retrieved)
-            norm_param = to_normalized_parameter(interp)
+            interp_vendor = device.vendor or guess.vendor
+            interp = await interpret_line(interp_vendor, line, retrieved)
+            norm_param = to_normalized_parameter(interp, vendor=interp_vendor)
             baseline.provenance.append(norm_param)
             if interp.needs_human_review:
                 _queue_for_training(db, device.vendor or guess.vendor, interp)
@@ -98,7 +123,7 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         scan.status = "opa_evaluating"
         db.commit()
         await events.publish("compliance.scan.started", {"scan_id": scan.id, "framework": framework})
-        opa_decision = await evaluate_baseline_via_opa(scan.id, baseline, framework)
+        opa_decision = await evaluate_baseline_via_opa(scan.id, baseline, framework, db=db, tenant_id=scan.tenant_id)
         db.add(OPAAnalysis(
             scan_id=scan.id, policy_version=opa_decision.policy_version,
             decision=opa_decision.decision, decision_id=opa_decision.decision_id,
@@ -252,6 +277,26 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
 
 
 def _apply_to_baseline(baseline: SecurityBaselineModel, norm_param) -> None:
+    # Special-cased: this is the sentinel normalized_parameter used by
+    # ai/normalize.py for facts it could not confidently map to a typed
+    # field. It must accumulate on the model's dedicated `unknown_evidence`
+    # list (spec section 9/14) rather than being routed through the dotted
+    # setattr walk below, which would previously land in
+    # extra_parameters["extra_parameters.unknown_evidence"] as a single
+    # value that got silently overwritten by the next unknown line (data
+    # loss) and was never the same key compute_coverage() actually read
+    # back (a pre-existing key mismatch: writer used
+    # "extra_parameters.unknown_evidence", reader used "unknown_evidence").
+    if norm_param.normalized_parameter == "extra_parameters.unknown_evidence":
+        baseline.unknown_evidence.append({
+            "raw_command": norm_param.raw_command,
+            "value": norm_param.value,
+            "confidence": norm_param.confidence,
+            "model_version": norm_param.model_version,
+            "vendor": norm_param.vendor,
+        })
+        return
+
     parts = norm_param.normalized_parameter.split(".")
     obj = baseline
     try:

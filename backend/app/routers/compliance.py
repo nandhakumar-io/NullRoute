@@ -10,9 +10,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.db import (CommandMapping, Device, DeviceVulnerabilityMatch,
-                            EvidenceRecord, Finding, ReportArtifact, Scan)
-from app.schemas import DashboardStats, DashboardMetrics, DashboardMetricPoint, FindingOut, ScanOut
+from app.models.db import (ChangeRequest, CommandMapping, Device, DeploymentRecord,
+                            DeviceVulnerabilityMatch, DriftEvent, EvidenceRecord,
+                            Finding, ReportArtifact, Scan)
+from app.schemas import (ComplianceMatrix, DashboardStats, DashboardMetrics,
+                          DashboardMetricPoint, FindingOut, ScanOut)
 from app.services import control_service, evidence_service, minio_service
 from app.services.reports import (build_csv_report, build_json_report,
                                    build_pdf_report)
@@ -24,7 +26,8 @@ router = APIRouter(tags=["compliance"], dependencies=[Depends(get_current_user)]
 
 @router.get("/api/findings", response_model=List[FindingOut])
 def list_findings(scan_id: Optional[str] = None, severity: Optional[str] = None,
-                   result: Optional[str] = None, db: Session = Depends(get_db)):
+                   result: Optional[str] = None, vendor: Optional[str] = None,
+                   db: Session = Depends(get_db)):
     q = db.query(Finding)
     if scan_id:
         q = q.filter(Finding.scan_id == scan_id)
@@ -32,7 +35,20 @@ def list_findings(scan_id: Optional[str] = None, severity: Optional[str] = None,
         q = q.filter(Finding.severity == severity.upper())
     if result:
         q = q.filter(Finding.result == result.upper())
+    if vendor:
+        q = q.filter(Finding.vendor == vendor)
     return q.order_by(Finding.created_at.desc()).limit(500).all()
+
+
+@router.get("/api/findings/{finding_id}", response_model=FindingOut)
+def get_finding(finding_id: str, db: Session = Depends(get_db)):
+    """Single-finding lookup backing the Finding Detail / traceability view
+    (Phase 1 security-audit experience, SIH26155). Reuses FindingOut as-is —
+    no new model or duplicate finding representation."""
+    finding = db.query(Finding).get(finding_id)
+    if not finding:
+        raise HTTPException(404, "Finding not found")
+    return finding
 
 
 @router.get("/api/dashboard", response_model=DashboardStats)
@@ -54,15 +70,31 @@ def dashboard(db: Session = Depends(get_db)):
     for f in findings:
         fw_groups[f.framework].append(f)
     for fw, items in fw_groups.items():
-        applicable = [i for i in items if i.result != "NOT_APPLICABLE"]
+        applicable = [i for i in items if i.result not in ("NOT_APPLICABLE", "UNVERIFIED")]
         if applicable:
             fw_scores[fw] = round(100.0 * sum(1 for i in applicable if i.result == "PASS") / len(applicable), 1)
+
+    # Per-vendor score: the direct dashboard-level proof of "same control
+    # catalog, evaluated the same way, across every vendor" (§9/§14) — reads
+    # straight off Finding.vendor, denormalized at write time (§F), no join
+    # through Scan -> Device required.
+    vendor_scores: dict = {}
+    vendor_groups = defaultdict(list)
+    for f in findings:
+        if f.vendor:
+            vendor_groups[f.vendor].append(f)
+    for vendor, items in vendor_groups.items():
+        applicable = [i for i in items if i.result not in ("NOT_APPLICABLE", "UNVERIFIED")]
+        if applicable:
+            vendor_scores[vendor] = round(100.0 * sum(1 for i in applicable if i.result == "PASS") / len(applicable), 1)
 
     recent = db.query(Scan).order_by(Scan.created_at.desc()).limit(10).all()
     pending = db.query(CommandMapping).filter(CommandMapping.status == "pending").count()
 
     # --- Section 32 additions: OPA/Batfish/risk/evidence/Fabric metrics ---
     opa_violations = db.query(Scan).filter(Scan.opa_decision == "BLOCK").count()
+    review_scans = db.query(Scan).filter(Scan.opa_decision == "REVIEW").count()
+    unverified_findings_count = sum(1 for f in findings if f.result == "UNVERIFIED")
     batfish_violations = db.query(Scan).filter(
         Scan.batfish_status.in_(["BATFISH_FAIL"])
     ).count()
@@ -102,6 +134,64 @@ def dashboard(db: Session = Depends(get_db)):
     for e in evidence_records:
         evidence_anchoring_status[e.fabric_status or "NOT_ANCHORED"] += 1
 
+    configuration_drift_count = db.query(DriftEvent).count()
+
+    # --- Unified-dashboard KPIs -------------------------------------------
+    # Devices out of baseline: distinct devices whose MOST RECENT completed
+    # scan has at least one open CRITICAL finding -- deliberately scoped to
+    # the latest scan per device (via a max(created_at) subquery) so a
+    # device that was critical two scans ago but has since been remediated
+    # doesn't still count.
+    from sqlalchemy import func as _func
+    latest_scan_subq = (
+        db.query(Scan.device_id, _func.max(Scan.created_at).label("max_created"))
+        .filter(Scan.status == "completed")
+        .group_by(Scan.device_id)
+        .subquery()
+    )
+    latest_scan_ids = {
+        row.id
+        for row in db.query(Scan.id).join(
+            latest_scan_subq,
+            (Scan.device_id == latest_scan_subq.c.device_id)
+            & (Scan.created_at == latest_scan_subq.c.max_created),
+        ).all()
+    }
+    devices_out_of_baseline = (
+        db.query(Finding.scan_id)
+        .filter(Finding.scan_id.in_(latest_scan_ids), Finding.severity == "CRITICAL", Finding.result == "FAIL")
+        .distinct()
+        .count()
+        if latest_scan_ids else 0
+    )
+
+    # Mean-Time-to-Remediate: created_at of the ChangeRequest -> completed_at
+    # of its first successful deployment, for every change request that has
+    # actually been deployed. Real deployment history only -- no synthetic
+    # numbers. mttr_improvement_pct compares the first half of that history
+    # to the second half chronologically so the KPI shows whether the team
+    # is getting faster, not just a snapshot average.
+    deployed_pairs = (
+        db.query(DeploymentRecord, ChangeRequest)
+        .join(ChangeRequest, DeploymentRecord.change_request_id == ChangeRequest.id)
+        .filter(DeploymentRecord.status.in_(["DEPLOYED", "VERIFIED"]), DeploymentRecord.completed_at.isnot(None))
+        .order_by(ChangeRequest.created_at.asc())
+        .all()
+    )
+    durations_hours = [
+        (dr.completed_at - cr.created_at).total_seconds() / 3600.0
+        for dr, cr in deployed_pairs
+        if dr.completed_at and cr.created_at
+    ]
+    mttr_hours = round(sum(durations_hours) / len(durations_hours), 2) if durations_hours else None
+    mttr_improvement_pct = None
+    if len(durations_hours) >= 4:
+        mid = len(durations_hours) // 2
+        first_half_avg = sum(durations_hours[:mid]) / mid
+        second_half_avg = sum(durations_hours[mid:]) / (len(durations_hours) - mid)
+        if first_half_avg > 0:
+            mttr_improvement_pct = round(100.0 * (first_half_avg - second_half_avg) / first_half_avg, 1)
+
     return DashboardStats(
         total_devices=len(devices),
         devices_scanned=len(completed),
@@ -123,7 +213,47 @@ def dashboard(db: Session = Depends(get_db)):
         opa_vs_batfish=dict(opa_vs_batfish),
         risk_distribution=dict(risk_counts),
         evidence_anchoring_status=dict(evidence_anchoring_status),
+        review_scans=review_scans,
+        unverified_findings=unverified_findings_count,
+        vendor_scores=vendor_scores,
+        total_findings=len(findings),
+        configuration_drift_count=configuration_drift_count,
+        devices_out_of_baseline=devices_out_of_baseline,
+        mttr_hours=mttr_hours,
+        mttr_improvement_pct=mttr_improvement_pct,
     )
+
+
+@router.get("/api/dashboard/compliance-matrix", response_model=ComplianceMatrix)
+def compliance_matrix(db: Session = Depends(get_db)):
+    """Cross-vendor compliance matrix -- the direct visual proof that the
+    same control catalog is evaluated natively against every vendor's own
+    syntax (no per-vendor code fork): rows are controls, columns are
+    vendors, cells are PASS rate. Read straight off Finding.control_id /
+    Finding.vendor, same denormalized fields vendor_scores above already
+    uses -- no new write path."""
+    findings = db.query(Finding).filter(Finding.vendor.isnot(None), Finding.control_id.isnot(None)).all()
+    vendors = sorted({f.vendor for f in findings if f.vendor})
+    cells: dict = defaultdict(lambda: {"pass": 0, "total": 0})
+    titles: dict = {}
+    for f in findings:
+        if f.result in ("NOT_APPLICABLE", "UNVERIFIED"):
+            continue
+        key = (f.control_id, f.vendor)
+        cells[key]["total"] += 1
+        if f.result == "PASS":
+            cells[key]["pass"] += 1
+        titles.setdefault(f.control_id, f.title or f.control_id)
+
+    rows = []
+    for control_id in sorted(titles.keys()):
+        vendor_cells: dict = {}
+        for v in vendors:
+            cell = cells.get((control_id, v))
+            vendor_cells[v] = round(100.0 * cell["pass"] / cell["total"], 1) if cell and cell["total"] else None
+        rows.append({"control_id": control_id, "title": titles[control_id], "vendors": vendor_cells})
+
+    return {"vendors": vendors, "rows": rows}
 
 RANGE_TO_DAYS = {"24h": 1, "7d": 7, "30d": 30, "90d": 90}
 

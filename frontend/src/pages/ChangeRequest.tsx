@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { endpoints, ChangeRequest, DeploymentRecord } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
+import SideBySideDiff from "../components/SideBySideDiff";
 
 const STATUS_TONE: Record<string, string> = {
   APPROVED: "badge-pass",
@@ -88,8 +91,87 @@ function SnapshotDiffPanel({ diff }: { diff: NonNullable<ChangeRequest["snapshot
           Differential reachability: {diff.differential_reachability.status}
           {flowsChanged &&
             ` — ${diff.differential_reachability.changed_flow_count} flow(s) changed reachability (review before approving)`}
+          {diff.differential_reachability.method === "TEXT_DIFF_FALLBACK" && (
+            <span className="ml-1 text-slate-500">(text-diff fallback — Batfish was unavailable; not a verified reachability result)</span>
+          )}
         </div>
       )}
+      {diff.flow_diffs && diff.flow_diffs.length > 0 && (
+        <div className="mt-1 space-y-1">
+          {diff.flow_diffs.map((f) => (
+            <div
+              key={f.control_id}
+              className={`rounded border px-2 py-1 ${
+                f.result === "CRITICAL NETWORK IMPACT"
+                  ? "border-red-500/50 bg-red-500/10"
+                  : f.result === "NETWORK IMPACT"
+                  ? "border-amber-500/50 bg-amber-500/10"
+                  : "border-soc-border/60 bg-transparent"
+              }`}
+            >
+              <div className="font-medium text-slate-300">
+                {f.source_zone} &rarr; {f.destination_zone}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-400">
+                <span>BEFORE: <span className={f.before === "REACHABLE" ? "text-red-400" : ""}>{f.before}</span></span>
+                <span>AFTER: <span className={f.after === "REACHABLE" ? "text-red-400" : ""}>{f.after}</span></span>
+                <span
+                  className={
+                    f.result === "CRITICAL NETWORK IMPACT" ? "font-semibold text-red-400"
+                      : f.result === "NETWORK IMPACT" ? "font-semibold text-amber-400"
+                      : "text-slate-500"
+                  }
+                >
+                  RESULT: {f.result}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Before/After config diff, fetched lazily from GET /{id}/configs (MinIO
+// blobs behind the recorded hashes) and rendered with the same SideBySideDiff
+// component used elsewhere -- this is the "wow" reviewer view: red lines are
+// the vulnerable config as it exists today, green lines are what the AI is
+// proposing to push. Nothing here executes anything; it's read-only.
+function DiffPanel({ crId }: { crId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [configs, setConfigs] = useState<{ current_config: string | null; proposed_config: string | null } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setErr(null);
+    endpoints
+      .changeRequestConfigs(crId)
+      .then((r) => {
+        if (!cancelled) setConfigs(r.data);
+      })
+      .catch(() => {
+        if (!cancelled) setErr("Could not load configuration text for this change request.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [crId]);
+
+  if (loading) return <div className="text-xs text-slate-500 py-2">Loading diff…</div>;
+  if (err) return <div className="text-xs text-red-400 py-2">{err}</div>;
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] text-slate-500">
+        Left is the device's current, vulnerable configuration. Right is the AI-proposed remediation CLI —
+        it is syntax only until a human clicks Approve below.
+      </div>
+      <SideBySideDiff currentConfig={configs?.current_config} proposedConfig={configs?.proposed_config} />
     </div>
   );
 }
@@ -137,7 +219,18 @@ function DeploymentCard({ d }: { d: DeploymentRecord }) {
   );
 }
 
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <rect x="3" y="7" width="10" height="7" rx="1.5" />
+      <path d="M5.5 7V4.75a2.5 2.5 0 0 1 5 0V7" />
+    </svg>
+  );
+}
+
 export default function ChangeRequests() {
+  const { hasRole } = useAuth();
+  const canApprove = hasRole("security_analyst"); // true for security_analyst OR admin
   const [items, setItems] = useState<ChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -146,6 +239,11 @@ export default function ChangeRequests() {
   const [transportById, setTransportById] = useState<Record<string, string>>({});
   const [deploymentsById, setDeploymentsById] = useState<Record<string, DeploymentRecord[]>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [diffOpenId, setDiffOpenId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const linkedDeviceId = searchParams.get("device");
+  const linkedCrId = searchParams.get("cr");
+  const [didAutoOpen, setDidAutoOpen] = useState(false);
 
   function load() {
     setLoading(true);
@@ -157,7 +255,24 @@ export default function ChangeRequests() {
 
   useEffect(load, [statusFilter]);
 
+  // Deep-link handoff from the scan pipeline's "Generate Remediation &
+  // Review Diff" button: jump straight to the change request it just
+  // created (or the one already pending for that device) with its diff
+  // already open, so "review the diff" is truly one click, not a search.
+  useEffect(() => {
+    if (didAutoOpen || loading || (!linkedCrId && !linkedDeviceId)) return;
+    const target = items.find((c) => (linkedCrId ? c.id === linkedCrId : c.device_id === linkedDeviceId));
+    if (target) {
+      setDiffOpenId(target.id);
+      setDidAutoOpen(true);
+      requestAnimationFrame(() => {
+        document.getElementById(`cr-${target.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    }
+  }, [items, loading, linkedCrId, linkedDeviceId, didAutoOpen]);
+
   async function approve(id: string) {
+    if (!canApprove) return; // client-side guard; server enforces via require_permission regardless
     setBusyId(id);
     setError(null);
     try {
@@ -171,6 +286,7 @@ export default function ChangeRequests() {
   }
 
   async function reject(id: string) {
+    if (!canApprove) return;
     const reason = window.prompt("Reason for rejecting this change request?");
     if (reason === null) return;
     setBusyId(id);
@@ -218,7 +334,7 @@ export default function ChangeRequests() {
     <div>
       <PageHeader
         title="Change Requests"
-        subtitle="Proposed configuration changes, validated through the same OPA/Batfish/risk pipeline as scans — a human always approves or rejects, AI never deploys"
+        subtitle="Proposed configuration changes, validated through the same OPA/Batfish/risk pipeline as scans. AI synthesizes the syntax; it physically cannot execute until a designated Network Admin or Security Analyst clicks Approve."
         action={
           <select
             className="input-sm bg-soc-panel border border-soc-border rounded px-2 py-1 text-sm text-slate-300"
@@ -244,7 +360,11 @@ export default function ChangeRequests() {
         )}
         {!loading &&
           items.map((cr) => (
-            <div key={cr.id} className="card">
+            <div
+              key={cr.id}
+              id={`cr-${cr.id}`}
+              className={`card ${(linkedCrId === cr.id || (!linkedCrId && linkedDeviceId === cr.device_id)) ? "ring-2 ring-cyan-500 border-cyan-700" : ""}`}
+            >
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -268,6 +388,24 @@ export default function ChangeRequests() {
                   {cr.snapshot_diff && cr.snapshot_diff.status !== "NOT_CHECKED" && (
                     <SnapshotDiffPanel diff={cr.snapshot_diff} />
                   )}
+
+                  {/* Before/After CLI diff -- the side-by-side reviewer view.
+                      Available regardless of status so a reviewer can see
+                      exactly what's being proposed before/while deciding. */}
+                  <div className="mt-3">
+                    <button
+                      className="text-xs text-slate-400 hover:text-slate-200 underline decoration-dotted"
+                      onClick={() => setDiffOpenId(diffOpenId === cr.id ? null : cr.id)}
+                    >
+                      {diffOpenId === cr.id ? "Hide config diff" : "View config diff (current vs. proposed)"}
+                    </button>
+                    {diffOpenId === cr.id && (
+                      <div className="mt-2">
+                        <DiffPanel crId={cr.id} />
+                      </div>
+                    )}
+                  </div>
+
                   {cr.status === "REJECTED" && cr.rejection_reason && (
                     <div className="text-xs text-red-400 mt-1">Rejected: {cr.rejection_reason}</div>
                   )}
@@ -300,21 +438,32 @@ export default function ChangeRequests() {
                 </div>
                 <div className="flex flex-col gap-2 shrink-0 items-end">
                   {cr.status === "PENDING_APPROVAL" && (
-                    <div className="flex gap-2">
-                      <button
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-900/40 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/60 disabled:opacity-50"
-                        disabled={busyId === cr.id}
-                        onClick={() => approve(cr.id)}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-900/40 text-red-300 border border-red-800/60 hover:bg-red-900/60 disabled:opacity-50"
-                        disabled={busyId === cr.id}
-                        onClick={() => reject(cr.id)}
-                      >
-                        Reject
-                      </button>
+                    <div className="flex flex-col gap-1.5 items-end">
+                      <div className="flex gap-2">
+                        <button
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-900/40 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-900/40"
+                          disabled={busyId === cr.id || !canApprove}
+                          title={canApprove ? undefined : "Requires Security Analyst or Admin role"}
+                          onClick={() => approve(cr.id)}
+                        >
+                          {!canApprove && <LockIcon />}
+                          Approve
+                        </button>
+                        <button
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-900/40 text-red-300 border border-red-800/60 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-900/40"
+                          disabled={busyId === cr.id || !canApprove}
+                          title={canApprove ? undefined : "Requires Security Analyst or Admin role"}
+                          onClick={() => reject(cr.id)}
+                        >
+                          {!canApprove && <LockIcon />}
+                          Reject
+                        </button>
+                      </div>
+                      <div className="text-[10px] text-slate-500 max-w-[220px] text-right leading-snug">
+                        {canApprove
+                          ? "AI synthesized this syntax — it cannot execute until you click Approve."
+                          : "Locked: only a Security Analyst or Admin can approve or reject this change."}
+                      </div>
                     </div>
                   )}
                   {cr.status === "APPROVED" && (

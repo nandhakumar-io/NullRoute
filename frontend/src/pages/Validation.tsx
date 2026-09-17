@@ -171,6 +171,16 @@ export default function Validation() {
 
               <DecisionPipeline size="lg" steps={buildSteps(s)} />
 
+              {(s.final_decision === "BLOCK" || s.final_decision === "REVIEW") && (
+                <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-soc-border">
+                  <span className="text-xs text-amber-400">
+                    AI remediation is available for this scan's failing controls — review the synthesized
+                    commands, then create a Change Request (human approval required before deploy + verify).
+                  </span>
+                  <span className="btn-secondary text-xs whitespace-nowrap pointer-events-none">Open Remediation →</span>
+                </div>
+              )}
+
               {s.final_reason && (
                 <div className="text-sm text-slate-400 mt-4 pt-3 border-t border-soc-border">{s.final_reason}</div>
               )}

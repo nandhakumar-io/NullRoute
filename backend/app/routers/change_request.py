@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import (CurrentUser, get_current_tenant,
                                     get_current_user, require_permission, require_role)
 from app.db import get_db
-from app.models.db import ChangeRequest, Device, DeploymentRecord
-from app.services import audit_service, change_request_service, deployment_service
+from app.models.db import ChangeRequest, Device, DeploymentRecord, RollbackRecord
+from app.services import audit_service, change_request_service, deployment_service, minio_service, rollback_service
 from app.auth.rbac import Permission
 
 router = APIRouter(prefix="/api/change-requests", tags=["change-requests"],
@@ -70,6 +70,34 @@ def list_change_requests(
 @router.get("/{cr_id}")
 def get_change_request(cr_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     return change_request_service.to_dict(_get_owned(db, tenant_id, cr_id))
+
+
+@router.get("/{cr_id}/configs")
+def get_change_request_configs(cr_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+    """Raw CURRENT and PROPOSED config text for the before/after diff viewer.
+    Read-only: fetches the archived blobs from object storage by the hashes
+    already recorded on the ChangeRequest -- never mutates anything and is
+    reachable by any authenticated tenant member (same visibility as GET
+    /{cr_id}), since reviewers must be able to see what they're approving."""
+    cr = _get_owned(db, tenant_id, cr_id)
+    current_config = None
+    proposed_config = None
+    if cr.current_config_object_key:
+        try:
+            current_config = minio_service.get_object(cr.current_config_object_key).decode("utf-8", errors="replace")
+        except Exception:
+            current_config = None
+    if cr.proposed_config_object_key:
+        try:
+            proposed_config = minio_service.get_object(cr.proposed_config_object_key).decode("utf-8", errors="replace")
+        except Exception:
+            proposed_config = None
+    return {
+        "current_config": current_config,
+        "proposed_config": proposed_config,
+        "current_config_hash": cr.current_config_hash,
+        "proposed_config_hash": cr.proposed_config_hash,
+    }
 
 
 @router.post("/{cr_id}/approve")
@@ -161,3 +189,61 @@ def list_deployments(cr_id: str, db: Session = Depends(get_db), tenant_id: str =
         .all()
     )
     return {"count": len(rows), "deployments": [deployment_service.to_dict(d) for d in rows]}
+
+
+def _get_owned_deployment(db: Session, tenant_id: str, cr_id: str, deployment_id: str) -> DeploymentRecord:
+    dr = db.query(DeploymentRecord).filter(
+        DeploymentRecord.id == deployment_id,
+        DeploymentRecord.change_request_id == cr_id,
+        DeploymentRecord.tenant_id == tenant_id,
+    ).first()
+    if not dr:
+        raise HTTPException(404, "Deployment not found")
+    return dr
+
+
+@router.post("/{cr_id}/deployments/{deployment_id}/rollback")
+async def rollback(
+    cr_id: str,
+    deployment_id: str,
+    reason: Optional[str] = Body(default=None),
+    credential_ref_id: Optional[str] = Body(default=None),
+    framework: str = Body(default="ALL"),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Revert a deployment (typically one that DRIFTED -- push succeeded but
+    post-deploy verification didn't match the approved config) back to the
+    change request's archived pre-change configuration. Same human-approval
+    gate as /deploy: never triggered automatically (RULE 4/5)."""
+    _get_owned(db, tenant_id, cr_id)
+    dr = _get_owned_deployment(db, tenant_id, cr_id, deployment_id)
+    try:
+        rb = await rollback_service.rollback_deployment(
+            db, dr, initiated_by=user.username, reason=reason,
+            credential_ref_id=credential_ref_id, framework=framework,
+        )
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    await audit_service.log_action(
+        db, tenant_id, user.username, "ROLLBACK_DEPLOYMENT", "deployment_record", deployment_id,
+        old_value={"deployment_status": dr.status}, new_value={"rollback_status": rb.status},
+    )
+    return rollback_service.to_dict(rb)
+
+
+@router.get("/{cr_id}/deployments/{deployment_id}/rollbacks")
+def list_rollbacks(
+    cr_id: str, deployment_id: str,
+    db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant),
+):
+    _get_owned(db, tenant_id, cr_id)
+    _get_owned_deployment(db, tenant_id, cr_id, deployment_id)
+    rows = (
+        db.query(RollbackRecord)
+        .filter(RollbackRecord.deployment_record_id == deployment_id, RollbackRecord.tenant_id == tenant_id)
+        .order_by(RollbackRecord.started_at.desc())
+        .all()
+    )
+    return {"count": len(rows), "rollbacks": [rollback_service.to_dict(r) for r in rows]}

@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints, Finding, Device } from "../api";
 import { PageHeader, Loading, EmptyState, SeverityBadge, ResultBadge } from "../components/ui";
 
 const SEVERITIES = ["", "CRITICAL", "HIGH", "MEDIUM", "LOW"];
-const RESULTS = ["", "FAIL", "PASS", "NOT_APPLICABLE"];
+const RESULTS = ["", "FAIL", "PASS", "NOT_APPLICABLE", "UNVERIFIED"];
 const FRAMEWORKS = ["", "CIS", "NIST", "DISA_STIG", "ISO_27001", "ALL"];
 
 function ExpandedRow({ finding }: { finding: any }) {
   return (
     <tr className="bg-slate-900/50 border-b border-soc-border/50">
-      <td colSpan={9} className="px-6 py-4">
+      <td colSpan={11} className="px-6 py-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
           <div>
             <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Expected Value</div>
@@ -28,14 +28,39 @@ function ExpandedRow({ finding }: { finding: any }) {
           </div>
           {finding.evidence_line && (
             <div className="md:col-span-2">
-              <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Evidence</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Raw Configuration (Evidence)</div>
               <div className="font-mono text-xs text-slate-400 bg-slate-800/60 rounded px-2 py-1 whitespace-pre-wrap break-all">{finding.evidence_line}</div>
+            </div>
+          )}
+          {finding.reason && (
+            <div className="md:col-span-2">
+              <div className="text-xs font-semibold text-slate-500 uppercase mb-1">OPA Reason</div>
+              <div className="text-slate-300 text-sm">{finding.reason}</div>
             </div>
           )}
           {finding.remediation && (
             <div className="md:col-span-2">
               <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Remediation</div>
               <div className="text-slate-300 text-sm">{finding.remediation}</div>
+            </div>
+          )}
+          {finding.policy_version && (
+            <div className="md:col-span-2 text-xs text-slate-500">
+              Evaluated against policy version <span className="font-mono text-slate-400">{finding.policy_version}</span>
+            </div>
+          )}
+          {finding.result === "UNVERIFIED" && (
+            <div className="md:col-span-2 bg-amber-950/30 border border-amber-800/50 rounded px-3 py-2 flex items-center justify-between gap-3">
+              <span className="text-amber-300 text-xs">
+                This value came from AI/RAG normalization and hasn't been human-approved yet — it cannot be certified PASS or FAIL until reviewed.
+              </span>
+              <Link
+                className="btn-secondary text-xs whitespace-nowrap"
+                to="/training"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Review in Training Center
+              </Link>
             </div>
           )}
         </div>
@@ -45,15 +70,27 @@ function ExpandedRow({ finding }: { finding: any }) {
 }
 
 export default function Compliance() {
+  // Findings Overview is a linking target from the dashboard, device pages,
+  // and finding detail ("all findings for this device/framework") — filters
+  // are seeded from the URL on first render so those links land pre-filtered,
+  // per the Phase 1 security-audit spec ("every metric should link to the
+  // relevant filtered page where possible").
+  const [searchParams] = useSearchParams();
+  const initial = useRef(searchParams);
+
   const [findings, setFindings] = useState<Finding[] | null>(null);
-  const [severity, setSeverity] = useState("");
-  const [result, setResult] = useState("FAIL");
-  const [framework, setFramework] = useState("");
-  const [scanId, setScanId] = useState("");
-  const [search, setSearch] = useState("");
+  const [severity, setSeverity] = useState(() => initial.current.get("severity") || "");
+  const [result, setResult] = useState(() => initial.current.get("result") ?? "FAIL");
+  const [framework, setFramework] = useState(() => initial.current.get("framework") || "");
+  const [scanId, setScanId] = useState(() => initial.current.get("scan_id") || "");
+  const [search, setSearch] = useState(() => initial.current.get("q") || "");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [devices, setDevices] = useState<Device[]>([]);
-  const [deviceId, setDeviceId] = useState("");
+  const [deviceId, setDeviceId] = useState(() => initial.current.get("device_id") || "");
+  const [deviceScanIds, setDeviceScanIds] = useState<Set<string> | null>(null);
+  const [vendor, setVendor] = useState(() => initial.current.get("vendor") || "");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     endpoints.devices({ limit: 500 })
@@ -64,16 +101,29 @@ export default function Compliance() {
       .catch(() => {});
   }, []);
 
+  // Findings carry only scan_id, not device_id, so a device filter is
+  // resolved via that device's scans and applied client-side.
+  useEffect(() => {
+    if (!deviceId) { setDeviceScanIds(null); return; }
+    endpoints.deviceScans(deviceId)
+      .then((r) => setDeviceScanIds(new Set((r.data || []).map((s) => s.id))))
+      .catch(() => setDeviceScanIds(new Set()));
+  }, [deviceId]);
+
   const load = useCallback(() => {
+    if (deviceId && !deviceScanIds) return; // wait for device→scan resolution
     setFindings(null);
     endpoints.findings({
       severity: severity || undefined,
       result: result || undefined,
       scan_id: scanId || undefined,
+      vendor: vendor || undefined,
     }).then((r) => {
       let data = Array.isArray(r.data) ? r.data as Finding[] : [];
-      // Client-side: filter by framework + device (scan-level)
       if (framework) data = data.filter((f: any) => f.framework === framework);
+      if (deviceId && deviceScanIds) data = data.filter((f) => f.scan_id && deviceScanIds.has(f.scan_id));
+      if (dateFrom) data = data.filter((f) => !f.created_at || f.created_at >= dateFrom);
+      if (dateTo) data = data.filter((f) => !f.created_at || f.created_at <= `${dateTo}T23:59:59`);
       if (search.trim()) {
         const q = search.trim().toLowerCase();
         data = data.filter((f: any) =>
@@ -85,7 +135,7 @@ export default function Compliance() {
       }
       setFindings(data);
     }).catch(() => setFindings([]));
-  }, [severity, result, framework, scanId, search]);
+  }, [severity, result, framework, scanId, search, vendor, deviceId, deviceScanIds, dateFrom, dateTo]);
 
   useEffect(() => {
     load();
@@ -102,6 +152,7 @@ export default function Compliance() {
   const highCount = findings?.filter((f: any) => f.severity === "HIGH" && f.result === "FAIL").length ?? 0;
   const passCount = findings?.filter((f: any) => f.result === "PASS").length ?? 0;
   const totalCount = findings?.length ?? 0;
+  const VENDORS = Array.from(new Set(devices.map((d: any) => d.vendor).filter(Boolean))).sort();
 
   return (
     <div>
@@ -152,16 +203,43 @@ export default function Compliance() {
           <option value="">All frameworks</option>
           {FRAMEWORKS.filter(Boolean).map((f) => <option key={f} value={f}>{f}</option>)}
         </select>
+        <select className="select text-sm" value={vendor} onChange={(e) => setVendor(e.target.value)}>
+          <option value="">All vendors</option>
+          {VENDORS.map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <select className="select text-sm" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+          <option value="">All devices</option>
+          {devices.map((d: any) => (
+            <option key={d.id} value={d.id}>{d.hostname || d.name || d.management_address || d.id.slice(0, 8)}</option>
+          ))}
+        </select>
         <input
           className="input text-sm w-56 font-mono"
           placeholder="Scan ID (optional)"
           value={scanId}
           onChange={(e) => setScanId(e.target.value)}
         />
-        {(severity || result || framework || scanId || search) && (
+        <input
+          type="date"
+          className="input text-sm"
+          title="From date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+        />
+        <input
+          type="date"
+          className="input text-sm"
+          title="To date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+        />
+        {(severity || result !== "FAIL" || framework || vendor || deviceId || scanId || search || dateFrom || dateTo) && (
           <button
             className="btn-secondary text-sm"
-            onClick={() => { setSeverity(""); setResult("FAIL"); setFramework(""); setScanId(""); setSearch(""); }}
+            onClick={() => {
+              setSeverity(""); setResult("FAIL"); setFramework(""); setVendor("");
+              setDeviceId(""); setScanId(""); setSearch(""); setDateFrom(""); setDateTo("");
+            }}
           >
             Reset
           </button>
@@ -185,7 +263,9 @@ export default function Compliance() {
                   <th className="px-4 py-3">Severity</th>
                   <th className="px-4 py-3">Result</th>
                   <th className="px-4 py-3">Parameter</th>
+                  <th className="px-4 py-3">Vendor</th>
                   <th className="px-4 py-3">Scan</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -209,6 +289,7 @@ export default function Compliance() {
                       <td className="px-4 py-3"><SeverityBadge severity={f.severity} /></td>
                       <td className="px-4 py-3"><ResultBadge result={f.presentation_result || f.result} /></td>
                       <td className="px-4 py-3 max-w-[160px] truncate text-slate-400 text-xs" title={f.parameter}>{f.parameter}</td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{f.vendor || "—"}</td>
                       <td className="px-4 py-3">
                         {f.scan_id && (
                           <Link
@@ -219,6 +300,15 @@ export default function Compliance() {
                             {f.scan_id.slice(0, 8)}
                           </Link>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Link
+                          className="btn-secondary text-xs whitespace-nowrap"
+                          to={`/findings/${f.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Open →
+                        </Link>
                       </td>
                     </tr>
                     {expanded.has(f.id) && <ExpandedRow key={`${f.id}-exp`} finding={f} />}

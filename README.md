@@ -25,11 +25,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-This starts: PostgreSQL+pgvector, MinIO, NATS JetStream, OPA, Ollama,
+This starts: PostgreSQL+pgvector, MinIO, NATS JetStream, OPA, Batfish, Ollama,
 Keycloak, OpenBao, the FastAPI backend, the React frontend, VictoriaMetrics,
-and Grafana — then runs a one-shot `seed` container that pushes the bundled
-`sample_configs/` through the real pipeline so the dashboard is populated
-immediately.
+Grafana, and the background workers (scheduler, metrics-poller,
+vuln-sync-worker, evidence-verification-worker, training-worker) — then runs
+a one-shot `seed` container that pushes the bundled `sample_configs/`
+through the real pipeline so the dashboard is populated immediately.
 
 - Frontend: http://localhost:5173
 - Backend API docs: http://localhost:8000/docs

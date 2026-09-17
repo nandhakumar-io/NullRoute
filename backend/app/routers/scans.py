@@ -10,7 +10,7 @@ from app.schemas import ScanDetailOut, ScanOut
 from app.services.pipeline import run_pipeline
 from app.services.vendor_detect import detect_vendor
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, require_role
 
 router = APIRouter(prefix="/api/scans", tags=["scans"], dependencies=[Depends(get_current_user)])
 
@@ -23,6 +23,7 @@ async def upload_config(
     framework: str = Form("ALL"),
     hostname: Optional[str] = Form(None),
     db: Session = Depends(get_db),
+    _user=Depends(require_role("admin", "operator", "security_analyst")),
 ):
     raw_bytes = await file.read()
     if len(raw_bytes) > MAX_UPLOAD_BYTES:
@@ -35,11 +36,19 @@ async def upload_config(
     guess = detect_vendor(raw_text)
     tenant = get_or_create_demo_tenant(db)
 
+    # SECURITY/spec section 4: do NOT assign vendor/os from the raw guess
+    # here -- a review_required guess (low confidence, or a vendor outside
+    # the six supported ones) must never become a confident device identity.
+    # run_pipeline() below re-runs detect_vendor() and is the single place
+    # that gates vendor/os assignment on review_required; setting it here
+    # first would silently defeat that gate (device.vendor would already be
+    # populated by the time pipeline.py's `device.vendor or guess.vendor`
+    # check runs).
     device = Device(
         tenant_id=tenant.id,
-        hostname=hostname or f"{guess.vendor}-DEVICE",
-        vendor=guess.vendor,
-        os=guess.os,
+        hostname=hostname or (f"{guess.vendor}-DEVICE" if not guess.review_required else "UNVERIFIED-DEVICE"),
+        vendor=None if guess.review_required else guess.vendor,
+        os=None if guess.review_required else guess.os,
     )
     db.add(device)
     db.commit()
@@ -66,16 +75,38 @@ async def bulk_upload(
     files: List[UploadFile] = File(...),
     framework: str = Form("ALL"),
     db: Session = Depends(get_db),
+    _user=Depends(require_role("admin", "operator", "security_analyst")),
 ):
     results = []
     for file in files:
         raw_bytes = await file.read()
+        tenant = get_or_create_demo_tenant(db)
         if len(raw_bytes) > MAX_UPLOAD_BYTES:
+            # Never silently discard untrusted input (spec section 3/16):
+            # record a failed device+scan pair so an oversized upload is
+            # still visible in the audit trail instead of vanishing.
+            device = Device(tenant_id=tenant.id, hostname=file.filename, vendor=None, os=None)
+            db.add(device)
+            db.commit()
+            db.refresh(device)
+            scan = Scan(
+                tenant_id=tenant.id, device_id=device.id, framework=framework,
+                status="failed", error=f"Configuration file too large (max {MAX_UPLOAD_BYTES} bytes)",
+            )
+            db.add(scan)
+            db.commit()
+            db.refresh(scan)
+            results.append(ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=None, findings=[]))
             continue
         raw_text = raw_bytes.decode("utf-8", errors="replace")
         guess = detect_vendor(raw_text)
-        tenant = get_or_create_demo_tenant(db)
-        device = Device(tenant_id=tenant.id, hostname=file.filename, vendor=guess.vendor, os=guess.os)
+        # See upload_config() above -- same review_required gate applies.
+        device = Device(
+            tenant_id=tenant.id,
+            hostname=file.filename,
+            vendor=None if guess.review_required else guess.vendor,
+            os=None if guess.review_required else guess.os,
+        )
         db.add(device)
         db.commit()
         db.refresh(device)
@@ -105,7 +136,11 @@ def get_scan(scan_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{scan_id}/rerun", response_model=ScanDetailOut)
-async def rerun_scan(scan_id: str, db: Session = Depends(get_db)):
+async def rerun_scan(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(require_role("admin", "operator", "security_analyst")),
+):
     """Re-evaluate a scan — used in the demo to show that after training an
     unknown command, re-running recognizes it via the pgvector-backed
     knowledge base.
@@ -130,7 +165,7 @@ async def rerun_scan(scan_id: str, db: Session = Depends(get_db)):
     db.commit()
 
     baseline = SecurityBaselineModel(**scan.baseline_json)
-    opa_decision = await evaluate_baseline_via_opa(scan.id, baseline, scan.framework)
+    opa_decision = await evaluate_baseline_via_opa(scan.id, baseline, scan.framework, db=db, tenant_id=scan.tenant_id)
     db.add(OPAAnalysis(
         scan_id=scan.id, policy_version=opa_decision.policy_version, decision=opa_decision.decision,
         decision_id=opa_decision.decision_id, source=opa_decision.source, result_json=opa_decision.to_dict(),
@@ -252,9 +287,17 @@ def get_opa_analysis(scan_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/{scan_id}/remediation")
+@router.get("/{scan_id}/remediation/generate-cli")
 async def get_remediation_suggestions(scan_id: str, db: Session = Depends(get_db)):
-    """Phase 14 AI Feature Extension: Retrieve or LLM-synthesize remediation CLI recommendations."""
+    """Phase 14 AI Feature Extension: Retrieve or LLM-synthesize remediation CLI recommendations.
+
+    Deliberately namespaced under /generate-cli (not the bare
+    /{scan_id}/remediation path) so it reads as the opt-in, AI-assisted
+    action it is -- the unmarked, default-trust path is
+    /{scan_id}/remediation-suggestions below, which never invents
+    configuration. See that endpoint's docstring and
+    tests/test_change_requests.py::test_remediation_suggestions_never_invents_config.
+    """
     from app.services.remediation_service import generate_remediation_cli_for_scan
     scan = db.query(Scan).get(scan_id)
     if not scan:
@@ -263,3 +306,40 @@ async def get_remediation_suggestions(scan_id: str, db: Session = Depends(get_db
     # Asynchronously invoke the LLM proxy
     return await generate_remediation_cli_for_scan(db, scan)
 
+
+@router.get("/{scan_id}/remediation-suggestions")
+def get_stored_remediation_suggestions(scan_id: str, db: Session = Depends(get_db)):
+    """Deterministic, anti-fabrication counterpart to /{scan_id}/remediation
+    (RULE 12): surfaces each FAIL finding's already-stored `remediation`
+    guidance text verbatim -- the same string an OPA control author wrote
+    into policies/common/controls.rego -- and never asks an LLM to invent
+    CLI configuration. Use this endpoint when a human just needs "what do
+    I fix and why", not synthesized commands to paste onto a device (see
+    tests/test_change_requests.py::test_remediation_suggestions_never_invents_config).
+    """
+    scan = db.query(Scan).get(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+
+    findings = (
+        db.query(Finding)
+        .filter(Finding.scan_id == scan_id, Finding.result == "FAIL")
+        .order_by(Finding.severity)
+        .all()
+    )
+    suggestions = [
+        {
+            "control_id": f.control_id,
+            "title": f.title,
+            "severity": f.severity,
+            "parameter": f.parameter,
+            "guidance": f.remediation,
+        }
+        for f in findings
+    ]
+    return {
+        "scan_id": scan_id,
+        "finding_count": len(findings),
+        "suggestions": suggestions,
+        "note": "Guidance text authored on each control; this endpoint has not generated configuration.",
+    }

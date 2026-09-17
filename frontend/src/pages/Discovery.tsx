@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { endpoints, Device, DiscoveredHost, DiscoverResponse } from "../api";
+import { endpoints, Device, DiscoveredHost, DiscoveryJob } from "../api";
 import { PageHeader, Loading } from "../components/ui";
 
 const DEFAULT_PORTS = "22,23,80,161,443,830,8443,6030,57400";
+const POLL_MS = 1500;
+const ACTIVE_STATUSES = new Set(["PENDING", "RUNNING", "PAUSED"]);
 
 function TransportHint({ hints }: { hints: string[] }) {
   const colors: Record<string, string> = {
@@ -27,15 +29,71 @@ function TransportHint({ hints }: { hints: string[] }) {
   );
 }
 
+function DiscoveryProgress({ job, onPause, onResume, onCancel, busy }: {
+  job: DiscoveryJob;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  const active = ACTIVE_STATUSES.has(job.status);
+  const toneClass =
+    job.status === "FAILED" ? "text-red-400"
+    : job.status === "CANCELLED" ? "text-slate-400"
+    : job.status === "PAUSED" ? "text-amber-400"
+    : "text-cyan-400";
+  return (
+    <div className="card max-w-2xl mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className={`text-sm font-semibold ${toneClass}`}>
+          {job.status === "PENDING" && "Starting nmap scan…"}
+          {job.status === "RUNNING" && `Scanning… ${job.scanned_targets}/${job.total_targets || "?"} address(es)`}
+          {job.status === "PAUSED" && `Paused at ${job.scanned_targets}/${job.total_targets} address(es)`}
+          {job.status === "COMPLETED" && `Scan complete — ${job.host_count} host(s) found`}
+          {job.status === "FAILED" && "Scan failed"}
+          {job.status === "CANCELLED" && "Scan cancelled"}
+        </span>
+        <div className="flex gap-2">
+          {job.status === "RUNNING" && (
+            <button className="btn-secondary text-xs" disabled={busy} onClick={onPause}>Pause</button>
+          )}
+          {job.status === "PAUSED" && (
+            <button className="btn-primary text-xs" disabled={busy} onClick={onResume}>Resume</button>
+          )}
+          {active && (
+            <button className="btn-secondary text-xs text-red-400" disabled={busy} onClick={onCancel}>Cancel</button>
+          )}
+        </div>
+      </div>
+      {job.total_targets > 0 && (
+        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+          <div
+            className={`h-full transition-all ${job.status === "PAUSED" ? "bg-amber-500" : "bg-cyan-500"}`}
+            style={{ width: `${job.progress_pct}%` }}
+          />
+        </div>
+      )}
+      {job.error && (
+        <div className="text-red-400 text-sm mt-2">{job.error}</div>
+      )}
+      <div className="text-xs text-slate-500 mt-2">
+        This scan runs in the background — you can navigate away and come back; it will not block the rest of the app.
+      </div>
+    </div>
+  );
+}
+
 export default function Discovery() {
   const navigate = useNavigate();
   const [cidr, setCidr] = useState("");
   const [ports, setPorts] = useState(DEFAULT_PORTS);
   const [serviceDetection, setServiceDetection] = useState(true);
-  const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<DiscoverResponse | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [job, setJob] = useState<DiscoveryJob | null>(null);
+  const [jobBusy, setJobBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [osDetection, setOsDetection] = useState(false);
+  const pollRef = useRef<number | null>(null);
 
   // Existing devices list for "Already known" cross-reference
   const [existingDevices, setExistingDevices] = useState<Device[]>([]);
@@ -58,26 +116,60 @@ export default function Discovery() {
     }).catch(() => {});
   }, []);
 
+  // Poll the active job until it reaches a terminal state.
+  useEffect(() => {
+    if (!job || !ACTIVE_STATUSES.has(job.status)) {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      return;
+    }
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const r = await endpoints.getDiscoveryJob(job.id);
+        setJob(r.data);
+        if (!ACTIVE_STATUSES.has(r.data.status)) {
+          const newHosts = r.data.hosts.filter((h) => !existingAddresses.current.has(h.ip));
+          setSelected(new Set(newHosts.map((h) => h.ip)));
+        }
+      } catch {
+        // transient poll failure -- try again next tick
+      }
+    }, POLL_MS);
+    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.id, job?.status]);
+
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cidr.trim()) return;
-    setScanning(true);
-    setResult(null);
+    setStarting(true);
+    setJob(null);
     setError(null);
     setSelected(new Set());
     setImportResult(null);
     try {
       const r = await endpoints.discover({ cidr: cidr.trim(), ports: ports || undefined, service_detection: serviceDetection, os_detection: osDetection });
-      setResult(r.data);
-      // Pre-deselect already-known hosts
-      const newHosts = r.data.hosts.filter((h: DiscoveredHost) => !existingAddresses.current.has(h.ip));
-      setSelected(new Set(newHosts.map((h: DiscoveredHost) => h.ip)));
+      setJob(r.data);
     } catch (err: any) {
       setError(err?.response?.data?.detail || String(err));
     } finally {
-      setScanning(false);
+      setStarting(false);
     }
   };
+
+  const withJobBusy = (fn: () => Promise<any>) => async () => {
+    setJobBusy(true);
+    try {
+      const r = await fn();
+      setJob(r.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || String(err));
+    } finally {
+      setJobBusy(false);
+    }
+  };
+  const handlePause = withJobBusy(() => endpoints.pauseDiscoveryJob(job!.id));
+  const handleResume = withJobBusy(() => endpoints.resumeDiscoveryJob(job!.id));
+  const handleCancel = withJobBusy(() => endpoints.cancelDiscoveryJob(job!.id));
 
   const toggleSelect = (ip: string) => {
     setSelected((prev) => {
@@ -88,8 +180,8 @@ export default function Discovery() {
   };
 
   const toggleAll = () => {
-    if (!result) return;
-    const newHosts = result.hosts.filter((h) => !existingAddresses.current.has(h.ip));
+    if (!job) return;
+    const newHosts = job.hosts.filter((h) => !existingAddresses.current.has(h.ip));
     if (selected.size === newHosts.length) {
       setSelected(new Set());
     } else {
@@ -98,10 +190,10 @@ export default function Discovery() {
   };
 
   const handleImport = async () => {
-    if (!result || selected.size === 0) return;
+    if (!job || selected.size === 0) return;
     setImporting(true);
     try {
-      const hosts = result.hosts
+      const hosts = job.hosts
         .filter((h) => selected.has(h.ip))
         .map((h) => ({ ip: h.ip, hostname: h.hostname ?? undefined, vendor_guess: h.vendor_guess ?? undefined }));
       const r = await endpoints.discoverImport({ hosts });
@@ -119,7 +211,8 @@ export default function Discovery() {
     }
   };
 
-  const newHostCount = result ? result.hosts.filter((h) => !existingAddresses.current.has(h.ip)).length : 0;
+  const newHostCount = job ? job.hosts.filter((h) => !existingAddresses.current.has(h.ip)).length : 0;
+  const scanning = starting || (job !== null && ACTIVE_STATUSES.has(job.status));
 
   return (
     <div>
@@ -173,13 +266,8 @@ export default function Discovery() {
           </label>
           <div className="flex items-center gap-3">
             <button type="submit" className="btn-primary" disabled={scanning || !cidr.trim()}>
-              {scanning ? "Scanning…" : "Run Discovery"}
+              {starting ? "Starting…" : scanning ? "Scanning…" : "Run Discovery"}
             </button>
-            {scanning && (
-              <span className="text-xs text-slate-400 animate-pulse">
-                Nmap scan in progress — duration reflects real network latency
-              </span>
-            )}
           </div>
           {error && (
             <div className="text-red-400 text-sm bg-red-950/40 border border-red-800 rounded-lg px-3 py-2">
@@ -188,6 +276,12 @@ export default function Discovery() {
           )}
         </form>
       </div>
+
+      {job && (
+        <div className="px-8">
+          <DiscoveryProgress job={job} onPause={handlePause} onResume={handleResume} onCancel={handleCancel} busy={jobBusy} />
+        </div>
+      )}
 
       {/* Import success banner */}
       {importResult && (
@@ -207,14 +301,14 @@ export default function Discovery() {
       )}
 
       {/* Results table */}
-      {result && (
+      {job && job.hosts.length > 0 && (
         <div className="px-8 mt-6 mb-8">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold text-slate-200">
-              {result.host_count} host{result.host_count !== 1 ? "s" : ""} found in{" "}
-              <span className="font-mono text-cyan-400">{result.cidr}</span>
+              {job.host_count} host{job.host_count !== 1 ? "s" : ""} found in{" "}
+              <span className="font-mono text-cyan-400">{job.cidr}</span>
               <span className="ml-3 text-xs text-slate-500">
-                {newHostCount} new · {result.host_count - newHostCount} already in inventory
+                {newHostCount} new · {job.host_count - newHostCount} already in inventory
               </span>
             </div>
             <div className="flex gap-2">

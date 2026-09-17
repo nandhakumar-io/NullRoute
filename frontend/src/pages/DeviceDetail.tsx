@@ -19,6 +19,20 @@ function DriftTypeBadge({ driftType }: { driftType: string }) {
   return <span className={`badge ${DRIFT_TYPE_STYLE[driftType] || "badge-na"}`}>{driftType.replace(/_/g, " ")}</span>;
 }
 
+// Gateway failures come back as `detail: {error, error_message, error_code, ...}`
+// (see backend/app/routers/device_gateway.py::_run_operation). Pulling the
+// wrong/missing field here previously stored the *whole* detail object into
+// error state, and rendering `{state}` directly in JSX crashed the page with
+// "Objects are not valid as a React child" -- this always resolves to a string.
+function extractGatewayError(e: any, fallback: string): string {
+  const detail = e?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object") {
+    return detail.error || detail.error_message || detail.error_code || fallback;
+  }
+  return e?.message || fallback;
+}
+
 export default function DeviceDetail() {
   const { deviceId } = useParams<{ deviceId: string }>();
   const [device, setDevice] = useState<Device | null>(null);
@@ -46,6 +60,9 @@ export default function DeviceDetail() {
   const [metricsHistory, setMetricsHistory] = useState<Record<string, any>[]>([]);
   const [snmpError, setSnmpError] = useState<string | null>(null);
   const [snmpLoading, setSnmpLoading] = useState(false);
+  const [snmpNeighbors, setSnmpNeighbors] = useState<Record<string, any>[]>([]);
+  const [neighborsLoading, setNeighborsLoading] = useState(false);
+  const [neighborsMsg, setNeighborsMsg] = useState<string | null>(null);
 
   // Configuration History compare selection: up to two snapshot ids.
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
@@ -159,17 +176,20 @@ export default function DeviceDetail() {
         endpoints.gatewayGetFacts(deviceId, "snmp"),
         endpoints.gatewayGetInterfaces(deviceId, "snmp"),
       ]);
-      setSnmpFacts((factsRes.data as any)?.data ?? null);
-      setSnmpInterfaces((ifacesRes.data as any)?.data?.interfaces ?? []);
+      // Gateway responses carry their payload under `normalized_data`, not
+      // `data` (see backend/app/gateway/worker.py::process_job) -- reading
+      // `.data` here silently returned undefined for every field below, so
+      // this panel always rendered as empty/failed even when the SNMP poll
+      // itself succeeded.
+      setSnmpFacts((factsRes.data as any)?.normalized_data ?? null);
+      setSnmpInterfaces((ifacesRes.data as any)?.normalized_data?.interfaces ?? []);
     } catch (e: any) {
       // Most common cause: no snmp_community/snmp_v3 credential stored for
       // this device yet (Devices page -> Authentication -> add SNMP), or
       // the device is unreachable on UDP/161 (firewalled/ACL'd).
       setSnmpFacts(null);
       setSnmpInterfaces([]);
-      setSnmpError(
-        e?.response?.data?.detail?.error || e?.response?.data?.detail || e?.message || "SNMP poll failed"
-      );
+      setSnmpError(extractGatewayError(e, "SNMP poll failed"));
     } finally {
       setSnmpLoading(false);
     }
@@ -178,7 +198,7 @@ export default function DeviceDetail() {
     // block the identity/interface panel above from populating.
     try {
       const healthRes = await endpoints.gatewayGetHealthMetrics(deviceId, "snmp");
-      setSnmpHealth((healthRes.data as any)?.data ?? null);
+      setSnmpHealth((healthRes.data as any)?.normalized_data ?? null);
     } catch (e: any) {
       setSnmpHealth(null);
     }
@@ -196,6 +216,28 @@ export default function DeviceDetail() {
     } catch (e: any) {
       setLatestMetricsSnapshot(null);
       setMetricsHistory([]);
+    }
+  }
+
+  async function discoverNeighbors() {
+    if (!deviceId) return;
+    setNeighborsLoading(true);
+    setNeighborsMsg(null);
+    try {
+      const res = await endpoints.gatewayGetNeighbors(deviceId, "snmp");
+      const neighbors = (res.data as any)?.normalized_data?.neighbors ?? [];
+      setSnmpNeighbors(neighbors);
+      const stored = (res.data as any)?.links_stored ?? 0;
+      setNeighborsMsg(
+        neighbors.length === 0
+          ? "No LLDP neighbors reported (LLDP may be disabled on this device, or SNMP isn't configured)."
+          : `${neighbors.length} neighbor(s) found via LLDP-MIB, ${stored} matched to a known device and saved to the topology.`
+      );
+    } catch (e: any) {
+      setSnmpNeighbors([]);
+      setNeighborsMsg(extractGatewayError(e, "Neighbor discovery failed"));
+    } finally {
+      setNeighborsLoading(false);
     }
   }
 
@@ -460,6 +502,37 @@ export default function DeviceDetail() {
               </div>
             </div>
           )}
+          <div className="border-t border-soc-border pt-4 mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+                LLDP Neighbors (real, observed adjacency)
+              </div>
+              <button
+                className="text-xs px-3 py-1.5 rounded border border-soc-border text-cyan-400 hover:border-cyan-600 disabled:opacity-50"
+                disabled={neighborsLoading}
+                onClick={discoverNeighbors}
+              >
+                {neighborsLoading ? "Discovering…" : "Discover Neighbors"}
+              </button>
+            </div>
+            {neighborsMsg && <div className="text-xs text-slate-500 mb-2">{neighborsMsg}</div>}
+            {snmpNeighbors.length > 0 && (
+              <table className="w-full text-xs">
+                <thead className="text-slate-500 uppercase">
+                  <tr><th className="text-left py-1">Local Port</th><th className="text-left py-1">Remote System</th><th className="text-left py-1">Remote Port</th></tr>
+                </thead>
+                <tbody className="text-slate-200">
+                  {snmpNeighbors.map((n, i) => (
+                    <tr key={i} className="border-t border-soc-border/50">
+                      <td className="py-1 font-mono">{n.local_port || "—"}</td>
+                      <td className="py-1">{n.remote_system_name || "—"}</td>
+                      <td className="py-1 font-mono">{n.remote_port_id || n.remote_port_description || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
           {snmpHealth && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-sm border-t border-soc-border pt-4">
               <div>

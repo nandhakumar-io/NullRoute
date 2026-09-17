@@ -233,6 +233,17 @@ def correlate_device(db: Session, tenant_id: str, device: Device) -> Dict[str, A
                 evidence=evidence,
                 linked_control_id=linked_control_id,
             ))
+            
+            try:
+                import asyncio
+                from app.services import alert_service
+                # Fire the Webhook/Push alert
+                asyncio.run(alert_service.alert_vulnerability_breach(
+                    db, tenant_id, device.id, vuln.cve_id, score, evidence
+                ))
+            except Exception as e:
+                logger.warning(f"Failed to dispatch vulnerability alert for {vuln.cve_id}: {e}")
+                
         matched += 1
 
     db.commit()

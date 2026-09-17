@@ -52,6 +52,80 @@ def refresh_device_topology(
     db.commit()
 
 
+def persist_observed_links(db: Session, *, tenant_id: str, device_id: str, neighbors: List[Dict]) -> int:
+    """Store this device's directly-observed neighbors (from
+    collectors.get_neighbors(), e.g. an LLDP-MIB walk) as NetworkLink rows
+    with link_type="lldp_observed" -- unlike infer_links() below, this IS an
+    observed fact (the remote device told us who it is), so it's fine to
+    persist rather than recompute at query time.
+
+    A remote neighbor is matched to a known Device by its LLDP system name
+    against Device.hostname (case-insensitive); neighbors that don't match
+    any device in this tenant (an unmanaged switch, an AP, a peer outside
+    NetSecAuditor's inventory) are dropped rather than stored as a link to
+    nowhere (RULE 10: never fabricate the far end).
+
+    Replaces this device's previously-observed outbound links every call --
+    current state, not a log, same convention as refresh_device_topology()."""
+    from app.models.db import Device, NetworkLink
+
+    tenant_devices = db.query(Device).filter(Device.tenant_id == tenant_id).all()
+    by_hostname = {(d.hostname or "").strip().lower(): d for d in tenant_devices if d.hostname}
+
+    db.query(NetworkLink).filter(
+        NetworkLink.tenant_id == tenant_id,
+        NetworkLink.source_device_id == device_id,
+        NetworkLink.link_type == "lldp_observed",
+    ).delete()
+
+    stored = 0
+    for n in neighbors:
+        remote_name = (n.get("remote_system_name") or "").strip().lower()
+        remote_device = by_hostname.get(remote_name)
+        if not remote_device or remote_device.id == device_id:
+            continue
+        db.add(NetworkLink(
+            tenant_id=tenant_id,
+            source_device_id=device_id,
+            source_interface=n.get("local_port"),
+            target_device_id=remote_device.id,
+            target_interface=n.get("remote_port_id") or n.get("remote_port_description"),
+            link_type="lldp_observed",
+        ))
+        stored += 1
+    db.commit()
+    return stored
+
+
+def get_topology_links(db: Session, tenant_id: str, interfaces: List["NetworkInterface"]) -> List[Dict]:
+    """Combined link list for the /api/topology endpoint: real,
+    SNMP/LLDP-observed adjacency first (link_type="lldp_observed", from
+    persist_observed_links()), then subnet-inferred links for any device
+    pair not already covered by an observed link. Observed links are
+    ground truth and always take priority over a same-subnet guess between
+    the same two devices."""
+    from app.models.db import NetworkLink
+
+    observed_rows = db.query(NetworkLink).filter(
+        NetworkLink.tenant_id == tenant_id, NetworkLink.link_type == "lldp_observed",
+    ).all()
+    observed = [
+        {
+            "source_device_id": r.source_device_id, "source_interface": r.source_interface,
+            "target_device_id": r.target_device_id, "target_interface": r.target_interface,
+            "link_type": "lldp_observed",
+        }
+        for r in observed_rows
+    ]
+    covered_pairs = {tuple(sorted((l["source_device_id"], l["target_device_id"]))) for l in observed}
+
+    inferred = [
+        l for l in infer_links(interfaces)
+        if tuple(sorted((l["source_device_id"], l["target_device_id"]))) not in covered_pairs
+    ]
+    return observed + inferred
+
+
 def _network_of(ip: Optional[str], mask: Optional[str]) -> Optional[ipaddress.IPv4Network]:
     if not ip:
         return None

@@ -112,8 +112,13 @@ export default function Validation() {
 
         {filtered.map((s) => {
           const device = devices[s.device_id];
+          const needsRemediation = s.final_decision === "BLOCK" || s.final_decision === "REVIEW";
           return (
-            <Link key={s.id} to={`/scans/${s.id}`} className="card block p-6 hover:border-cyan-700/60 hover:shadow-cyan-900/10 transition-all">
+            <Link
+              key={s.id}
+              to={needsRemediation ? `/scans/${s.id}#remediation` : `/scans/${s.id}`}
+              className="card block p-6 hover:border-cyan-700/60 hover:shadow-cyan-900/10 transition-all"
+            >
               <div className="flex items-start justify-between gap-6 flex-wrap mb-5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
@@ -171,13 +176,14 @@ export default function Validation() {
 
               <DecisionPipeline size="lg" steps={buildSteps(s)} />
 
-              {(s.final_decision === "BLOCK" || s.final_decision === "REVIEW") && (
+              {needsRemediation && (
                 <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-soc-border">
                   <span className="text-xs text-amber-400">
                     AI remediation is available for this scan's failing controls — review the synthesized
-                    commands, then create a Change Request (human approval required before deploy + verify).
+                    commands, create a Change Request, then approve it there before it can deploy
+                    (human approval is always required; nothing auto-deploys on its own).
                   </span>
-                  <span className="btn-secondary text-xs whitespace-nowrap pointer-events-none">Open Remediation →</span>
+                  <span className="btn-secondary text-xs whitespace-nowrap">Open Remediation →</span>
                 </div>
               )}
 

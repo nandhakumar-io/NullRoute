@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch } from "../api";
+import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch, api } from "../api";
 import {
   PageHeader, Loading, ScoreRing, SeverityBadge, ResultBadge, StatusBadge, EmptyState,
   DecisionPipeline, opaTone, batfishTone, riskTone, decisionTone, PipelineStepData,
@@ -30,6 +30,10 @@ const AI_DECISION_TONE: Record<string, string> = {
   UNKNOWN: "badge-na",
 };
 
+// HITL feedback types
+type FeedbackAction = "approve" | "reject" | "correct";
+type FeedbackStatus = "idle" | "loading" | "done" | "error";
+
 export default function ScanDetail() {
   const { scanId } = useParams();
   const navigate = useNavigate();
@@ -48,6 +52,27 @@ export default function ScanDetail() {
   const [complianceMatrix, setComplianceMatrix] = useState<Array<Record<string, any>> | null>(null);
   const [vulnMatches, setVulnMatches] = useState<DeviceVulnerabilityMatch[] | null>(null);
   const [correlating, setCorrelating] = useState(false);
+
+  // HITL per-analysis feedback state
+  const [hitlStatus, setHitlStatus] = useState<Record<string, { status: FeedbackStatus; action?: FeedbackAction }>>({});
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+
+  const submitFeedback = async (analysisId: string, action: FeedbackAction, correctedParam?: string) => {
+    setHitlStatus((prev) => ({ ...prev, [analysisId]: { status: "loading", action } }));
+    try {
+      await api.post("/api/ai/training-feedback", {
+        scan_id: scanId,
+        analysis_id: analysisId,
+        action,
+        corrected_parameter: correctedParam || null,
+        correction_reason: correctedParam ? `User corrected via inline editor` : undefined,
+      });
+      setHitlStatus((prev) => ({ ...prev, [analysisId]: { status: "done", action } }));
+    } catch {
+      setHitlStatus((prev) => ({ ...prev, [analysisId]: { status: "error", action } }));
+    }
+  };
 
   useEffect(() => {
     let isActive = true;
@@ -106,6 +131,16 @@ export default function ScanDetail() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, scanId, scan?.device_id]);
+
+  // Deep-link support: the Validation page's "Open Remediation" link
+  // points here with a #remediation hash so an operator lands directly on
+  // the Findings/remediation card instead of having to scroll and hunt
+  // for it on a long scan page.
+  useEffect(() => {
+    if (window.location.hash !== "#remediation") return;
+    const el = document.getElementById("remediation");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [scan, remediations]);
 
   if (!scan) return <Loading />;
 
@@ -437,14 +472,66 @@ export default function ScanDetail() {
                   )}
                 </div>
                 <div className="space-y-3 max-h-96 overflow-auto">
-                  {aiAnalysis.analyses.map((a) => (
-                    <div key={a.id}>
-                      <div className="flex items-center justify-between mb-1.5 px-1">
+                  {aiAnalysis.analyses.map((a) => {
+                    const fb = hitlStatus[a.id];
+                    const isDone = fb?.status === "done";
+                    const isLoading = fb?.status === "loading";
+                    return (
+                    <div key={a.id} className={`rounded-lg border ${isDone ? "border-green-800/40 bg-green-900/10" : "border-slate-800/50 bg-transparent"} transition-colors`}>
+                      <div className="flex items-center justify-between mb-1.5 px-2 pt-2">
                         <span className="font-mono text-base text-slate-400">{a.intent}</span>
-                        <span className={`badge ${AI_DECISION_TONE[a.decision] || "badge-na"}`}>
-                          {a.decision.replace(/_/g, " ")}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`badge ${AI_DECISION_TONE[a.decision] || "badge-na"}`}>
+                            {a.decision.replace(/_/g, " ")}
+                          </span>
+                          {/* HITL Feedback Buttons */}
+                          {isDone ? (
+                            <span className="text-xs text-green-400 font-medium px-2">✓ {fb.action}</span>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button
+                                id={`hitl-approve-${a.id}`}
+                                title="Correct — approve as-is"
+                                disabled={isLoading}
+                                onClick={() => submitFeedback(a.id, "approve")}
+                                className="px-2 py-0.5 rounded text-xs font-medium bg-green-900/30 hover:bg-green-800/40 border border-green-800/50 text-green-400 transition-colors disabled:opacity-50"
+                              >{isLoading && fb?.action === "approve" ? "…" : "👍"}</button>
+                              <button
+                                id={`hitl-reject-${a.id}`}
+                                title="Incorrect — reject this interpretation"
+                                disabled={isLoading}
+                                onClick={() => submitFeedback(a.id, "reject")}
+                                className="px-2 py-0.5 rounded text-xs font-medium bg-red-900/30 hover:bg-red-800/40 border border-red-800/50 text-red-400 transition-colors disabled:opacity-50"
+                              >{isLoading && fb?.action === "reject" ? "…" : "👎"}</button>
+                              <button
+                                id={`hitl-edit-${a.id}`}
+                                title="Correct with your own mapping"
+                                disabled={isLoading}
+                                onClick={() => { setEditTargetId(a.id); setEditValue(a.intent || ""); }}
+                                className="px-2 py-0.5 rounded text-xs font-medium bg-amber-900/30 hover:bg-amber-800/40 border border-amber-800/50 text-amber-400 transition-colors disabled:opacity-50"
+                              >✏️</button>
+                            </div>
+                          )}
+                        </div>
                       </div>
+                      {/* Inline Edit Panel */}
+                      {editTargetId === a.id && (
+                        <div className="mx-2 mb-2 flex items-center gap-2 p-2 rounded bg-amber-950/20 border border-amber-800/30">
+                          <input
+                            autoFocus
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            placeholder="Correct intent (e.g. BgpEnabled)"
+                            className="flex-1 bg-slate-900 text-slate-200 text-sm px-2 py-1 rounded border border-slate-700 focus:outline-none focus:border-amber-500"
+                          />
+                          <button
+                            onClick={() => { submitFeedback(a.id, "correct", editValue); setEditTargetId(null); }}
+                            className="text-xs px-3 py-1 rounded bg-amber-600/80 hover:bg-amber-500 text-white font-medium"
+                          >Apply</button>
+                          <button onClick={() => setEditTargetId(null)} className="text-xs px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white">Cancel</button>
+                        </div>
+                      )}
+                      <div className="px-2 pb-2">
                       <WhyPanel
                         title={a.requires_review ? "Why is review required?" : "Why?"}
                         rows={[
@@ -475,8 +562,10 @@ export default function ScanDetail() {
                           },
                         ]}
                       />
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -510,16 +599,16 @@ export default function ScanDetail() {
               )}
             </div>
 
-            <div className="card">
+            <div id="remediation" className="card scroll-mt-24">
               <div className="flex items-center justify-between mb-3">
-                <div className="font-semibold text-slate-200">Findings</div>
+                <div className="font-semibold text-slate-200">Findings &amp; Remediation</div>
                 <div className="flex items-center gap-3">
                   {remediations?.remediations?.some((r: any) => r.cli_steps?.length > 0) && (
                     <button
                       onClick={handleCreateChangeRequest}
                       disabled={creatingCr}
                       className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
-                      title="Bundle the synthesized CLI remediation into a Change Request and open the review queue"
+                      title="Bundle the synthesized CLI remediation into a Change Request — it still needs a Security Analyst or Admin to click Approve there before anything deploys."
                     >
                       {creatingCr ? "Creating…" : "Create Change Request →"}
                     </button>
@@ -527,6 +616,13 @@ export default function ScanDetail() {
                   <span className="text-base text-slate-500">{scan.findings.length} total</span>
                 </div>
               </div>
+              {remediations === null && (
+                <div className="text-sm text-amber-400 mb-3 border border-amber-900/60 bg-amber-950/20 rounded-lg px-3 py-2">
+                  AI remediation suggestions could not be generated for this scan (the AI service may be
+                  unreachable). Findings and their prose remediation guidance are still shown below; you can
+                  still draft a Change Request manually from a finding's guidance text.
+                </div>
+              )}
               <div className="space-y-2 max-h-96 overflow-auto">
                 {scan.findings.length === 0 && (
                   <div className="text-base text-slate-500 border border-dashed border-soc-border rounded-lg py-10 text-center">
@@ -552,38 +648,59 @@ export default function ScanDetail() {
                     )}
                     {(() => {
                       const r = remediations?.remediations?.find((x: any) => x.finding_id === f.id);
-                      if (!r || !r.cli_steps?.length) return null;
-                      const isTemplate = !!r.reference;
+                      // Previously this bailed out entirely (`return null`) for any
+                      // finding without cli_steps -- which is every finding whose
+                      // control has no validated CLI template and no successful AI
+                      // synthesis (the common case, since the template library only
+                      // covers a handful of control IDs). That silently dropped the
+                      // finding's own prose `guidance` too, so most FAIL findings
+                      // showed no remediation section at all. Now: show the CLI
+                      // block when we have one, otherwise fall back to whatever
+                      // guidance we do have (from the AI response, or the finding's
+                      // own stored remediation text) rather than showing nothing.
+                      const hasCli = !!r?.cli_steps?.length;
+                      const guidance = r?.guidance || f.remediation;
+                      if (!hasCli && !guidance) return null;
+                      const isTemplate = !!r?.reference;
                       return (
                         <div className="mt-3 bg-slate-900/50 rounded p-2 border border-slate-800">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="text-base font-semibold text-emerald-500">
-                              {isTemplate ? "Validated CLI Remediation" : "AI Generated CLI Remediation"}
+                          {hasCli && (
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-base font-semibold text-emerald-500">
+                                  {isTemplate ? "Validated CLI Remediation" : "AI Generated CLI Remediation"}
+                                </div>
+                                {r.requires_site_values && (
+                                  <span className="badge badge-medium text-[10px]">has placeholders</span>
+                                )}
+                              </div>
+                              {r.description && (
+                                <div className="text-sm text-slate-400 mb-2">{r.description}</div>
+                              )}
+                              <div className="space-y-0.5">
+                                {r.cli_steps.map((step: string | Record<string, string>, idx: number) => {
+                                  const txt = typeof step === "string" ? step : step ? Object.keys(step)[0] : String(step);
+                                  return <div key={idx} className="font-mono text-sm text-emerald-300 whitespace-pre-wrap">{txt}</div>;
+                                })}
+                              </div>
+                              {r.save_commands?.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-0.5">
+                                  {r.save_commands.map((c: string, idx: number) => (
+                                    <div key={idx} className="font-mono text-sm text-cyan-300/80 whitespace-pre-wrap"># {c}</div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+                          {!hasCli && (
+                            <div className="text-base font-semibold text-amber-500 mb-2">
+                              No validated CLI template for this control/vendor pair
                             </div>
-                            {r.requires_site_values && (
-                              <span className="badge badge-medium text-[10px]">has placeholders</span>
-                            )}
-                          </div>
-                          {r.description && (
-                            <div className="text-sm text-slate-400 mb-2">{r.description}</div>
                           )}
-                          <div className="space-y-0.5">
-                            {r.cli_steps.map((step: string | Record<string, string>, idx: number) => {
-                              const txt = typeof step === "string" ? step : step ? Object.keys(step)[0] : String(step);
-                              return <div key={idx} className="font-mono text-sm text-emerald-300 whitespace-pre-wrap">{txt}</div>;
-                            })}
-                          </div>
-                          {r.save_commands?.length > 0 && (
-                            <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-0.5">
-                              {r.save_commands.map((c: string, idx: number) => (
-                                <div key={idx} className="font-mono text-sm text-cyan-300/80 whitespace-pre-wrap"># {c}</div>
-                              ))}
-                            </div>
+                          {guidance && (
+                            <div className={`text-sm text-slate-400 ${hasCli ? "mt-2 border-t border-slate-800 pt-2" : ""}`}>{guidance}</div>
                           )}
-                          {r.guidance && (
-                            <div className="text-sm text-slate-400 mt-2 border-t border-slate-800 pt-2">{r.guidance}</div>
-                          )}
-                          <div className="text-[11px] text-amber-500/80 mt-2">{r.note || "Requires human review before deployment."}</div>
+                          <div className="text-[11px] text-amber-500/80 mt-2">{r?.note || "Requires human review before deployment."}</div>
                         </div>
                       );
                     })()}

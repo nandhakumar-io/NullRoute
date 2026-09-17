@@ -155,6 +155,12 @@ def health_check() -> Dict[str, Any]:
             # the coordinator only exposes the v2 API on BATFISH_PORT.
             _get_session()
             return {"status": "reachable", "enabled": True}
+        except ImportError as ie:
+            msg = str(ie)
+            # Mask the jarring libstdc++.so.6 error from Pandas on NixOS
+            if "libstdc++.so.6" in msg or "cannot open shared object file" in msg:
+                return {"status": "unreachable", "enabled": True, "error": "Native C++ dependency missing for PyBatfish on this host. Use container or Nix wrapper."}
+            return {"status": "unreachable", "enabled": True, "error": f"Import error: {msg}"}
         except Exception as e2:
             return {"status": "unreachable", "enabled": True, "error": str(e2 or e)}
 

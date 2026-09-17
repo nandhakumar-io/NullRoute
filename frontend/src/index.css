@@ -2,9 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  /* The app was authored almost entirely in text-xs/text-[10px]/[11px]
+   * (481 call sites across pages/*.tsx) with a 16px root, which reads
+   * fine on a dense dark dashboard but is too small for a lot of real
+   * screens/reviewers. Bumping the root size scales every rem-based
+   * Tailwind text-* utility up proportionally without touching each
+   * call site. */
+  font-size: 19px;
+}
+
 body {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Hard floor for the smallest, pixel-fixed text utilities (arbitrary
+ * values like text-[10px]/[11px]/[13px] ignore the root font-size change
+ * above since they're absolute px, not rem). Bring them up to a legible
+ * floor on both themes. The nav rail (App.tsx) is built almost entirely
+ * out of text-[13px]/[11px], so this is also the fix for "nav text too
+ * small/hard to read". */
+.text-\[10px\], .text-\[11px\] { font-size: 13px !important; }
+.text-\[13px\] { font-size: 15px !important; }
+
+/* Nav rail: bump weight + a touch of letter-spacing so labels read clearly
+ * against the dark rail background at a glance, not just "technically
+ * legible" at the right contrast ratio. */
+.rail-nav-group-label { font-weight: 600; }
+.rail-nav-item { font-weight: 500; }
+.rail-nav-item.active { font-weight: 700; }
 
 /* -----------------------------------------------------------------------
  * Theme
@@ -53,47 +79,182 @@ html:not(.dark) .bg-soc-bg { background-color: var(--paper) !important; }
 html:not(.dark) .bg-soc-panel { background-color: var(--surface) !important; }
 html:not(.dark) .border-soc-border { border-color: var(--border) !important; }
 
-/* Generic slate-* remaps used throughout the page components */
-html:not(.dark) [class*="bg-slate-9"],
-html:not(.dark) [class*="bg-slate-8"] { background-color: var(--surface-sunken) !important; }
-html:not(.dark) [class*="bg-slate-800/30"],
-html:not(.dark) [class*="bg-slate-800/40"],
-html:not(.dark) [class*="bg-slate-800/60"] { background-color: #eef1f6 !important; }
-html:not(.dark) [class*="border-slate-7"],
-html:not(.dark) [class*="border-slate-8"] { border-color: var(--border) !important; }
+/* ==== GENERATED: exact-token light-mode color remaps ====
+ * Uses [class~="token"] (exact whole-class-token match) instead of
+ * [class*="token"] (substring match), which used to also match inside
+ * compound variants such as "hover:text-slate-200" or
+ * "group-hover:text-cyan-400", permanently recoloring elements that
+ * were only ever supposed to change color ON hover. Hover / group-hover
+ * tokens are remapped separately below, gated on real :hover state. */
 
-html:not(.dark) [class*="text-slate-1"],
-html:not(.dark) [class*="text-slate-2"],
-html:not(.dark) [class*="text-slate-3"] { color: var(--ink) !important; }
-html:not(.dark) [class*="text-slate-4"],
-html:not(.dark) [class*="text-slate-5"] { color: var(--ink-muted) !important; }
-html:not(.dark) [class*="text-slate-6"] { color: var(--ink-faint) !important; }
-
-/* The app's original accent was neon cyan on near-black — remap it to a
-   restrained ink-navy so links, active values and highlighted numbers
-   read as "official document" rather than "terminal readout". */
-html:not(.dark) [class*="text-cyan-"] { color: var(--brand) !important; }
-html:not(.dark) [class*="border-cyan-"] { border-color: #b9c3dc !important; }
-/* Exact-token matches (`~=`), not substring (`*=`) — pages also use
-   opacity-modified variants like `bg-emerald-500/10` for pale chip fills,
-   and a substring match would repaint those solid too, hiding same-color
-   text underneath. */
-html:not(.dark) [class~="bg-cyan-950"],
+/* text-slate-* */
+html:not(.dark) [class~="text-slate-50"] { color: var(--ink) !important; }
+html:not(.dark) [class~="text-slate-100"] { color: var(--ink) !important; }
+html:not(.dark) [class~="text-slate-200"] { color: var(--ink) !important; }
+html:not(.dark) [class~="text-slate-300"] { color: var(--ink) !important; }
+html:not(.dark) [class~="text-slate-400"] { color: var(--ink-muted) !important; }
+html:not(.dark) [class~="text-slate-500"] { color: var(--ink-muted) !important; }
+html:not(.dark) [class~="text-slate-600"] { color: var(--ink-faint) !important; }
+html:not(.dark) [class~="text-slate-700"] { color: var(--ink-faint) !important; }
+html:not(.dark) [class~="hover:text-slate-50"]:hover { color: var(--ink) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-50"] { color: var(--ink) !important; }
+html:not(.dark) [class~="hover:text-slate-100"]:hover { color: var(--ink) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-100"] { color: var(--ink) !important; }
+html:not(.dark) [class~="hover:text-slate-200"]:hover { color: var(--ink) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-200"] { color: var(--ink) !important; }
+html:not(.dark) [class~="hover:text-slate-300"]:hover { color: var(--ink) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-300"] { color: var(--ink) !important; }
+html:not(.dark) [class~="hover:text-slate-400"]:hover { color: var(--ink-muted) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-400"] { color: var(--ink-muted) !important; }
+html:not(.dark) [class~="hover:text-slate-500"]:hover { color: var(--ink-muted) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-500"] { color: var(--ink-muted) !important; }
+html:not(.dark) [class~="hover:text-slate-600"]:hover { color: var(--ink-faint) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-600"] { color: var(--ink-faint) !important; }
+html:not(.dark) [class~="hover:text-slate-700"]:hover { color: var(--ink-faint) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-slate-700"] { color: var(--ink-faint) !important; }
+/* bg-slate-* */
+html:not(.dark) [class~="bg-slate-700"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="bg-slate-800"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="bg-slate-900"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="bg-slate-950"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="hover:bg-slate-700"]:hover { background-color: var(--surface-sunken) !important; }
+html:not(.dark) .group:hover [class~="group-hover:bg-slate-700"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="hover:bg-slate-800"]:hover { background-color: var(--surface-sunken) !important; }
+html:not(.dark) .group:hover [class~="group-hover:bg-slate-800"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="hover:bg-slate-900"]:hover { background-color: var(--surface-sunken) !important; }
+html:not(.dark) .group:hover [class~="group-hover:bg-slate-900"] { background-color: var(--surface-sunken) !important; }
+html:not(.dark) [class~="hover:bg-slate-950"]:hover { background-color: var(--surface-sunken) !important; }
+html:not(.dark) .group:hover [class~="group-hover:bg-slate-950"] { background-color: var(--surface-sunken) !important; }
+/* border-slate-* */
+html:not(.dark) [class~="border-slate-600"] { border-color: var(--border) !important; }
+html:not(.dark) [class~="border-slate-700"] { border-color: var(--border) !important; }
+html:not(.dark) [class~="border-slate-800"] { border-color: var(--border) !important; }
+html:not(.dark) [class~="hover:border-slate-600"]:hover { border-color: var(--border) !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-slate-600"] { border-color: var(--border) !important; }
+html:not(.dark) [class~="hover:border-slate-700"]:hover { border-color: var(--border) !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-slate-700"] { border-color: var(--border) !important; }
+html:not(.dark) [class~="hover:border-slate-800"]:hover { border-color: var(--border) !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-slate-800"] { border-color: var(--border) !important; }
+/* text-cyan-* */
+html:not(.dark) [class~="text-cyan-300"] { color: var(--brand) !important; }
+html:not(.dark) [class~="text-cyan-400"] { color: var(--brand) !important; }
+html:not(.dark) [class~="text-cyan-500"] { color: var(--brand) !important; }
+html:not(.dark) [class~="hover:text-cyan-300"]:hover { color: var(--brand) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-cyan-300"] { color: var(--brand) !important; }
+html:not(.dark) [class~="hover:text-cyan-400"]:hover { color: var(--brand) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-cyan-400"] { color: var(--brand) !important; }
+html:not(.dark) [class~="hover:text-cyan-500"]:hover { color: var(--brand) !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-cyan-500"] { color: var(--brand) !important; }
+/* border-cyan-* */
+html:not(.dark) [class~="border-cyan-400"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="border-cyan-500"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="border-cyan-600"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="border-cyan-700"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="border-cyan-800"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="border-cyan-900"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="hover:border-cyan-400"]:hover { border-color: #b9c3dc !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-cyan-400"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="hover:border-cyan-500"]:hover { border-color: #b9c3dc !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-cyan-500"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="hover:border-cyan-600"]:hover { border-color: #b9c3dc !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-cyan-600"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="hover:border-cyan-700"]:hover { border-color: #b9c3dc !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-cyan-700"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="hover:border-cyan-800"]:hover { border-color: #b9c3dc !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-cyan-800"] { border-color: #b9c3dc !important; }
+html:not(.dark) [class~="hover:border-cyan-900"]:hover { border-color: #b9c3dc !important; }
+html:not(.dark) .group:hover [class~="group-hover:border-cyan-900"] { border-color: #b9c3dc !important; }
+/* bg-cyan-* soft (950/900) and solid (500/600) */
 html:not(.dark) [class~="bg-cyan-900"] { background-color: #eef1f8 !important; color: var(--brand-strong) !important; }
-html:not(.dark) [class~="bg-cyan-600"],
+html:not(.dark) [class~="bg-cyan-950"] { background-color: #eef1f8 !important; color: var(--brand-strong) !important; }
 html:not(.dark) [class~="bg-cyan-500"] { background-color: var(--brand) !important; }
-html:not(.dark) .hover\:bg-cyan-500:hover,
-html:not(.dark) .hover\:bg-cyan-700:hover { background-color: var(--brand-strong) !important; }
-
-html:not(.dark) [class*="text-emerald-"] { color: #0a6b4f !important; }
-html:not(.dark) [class~="bg-emerald-950"],
+html:not(.dark) [class~="bg-cyan-600"] { background-color: var(--brand) !important; }
+html:not(.dark) [class~="hover:bg-cyan-500"]:hover { background-color: var(--brand) !important; }
+html:not(.dark) .group:hover [class~="group-hover:bg-cyan-500"] { background-color: var(--brand) !important; }
+html:not(.dark) [class~="hover:bg-cyan-600"]:hover { background-color: var(--brand) !important; }
+html:not(.dark) .group:hover [class~="group-hover:bg-cyan-600"] { background-color: var(--brand) !important; }
+/* text-emerald-* */
+html:not(.dark) [class~="text-emerald-300"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="text-emerald-400"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="text-emerald-500"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="text-emerald-600"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="hover:text-emerald-300"]:hover { color: #0a6b4f !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-emerald-300"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="hover:text-emerald-400"]:hover { color: #0a6b4f !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-emerald-400"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="hover:text-emerald-500"]:hover { color: #0a6b4f !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-emerald-500"] { color: #0a6b4f !important; }
+html:not(.dark) [class~="hover:text-emerald-600"]:hover { color: #0a6b4f !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-emerald-600"] { color: #0a6b4f !important; }
+/* bg-emerald-* */
 html:not(.dark) [class~="bg-emerald-900"] { background-color: #e6f4ee !important; }
-html:not(.dark) [class~="bg-emerald-500"],
+html:not(.dark) [class~="bg-emerald-950"] { background-color: #e6f4ee !important; }
+html:not(.dark) [class~="bg-emerald-500"] { background-color: #0a6b4f !important; }
 html:not(.dark) [class~="bg-emerald-600"] { background-color: #0a6b4f !important; }
+/* text-red-* / text-orange-* / text-amber-* */
+html:not(.dark) [class~="text-red-300"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="text-red-400"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="text-red-500"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="text-red-600"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="text-red-700"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="hover:text-red-300"]:hover { color: #9f1c14 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-red-300"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="hover:text-red-400"]:hover { color: #9f1c14 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-red-400"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="hover:text-red-500"]:hover { color: #9f1c14 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-red-500"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="hover:text-red-600"]:hover { color: #9f1c14 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-red-600"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="hover:text-red-700"]:hover { color: #9f1c14 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-red-700"] { color: #9f1c14 !important; }
+html:not(.dark) [class~="text-orange-300"] { color: #a85104 !important; }
+html:not(.dark) [class~="text-orange-400"] { color: #a85104 !important; }
+html:not(.dark) [class~="text-orange-500"] { color: #a85104 !important; }
+html:not(.dark) [class~="hover:text-orange-300"]:hover { color: #a85104 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-orange-300"] { color: #a85104 !important; }
+html:not(.dark) [class~="hover:text-orange-400"]:hover { color: #a85104 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-orange-400"] { color: #a85104 !important; }
+html:not(.dark) [class~="hover:text-orange-500"]:hover { color: #a85104 !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-orange-500"] { color: #a85104 !important; }
+html:not(.dark) [class~="text-amber-300"] { color: #92620c !important; }
+html:not(.dark) [class~="text-amber-400"] { color: #92620c !important; }
+html:not(.dark) [class~="text-amber-500"] { color: #92620c !important; }
+html:not(.dark) [class~="text-amber-600"] { color: #92620c !important; }
+html:not(.dark) [class~="hover:text-amber-300"]:hover { color: #92620c !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-amber-300"] { color: #92620c !important; }
+html:not(.dark) [class~="hover:text-amber-400"]:hover { color: #92620c !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-amber-400"] { color: #92620c !important; }
+html:not(.dark) [class~="hover:text-amber-500"]:hover { color: #92620c !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-amber-500"] { color: #92620c !important; }
+html:not(.dark) [class~="hover:text-amber-600"]:hover { color: #92620c !important; }
+html:not(.dark) .group:hover [class~="group-hover:text-amber-600"] { color: #92620c !important; }
 
-html:not(.dark) [class*="text-red-"] { color: #9f1c14 !important; }
-html:not(.dark) [class*="text-orange-"] { color: #a85104 !important; }
-html:not(.dark) [class*="text-amber-"] { color: #92620c !important; }
+/* Opacity-suffixed background tokens (e.g. bg-slate-800/60) actually used
+ * in the app — same exact-token approach, listed explicitly since the
+ * '/NN' opacity suffix is part of the token string. */
+html:not(.dark) [class~="bg-slate-800/30"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-800/30"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-800/40"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-800/40"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-800/50"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-800/50"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-800/60"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-800/60"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-900/30"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-900/30"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-900/40"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-900/40"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-900/50"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-900/50"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-900/60"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-900/60"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-700/50"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-700/50"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-500/10"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-500/10"]:hover { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="bg-slate-500/20"] { background-color: #eef1f6 !important; }
+html:not(.dark) [class~="hover:bg-slate-500/20"]:hover { background-color: #eef1f6 !important; }
+/* ==== END GENERATED ==== */
 
 html:not(.dark) .shadow-black\/20,
 html:not(.dark) .shadow-lg { box-shadow: 0 1px 2px rgba(23, 27, 38, 0.04); }

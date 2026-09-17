@@ -266,7 +266,7 @@ async def _check_ai() -> ServiceHealth:
     """Combined summary kept for backward compatibility with existing
     dashboard consumers of the 'ai' key. Spec section 12 requires the four
     AI pipeline stages to be independently visible, not folded into one
-    flag -- see _check_distilbert/_check_minilm/_check_qwen3/_check_rag
+    flag -- see _check_distilbert/_check_minilm/_check_ollama/_check_rag
     below, which are the ones the AI status panel should actually read."""
     from app.ai.model_registry import get_registry
 
@@ -287,7 +287,7 @@ async def _check_ai() -> ServiceHealth:
 async def _check_distilbert() -> ServiceHealth:
     """Spec section 12: DistilBERT status must be independently exposed --
     it drives intent classification in app/ai/service.py::analyze_command
-    and must never be conflated with the embedder or the Qwen3/RAG path."""
+    and must never be conflated with the embedder or the Ollama/RAG path."""
     from app.ai.model_registry import get_registry
 
     registry = get_registry()
@@ -315,8 +315,8 @@ async def _check_minilm() -> ServiceHealth:
                           detail="Embedder not loaded -- semantic retrieval falls back to keyword overlap")
 
 
-async def _check_qwen3() -> ServiceHealth:
-    """Spec section 12: Qwen3/Ollama status. This is the path
+async def _check_ollama() -> ServiceHealth:
+    """Spec section 12: Ollama status. This is the path
     app/ai/normalize.py::interpret_line degrades away from on failure --
     when this is down, unknown-block interpretation runs the offline
     keyword heuristic and every fact is forced to human review (never a
@@ -331,18 +331,18 @@ async def _check_qwen3() -> ServiceHealth:
             resp.raise_for_status()
             models = [m.get("name", "") for m in resp.json().get("models", [])]
             if any(LLM_MODEL in m for m in models):
-                return ServiceHealth("Qwen3 (Ollama)", "optional", STATUS_HEALTHY,
+                return ServiceHealth("AI Interpreter (Ollama)", "optional", STATUS_HEALTHY,
                                       detail=f"{LLM_MODEL} available at {OLLAMA_HOST}")
-            return ServiceHealth("Qwen3 (Ollama)", "optional", STATUS_DEGRADED,
+            return ServiceHealth("AI Interpreter (Ollama)", "optional", STATUS_DEGRADED,
                                   detail=f"Ollama reachable but {LLM_MODEL} not pulled -- interpret_line() will degrade per-call")
     except Exception as e:  # noqa: BLE001 -- health probe, never raises to caller
-        return ServiceHealth("Qwen3 (Ollama)", "optional", STATUS_UNAVAILABLE,
+        return ServiceHealth("AI Interpreter (Ollama)", "optional", STATUS_UNAVAILABLE,
                               detail=f"Unreachable at {OLLAMA_HOST}: {e}. Unknown blocks route to offline heuristic + forced human review.")
 
 
 async def _check_rag() -> ServiceHealth:
     """Spec section 12: RAG/pgvector retrieval status -- distinct from
-    Qwen3 itself. Degrades to in-process cosine/substring match on SQLite
+    Ollama itself. Degrades to in-process cosine/substring match on SQLite
     or when the pgvector extension/index isn't present (see
     services/vector_search.py); that degrade is not silent to the caller,
     but it IS a materially weaker retrieval signal, so it's worth its own
@@ -380,7 +380,7 @@ _PROBES: List[tuple[str, Callable[[], Any]]] = [
     ("ai", _check_ai),
     ("ai_distilbert", _check_distilbert),
     ("ai_minilm", _check_minilm),
-    ("ai_qwen3", _check_qwen3),
+    ("ai_ollama", _check_ollama),
     ("ai_rag", _check_rag),
 ]
 

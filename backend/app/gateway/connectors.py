@@ -83,6 +83,16 @@ class MockConnector:
                 "interface_count": 1,
                 "vendor": device.vendor or "mock", "hostname": "mock-device",
             }
+        elif operation == "GET_NEIGHBORS":
+            normalized = {
+                "neighbors": [
+                    {"local_port": "GigabitEthernet0/0", "remote_system_name": "mock-neighbor",
+                     "remote_port_id": "GigabitEthernet0/1", "remote_port_description": None,
+                     "remote_chassis_id": None, "protocol": "lldp"},
+                ],
+                "neighbor_count": 1,
+                "vendor": device.vendor or "mock", "hostname": "mock-device",
+            }
         elif operation == "GET_HEALTH_METRICS":
             normalized = {
                 "cpu_average_pct": 12.0,
@@ -105,7 +115,7 @@ class MockConnector:
             protocol="mock",
             operation=operation,
             success=True,
-            raw_config=raw if operation not in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS") else None,
+            raw_config=raw if operation not in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS", "GET_NEIGHBORS") else None,
             normalized_data=normalized,
             duration_ms=round((time.perf_counter() - start) * 1000.0, 2),
         )
@@ -141,13 +151,15 @@ def _operation_to_collection(device: Device, operation: str, protocol: str, cred
     # ------------------------------------------------------------------ #
     # Structured operation dispatch (GET_FACTS / GET_INTERFACES)          #
     # ------------------------------------------------------------------ #
-    if operation in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS"):
+    if operation in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS", "GET_NEIGHBORS"):
         structured_result = None
         try:
             if operation == "GET_FACTS":
                 structured_result = collector.get_facts(device, credentials)
             elif operation == "GET_INTERFACES":
                 structured_result = collector.get_interfaces(device, credentials)
+            elif operation == "GET_NEIGHBORS":
+                structured_result = collector.get_neighbors(device, credentials)
             else:
                 structured_result = collector.get_health_metrics(device, credentials)
         except NotImplementedError:

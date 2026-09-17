@@ -109,6 +109,7 @@ def store_device_credentials(
     """Write secret material to OpenBao KV v2. Called once at credential
     onboarding/rotation time; `secret` must never be logged by the caller."""
     if not OPENBAO_ENABLED:
+        global _in_memory_vault
         _in_memory_vault = _load_vault()
         _in_memory_vault[_kv_path(tenant_id, credential_ref)] = {"credential_type": credential_type, **secret}
         _save_vault(_in_memory_vault)

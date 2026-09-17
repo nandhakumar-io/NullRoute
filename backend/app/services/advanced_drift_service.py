@@ -1,4 +1,3 @@
-import difflib
 """Configuration Drift Detection Service.
 
 Detects when a device's live running configuration has diverged from a
@@ -30,6 +29,8 @@ Called by:
     celery beat schedule in app.celery_app)
 """
 import datetime
+import difflib
+import logging
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -53,7 +54,9 @@ from app.models.config_drift import (
 from app.models.db import Device, Scan
 from app.models.golden_config import GoldenConfig
 from app.models.db import Scan
-from app.services import audit_service, risk_engine, alert_service
+from app.services import audit_service, risk_engine, alert_service, minio_service
+
+logger = logging.getLogger(__name__)
 
 # Compliance score starts at 100 (fully compliant) and is docked per
 # changed line plus a flat penalty for anything the risk engine flags,
@@ -120,8 +123,27 @@ def _count_diff_lines(diff_text: str) -> tuple[int, int, int]:
     return added, removed, modified
 
 
+def _decrypt(text: str) -> str:
+    """Identity — config_encrypted stores plain text in this deployment,
+    same convention as app.routers.compliance_baselines._decrypt."""
+    return text
+
+
 def _resolve_baseline_config(db: Session, device: Device, baseline: DriftBaseline) -> tuple[str, str]:
-    """Returns (label, decrypted_config_text) for the requested baseline."""
+    """Returns (label, decrypted_config_text) for the requested baseline.
+
+    Previously this returned (label, lambda) tuples for GOLDEN_CONFIG/
+    ROLE_BASELINE -- never actually decrypting anything, so
+    baseline_config.splitlines() in detect_drift() would blow up on the
+    lambda object -- and, for PREVIOUS_BACKUP, read Scan.version and
+    Scan.running_config_encrypted, neither of which exists on the Scan
+    model (Scan stores its raw config in MinIO via raw_config_path, per
+    app.services.change_request_service.latest_known_config and every
+    other reader of Scan configs -- RULE 11: no second collection/storage
+    implementation). That mismatch is what raised
+    `AttributeError: 'Scan' object has no attribute 'version'` on every
+    drift scan.
+    """
     if baseline == DriftBaseline.GOLDEN_CONFIG:
         golden = db.query(GoldenConfig).filter(GoldenConfig.device_id == device.id).first()
         if golden is None:
@@ -129,7 +151,7 @@ def _resolve_baseline_config(db: Session, device: Device, baseline: DriftBaselin
                 f"No golden config has been set for '{device.hostname}' yet. "
                 "Set one via Configuration Management, or scan against the previous backup instead."
             )
-        return "golden config", lambda x: x(golden.config_encrypted)
+        return "golden config", _decrypt(golden.config_encrypted)
 
     if baseline == DriftBaseline.ROLE_BASELINE:
         if not device.device_role:
@@ -150,12 +172,12 @@ def _resolve_baseline_config(db: Session, device: Device, baseline: DriftBaselin
             )
         return (
             f"role baseline ({device.device_role})",
-            lambda x: x(role_baseline.config_encrypted),
+            _decrypt(role_baseline.config_encrypted),
         )
 
     latest_snapshot = (
         db.query(Scan)
-        .filter(Scan.device_id == device.id)
+        .filter(Scan.device_id == device.id, Scan.raw_config_path.isnot(None))
         .order_by(Scan.created_at.desc())
         .first()
     )
@@ -164,9 +186,15 @@ def _resolve_baseline_config(db: Session, device: Device, baseline: DriftBaselin
             f"No configuration backup exists yet for '{device.hostname}' to compare against. "
             "Take a backup first (POST /devices/{id}/config/backup)."
         )
-    return f"backup v{latest_snapshot.version}", lambda x: x(
-        latest_snapshot.running_config_encrypted
-    )
+    try:
+        config_text = minio_service.get_object(latest_snapshot.raw_config_path).decode(
+            "utf-8", errors="replace"
+        )
+    except Exception as exc:  # noqa: BLE001 - surfaced to caller as a NoBaselineError
+        raise NoBaselineError(
+            f"The stored backup for '{device.hostname}' could not be read from storage: {exc}"
+        ) from exc
+    return f"backup ({latest_snapshot.created_at:%Y-%m-%d %H:%M UTC})", config_text
 
 
 def _rollback_recommended(severity: DriftSeverity, compliance_score: int) -> bool:
@@ -290,6 +318,7 @@ def detect_drift(
         action="Drift Detected" if (added or removed) else "Drift Scan (no changes)",
         result=severity.value,
         device_hostname=device.hostname,
+        tenant_id=device.tenant_id,
         detail=(
             f"baseline={baseline_label} +{added}/-{removed} lines "
             f"risk={drift_analysis.risk_score} compliance={compliance_score} "
@@ -314,6 +343,7 @@ def detect_drift(
             action="Unattributed Configuration Change Detected",
             result="needs_review",
             device_hostname=device.hostname,
+            tenant_id=device.tenant_id,
             detail=(
                 f"{device.hostname}: +{added}/-{removed} lines with no matching "
                 f"NetGuard change request or maintenance window in the prior 48h. "
@@ -515,7 +545,7 @@ async def remediate_drift(db: Session, drift: ConfigDrift, device: Device, actor
 
     audit_service.record_event(
         db, actor=actor.email, action="Drift Auto-Remediation Submitted", result="Pending Approval",
-        device_hostname=device.hostname, change_request_id=cr.id,
+        device_hostname=device.hostname, change_request_id=cr.id, tenant_id=device.tenant_id,
         detail=(
             f"drift_id={drift.id} baseline={baseline_label} severity={drift.severity.value}"
             + (f" -- requires dual approval ({dual_approval_reason})" if is_critical else " -- awaiting admin approval")
@@ -634,13 +664,33 @@ def bulk_approve_drift(db: Session, drift_ids: list[uuid.UUID] | None, actor: "U
 
     if approved:
         db.commit()
-        audit_service.record_event(
-            db,
-            actor=actor.email,
-            action="Drift Bulk-Approved (low-risk cosmetic)",
-            result=f"{len(approved)} approved",
-            detail="drift_ids=" + ",".join(str(d.id) for d in approved),
-        )
+        # Bulk-approve can span devices in different tenants (this endpoint
+        # doesn't itself scope by tenant -- see routers/advanced_drift.py),
+        # so a single record_event with no tenant_id would write a row no
+        # tenant's Audit Log view could ever see (audit.py's list query
+        # filters on AuditLog.tenant_id == the caller's tenant). Group by
+        # each approved drift's device's tenant instead, so every tenant
+        # whose drift was touched gets its own visible audit row.
+        from app.models.db import Device as _Device
+
+        device_tenant = {
+            d.id: d.tenant_id
+            for d in db.query(_Device.id, _Device.tenant_id)
+            .filter(_Device.id.in_({d.device_id for d in approved}))
+            .all()
+        }
+        by_tenant: dict[str, list] = {}
+        for d in approved:
+            by_tenant.setdefault(device_tenant.get(d.device_id), []).append(d)
+        for tenant_id, drifts in by_tenant.items():
+            audit_service.record_event(
+                db,
+                actor=actor.email,
+                action="Drift Bulk-Approved (low-risk cosmetic)",
+                result=f"{len(drifts)} approved",
+                tenant_id=tenant_id,
+                detail="drift_ids=" + ",".join(str(d.id) for d in drifts),
+            )
         for d in approved:
             print(
                 "drift_detected",

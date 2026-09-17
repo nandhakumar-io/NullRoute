@@ -273,3 +273,14 @@ async def alert_rollback_failed(db: Session, tenant_id: str, device_id: str, rol
         title="Rollback failed -- device configuration state is unverified, manual intervention required",
         detail=detail, device_id=device_id, extra={"rollback_id": rollback_id},
     )
+
+
+async def alert_vulnerability_breach(db: Session, tenant_id: str, device_id: str, cve_id: str, score: float, evidence: Dict[str, Any]) -> Alert:
+    """Triggered when a new DeviceVulnerabilityMatch is found with high confidence."""
+    severity = "CRITICAL" if score >= 9.0 else ("HIGH" if score >= 7.0 else "MEDIUM")
+    return await create_alert(
+        db, tenant_id, "VULNERABILITY_BREACH", severity,
+        title=f"Vulnerability Detected: {cve_id} (Score {score:.1f})",
+        detail=f"Device matched vulnerable CPE indicating exposure to {cve_id}.",
+        device_id=device_id, extra={"cve_id": cve_id, "risk_score": score, "evidence": evidence},
+    )

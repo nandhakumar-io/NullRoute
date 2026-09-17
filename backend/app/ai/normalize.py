@@ -29,7 +29,7 @@ import httpx
 from app.models.baseline import NormalizedParameter
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-LLM_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama")
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.75"))
 
@@ -48,12 +48,19 @@ SYSTEM_PROMPT = """You are a network security configuration interpreter.
 Given ONE raw configuration line from a network device and a list of known
 normalized security parameters, output STRICT JSON ONLY (no prose, no
 markdown fences) with this exact shape:
-{"normalized_parameter": "<one of the known parameters, or a new short dotted-path guess>",
- "value": <best-typed value: bool/number/string>,
- "confidence": <float 0.0-1.0>,
- "reasoning": "<one short sentence>"}
+{"interpretations": [
+  {"normalized_parameter": "<one of the known parameters, or a new short dotted-path guess>",
+   "value": <best-typed value: bool/number/string>,
+   "confidence": <float 0.0-1.0>,
+   "reasoning": "<one short sentence>"}
+]}
 You are advisory only — you never decide compliance PASS/FAIL, only meaning.
+
+CRITICAL RULES:
+1. Do NOT assign high confidence (>= 0.75) if the line is just a fragment (like `name admin`, `members MGMT`, `name 0`). Classify fragments as `extra_parameters.unknown_evidence` unless you are absolutely certain.
+2. If the line lacks enough context to be a complete security configuration, your confidence MUST be below 0.7.
 """
+
 
 
 @dataclass
@@ -90,7 +97,7 @@ def _keyword_similarity(line: str) -> List[str]:
     return [p for _, p in scored[:3]]
 
 
-def _offline_heuristic_interpret(line: str) -> AIInterpretation:
+def _offline_heuristic_interpret(line: str) -> List[AIInterpretation]:
     candidates = _keyword_similarity(line)
     best = candidates[0] if candidates else "extra_parameters.unknown_evidence"
     lowered = line.lower()
@@ -102,7 +109,7 @@ def _offline_heuristic_interpret(line: str) -> AIInterpretation:
         value = int(m.group(1))
     confidence = 0.55 + 0.15 * len(candidates)
     confidence = min(confidence, 0.9)
-    return AIInterpretation(
+    return [AIInterpretation(
         raw_command=line,
         normalized_parameter=best,
         value=value,
@@ -111,33 +118,43 @@ def _offline_heuristic_interpret(line: str) -> AIInterpretation:
         model_version="offline-heuristic-v1",
         needs_human_review=confidence < CONFIDENCE_THRESHOLD,
         reasoning="keyword-match heuristic",
+    )]
+
+
+async def retrieve_similar_mappings(db_session, vendor: str, line: str, top_k: int = 3, tenant_id: Optional[str] = None) -> List[dict]:
+    """Retrieval half of the HITL training loop: when a human approves or
+    corrects an AI interpretation, hitl_service._persist_training_example()
+    + vector_search.store_embedding() embed that (raw_command_pattern ->
+    embedding) into CommandMapping.embedding. This is where that embedding
+    actually gets *used* again -- real pgvector/cosine semantic search
+    (services/vector_search.find_similar_mappings) over approved mappings,
+    so the next unknown/similarly-worded config line retrieves it as
+    few-shot context for interpret_line() below.
+
+    Previously this re-implemented a much weaker plain-Python token-overlap
+    search from scratch and never touched the embedding column at all --
+    every human correction was stored but silently never fed back into
+    future interpretations, so the "training loop" only closed on paper.
+    vector_search itself still degrades gracefully (real cosine over stored
+    vectors, then token overlap) when running on SQLite or with no embedder
+    loaded, so this call is always safe.
+
+    `tenant_id` scopes retrieval to that tenant's own corrections plus
+    tenant-agnostic seeded mappings (tenant_id IS NULL) -- pass it whenever
+    the caller has it (see services/pipeline.py) so one tenant's corrections
+    never leak into another's interpretations."""
+    from app.services import vector_search
+
+    results = vector_search.find_similar_mappings(
+        db_session, tenant_id=tenant_id, query_text=line, vendor=vendor, status="approved", top_k=top_k,
     )
-
-
-async def retrieve_similar_mappings(db_session, vendor: str, line: str, top_k: int = 3) -> List[dict]:
-    """pgvector similarity search against the learned CommandMapping table.
-    Falls back to substring match when running on SQLite (no vector index)."""
-    from app.models.db import CommandMapping
-
-    q = db_session.query(CommandMapping).filter(
-        CommandMapping.vendor == vendor, CommandMapping.status == "approved"
-    )
-    candidates = q.all()
-    tokens = set(re.findall(r"[a-z]+", line.lower()))
-    scored = []
-    for c in candidates:
-        c_tokens = set(re.findall(r"[a-z]+", (c.raw_command_pattern or "").lower()))
-        overlap = len(tokens & c_tokens)
-        if overlap:
-            scored.append((overlap, c))
-    scored.sort(key=lambda t: t[0], reverse=True)
     return [
-        {"parameter": c.normalized_parameter, "example_value": c.example_value, "pattern": c.raw_command_pattern}
-        for _, c in scored[:top_k]
+        {"parameter": r["normalized_parameter"], "example_value": r["example_value"], "pattern": r["raw_command_pattern"]}
+        for r in results
     ]
 
 
-async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[List[dict]] = None) -> AIInterpretation:
+async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[List[dict]] = None) -> List[AIInterpretation]:
     """Call local Ollama (Qwen3-8B) with retrieved knowledge injected as RAG
     context. Falls back to offline heuristic if Ollama is unreachable."""
     retrieved_knowledge = retrieved_knowledge or []
@@ -153,7 +170,7 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
-                f"{OLLAMA_HOST}/api/generate",
+                f"{OLLAMA_HOST}/generate",
                 json={
                     "model": LLM_MODEL,
                     "system": SYSTEM_PROMPT,
@@ -166,35 +183,33 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
             resp.raise_for_status()
             text = resp.json().get("response", "{}")
             parsed = json.loads(text)
-            confidence = float(parsed.get("confidence", 0.5))
-            return AIInterpretation(
-                raw_command=line,
-                normalized_parameter=parsed.get("normalized_parameter", "extra_parameters.unknown_evidence"),
-                value=parsed.get("value", line),
-                confidence=confidence,
-                retrieved_knowledge=[k["pattern"] for k in retrieved_knowledge],
-                model_version=LLM_MODEL,
-                needs_human_review=confidence < CONFIDENCE_THRESHOLD,
-                reasoning=parsed.get("reasoning"),
-            )
+            
+            interpretations_data = parsed.get("interpretations", [parsed])
+            interps = []
+            for item in interpretations_data:
+                confidence = float(item.get("confidence", 0.5))
+                interps.append(AIInterpretation(
+                    raw_command=line,
+                    normalized_parameter=item.get("normalized_parameter", "extra_parameters.unknown_evidence"),
+                    value=item.get("value", line),
+                    confidence=confidence,
+                    retrieved_knowledge=[k["pattern"] for k in retrieved_knowledge],
+                    model_version=LLM_MODEL,
+                    needs_human_review=confidence < CONFIDENCE_THRESHOLD,
+                    reasoning=item.get("reasoning"),
+                ))
+            
+            return interps if interps else _offline_heuristic_interpret(line)
     except Exception:
-        # AI FAILURE MODE (spec section 12): Ollama/Qwen3 unreachable. The
-        # offline keyword heuristic below is a much weaker signal than an
-        # actual RAG-grounded LLM interpretation and MUST NOT be allowed to
-        # silently cross CONFIDENCE_THRESHOLD and skip human review — that
-        # would be exactly the forbidden "AI unavailable -> fabricated
-        # result -> PASS" failure mode. So: cap its confidence strictly below
-        # the review threshold and force needs_human_review regardless of
-        # what the heuristic itself computed, and tag model_version so this
-        # is distinguishable from a genuine Qwen3 response in provenance.
-        result = _offline_heuristic_interpret(line)
-        if retrieved_knowledge:
-            result.retrieved_knowledge = [k["pattern"] for k in retrieved_knowledge] + result.retrieved_knowledge
-        result.confidence = min(result.confidence, max(CONFIDENCE_THRESHOLD - 0.05, 0.0))
-        result.needs_human_review = True
-        result.model_version = f"{result.model_version}+qwen3_unavailable"
-        result.reasoning = "Qwen3/Ollama unavailable — degraded to offline keyword heuristic; forced to human review."
-        return result
+        results = _offline_heuristic_interpret(line)
+        for result in results:
+            if retrieved_knowledge:
+                result.retrieved_knowledge = [k["pattern"] for k in retrieved_knowledge] + result.retrieved_knowledge
+            result.confidence = min(result.confidence, max(CONFIDENCE_THRESHOLD - 0.05, 0.0))
+            result.needs_human_review = True
+            result.model_version = f"{result.model_version}+qwen3_unavailable"
+            result.reasoning = "Qwen3/Ollama unavailable — degraded to offline keyword heuristic; forced to human review."
+        return results
 
 
 async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Optional[List[dict]] = None) -> BlockInterpretationResult:
@@ -209,22 +224,28 @@ async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Opt
     facts: List[AIInterpretation] = []
     unknown_lines: List[str] = []
     for line in [l.strip() for l in block_text.splitlines() if l.strip()]:
-        interp = await interpret_line(vendor, line, retrieved_knowledge)
-        if interp.normalized_parameter == "extra_parameters.unknown_evidence" or interp.confidence < CONFIDENCE_THRESHOLD:
+        interps = await interpret_line(vendor, line, retrieved_knowledge)
+        has_confident_match = False
+        
+        for interp in interps:
+            if interp.normalized_parameter != "extra_parameters.unknown_evidence" and interp.confidence >= CONFIDENCE_THRESHOLD:
+                has_confident_match = True
+                facts.append(interp)
+                
+        if not has_confident_match:
             unknown_lines.append(line)
+            first = interps[0] if interps else None
             unknown_fact = AIInterpretation(
                 raw_command=line,
                 normalized_parameter="extra_parameters.unknown_evidence",
                 value=line,
-                confidence=max(0.2, interp.confidence),
-                retrieved_knowledge=interp.retrieved_knowledge,
-                model_version=interp.model_version,
+                confidence=max(0.2, getattr(first, 'confidence', 0.2)),
+                retrieved_knowledge=getattr(first, 'retrieved_knowledge', []),
+                model_version=getattr(first, 'model_version', "offline-heuristic-v1"),
                 needs_human_review=True,
-                reasoning=interp.reasoning or "unknown command retained for review",
+                reasoning=(getattr(first, 'reasoning', None) or "unknown command retained for review"),
             )
             facts.append(unknown_fact)
-            continue
-        facts.append(interp)
 
     if not facts:
         if block_text:

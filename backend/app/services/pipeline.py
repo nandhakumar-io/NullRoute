@@ -17,11 +17,12 @@ from app.ai.normalize import (interpret_line, retrieve_similar_mappings,
                                to_normalized_parameter)
 from app.models.baseline import SecurityBaselineModel
 from app.models.db import AIAnalysis, BatfishAnalysis, Device, Finding, OPAAnalysis, Scan
-from app.services import batfish_service, evidence_service, fabric_service, opa_service, risk_engine
+from app.services import batfish_service, evidence_service, fabric_service, minio_service, opa_service, risk_engine
 from app.services.change_validation_service import correlate
 from app.services.compliance import compute_score, evaluate_baseline_via_opa, opa_decision_to_findings
 from app.services.parsers import parse_config
 from app.services.vendor_detect import detect_vendor
+from app.services import rag_service
 
 
 async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = "ALL") -> Scan:
@@ -45,6 +46,27 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         db.commit()
 
         scan.raw_config_hash = hashlib.sha256(raw_text.encode()).hexdigest()
+
+        # Archive the raw config to MinIO and record its object key on the
+        # scan. This is what makes a Scan a "snapshot" for the Config
+        # Backups page (routers/backups.py::list_device_snapshots only
+        # lists Scan rows with raw_config_path set) and what
+        # backup_destination_service.auto_export_after_scan needs to push
+        # to remote destinations. Previously this pipeline computed
+        # raw_config_hash but never actually archived the bytes anywhere,
+        # so nothing collected through /collect or /scan could ever show
+        # up as a backup snapshot, regardless of how the collection itself
+        # went. Mirrors the pattern already used by the async gateway
+        # worker (app/gateway/worker.py) and change_request_service.py.
+        # Best-effort: an object-store outage must not fail the scan
+        # itself, matching every other put_object call site in this app.
+        try:
+            object_key = minio_service.object_key(scan.tenant_id, scan.device_id, scan.id, "raw_config.txt")
+            minio_service.put_object(object_key, raw_text.encode("utf-8"), content_type="text/plain")
+            scan.raw_config_path = object_key
+        except Exception:  # noqa: BLE001
+            pass
+
         scan.status = "parsed"
         db.commit()
         await events.publish("config.uploaded", {"scan_id": scan.id, "device_id": scan.device_id})
@@ -100,15 +122,24 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
                 inference_latency_ms=ai_result.inference_latency_ms,
             ))
 
-            retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line)
+        import asyncio
+        async def _process_line(line: str):
+            retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line, tenant_id=scan.tenant_id)
             interp_vendor = device.vendor or guess.vendor
-            interp = await interpret_line(interp_vendor, line, retrieved)
-            norm_param = to_normalized_parameter(interp, vendor=interp_vendor)
-            baseline.provenance.append(norm_param)
-            if interp.needs_human_review:
-                _queue_for_training(db, device.vendor or guess.vendor, interp)
-            else:
-                _apply_to_baseline(baseline, norm_param)
+            interps = await interpret_line(interp_vendor, line, retrieved)
+            return interp_vendor, interps
+
+        tasks = [_process_line(line) for line in unknown_lines[:60] if line.strip()]
+        results = await asyncio.gather(*tasks) if tasks else []
+
+        for interp_vendor, interps in results:
+            for interp in interps:
+                norm_param = to_normalized_parameter(interp, vendor=interp_vendor)
+                baseline.provenance.append(norm_param)
+                if interp.needs_human_review:
+                    _queue_for_training(db, interp_vendor, interp)
+                else:
+                    _apply_to_baseline(baseline, norm_param)
         db.commit()
         if unknown_lines:
             await events.publish("ai.mapping.completed", {"scan_id": scan.id})
@@ -151,11 +182,16 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         #    BATFISH_PASS (RULE 13). --------------------------------------
         scan.status = "batfish_evaluating"
         db.commit()
-        bf_result = batfish_service.analyze_security_behavior(
-            scan_id=scan.id,
-            vendor=device.vendor or guess.vendor or "",
-            hostname=baseline.device.hostname or device.hostname or "device",
-            raw_config=raw_text,
+        import asyncio
+        loop = asyncio.get_running_loop()
+        bf_result = await loop.run_in_executor(
+            None,
+            lambda: batfish_service.analyze_security_behavior(
+                scan_id=scan.id,
+                vendor=device.vendor or guess.vendor or "",
+                hostname=baseline.device.hostname or device.hostname or "device",
+                raw_config=raw_text,
+            )
         )
         batfish_status = bf_result.status
         db.add(BatfishAnalysis(
@@ -267,6 +303,16 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         device.last_compliance_score = score
         db.commit()
         await events.publish("compliance.scan.completed", {"scan_id": scan.id, "score": score, "decision": compliance_decision.decision})
+
+        # Keep the "Ask NetSecAuditor" RAG corpus current: incrementally
+        # upsert this scan's device + failing findings rather than waiting
+        # on a manual /api/rag/reindex click. Best-effort -- indexing
+        # trouble must never fail a completed scan.
+        try:
+            rag_service.index_scan_results(db, scan.tenant_id, scan, device)
+        except Exception:
+            logger = __import__("logging").getLogger("pipeline")
+            logger.exception("rag incremental index failed for scan %s", scan.id)
 
     except Exception as e:  # keep the demo resilient; surface the error on the scan
         scan.status = "failed"

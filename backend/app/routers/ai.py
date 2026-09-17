@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.ai.model_registry import get_registry
 from app.ai.schemas import AIHealth, AIModelInfo, AIModelsOut
 from app.db import get_db
-from app.models.db import AIAnalysis, Device, Scan
+from app.models.db import AIAnalysis, CommandMapping, Device, Scan
 
-from app.auth.dependencies import get_current_tenant, get_current_user
+from app.auth.dependencies import get_current_tenant, get_current_user, require_role
 
 router = APIRouter(prefix="/api", tags=["ai"], dependencies=[Depends(get_current_user)])
 
@@ -141,3 +142,125 @@ def ai_models():
             "semantic_similarity": registry.thresholds.semantic_similarity,
         },
     )
+
+
+@router.post("/ai/training-feedback")
+def submit_training_feedback(
+    scan_id: str = Body(...),
+    analysis_id: str = Body(...),
+    action: str = Body(..., description="One of: approve, correct, reject"),
+    corrected_parameter: Optional[str] = Body(default=None, description="For 'correct': the accurate normalized_parameter string"),
+    correction_reason: Optional[str] = Body(default=None),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user=Depends(get_current_user),
+):
+    """HITL inline feedback — thumbs up/down/edit on an AI interpretation.
+
+    Records the operator action, updates the CommandMapping status, and
+    re-embeds the raw command into pgvector so future LLM lookups learn
+    from this correction immediately (RAG active learning loop)."""
+    from app.services import hitl_service, vector_search
+
+    # Resolve the AIAnalysis → find the linked CommandMapping (same raw hash)
+    analysis = db.query(AIAnalysis).filter(
+        AIAnalysis.id == analysis_id,
+        AIAnalysis.scan_id == scan_id,
+    ).first()
+    if not analysis:
+        raise HTTPException(404, "AI analysis record not found")
+
+    mapping = db.query(CommandMapping).filter(
+        CommandMapping.raw_command_hash == analysis.raw_command_hash,
+        CommandMapping.tenant_id == tenant_id,
+    ).first()
+
+    if not mapping:
+        raise HTTPException(404, "No command mapping found for this AI analysis — cannot record feedback")
+
+    action = action.lower().strip()
+
+    if action == "approve":
+        hitl_service.approve_mapping(
+            db, mapping,
+            normalized_facts={"intent": analysis.intent},
+            correction_reason=correction_reason,
+            user=user,
+        )
+    elif action == "correct":
+        if not corrected_parameter:
+            raise HTTPException(422, "corrected_parameter is required for action='correct'")
+        hitl_service.correct_mapping(
+            db, mapping,
+            normalized_facts={"intent": corrected_parameter},
+            correction_reason=correction_reason or f"User corrected '{analysis.intent}' → '{corrected_parameter}'",
+            user=user,
+        )
+    elif action == "reject":
+        hitl_service.reject_mapping(
+            db, mapping,
+            correction_reason=correction_reason,
+            user=user,
+        )
+    else:
+        raise HTTPException(422, f"Unknown action '{action}'. Use: approve, correct, reject")
+
+    return {
+        "status": "recorded",
+        "action": action,
+        "mapping_id": mapping.id,
+        "analysis_id": analysis_id,
+        "message": "Feedback recorded and pgvector embedding updated.",
+    }
+
+
+@router.get("/devices/{device_id}/telemetry")
+def get_device_snmp_telemetry(
+    device_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """On-demand SNMP telemetry poll: CPU, memory, and interface stats.
+
+    Community string is resolved from OpenBao via the device's stored
+    credential ref. If no SNMP credential is on file or the device is
+    unreachable, returns status='unavailable' rather than raising."""
+    from app.services import openbao_service, snmp_service
+    from app.models.db import DeviceCredentialRef
+
+    device = db.query(Device).filter(Device.id == device_id, Device.tenant_id == tenant_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+
+    host = device.management_address or device.hostname
+    if not host:
+        return snmp_service.SnmpTelemetry(
+            status="unavailable", device_id=device_id,
+            error="Device has no management address configured"
+        ).to_dict()
+
+    # Resolve SNMP credential from OpenBao (community string stored as secret)
+    community = "public"
+    port = 161
+    try:
+        ref_row = db.query(DeviceCredentialRef).filter(
+            DeviceCredentialRef.device_id == device_id,
+            DeviceCredentialRef.tenant_id == tenant_id,
+        ).order_by(DeviceCredentialRef.created_at.desc()).first()
+        if ref_row:
+            creds = openbao_service.get_device_credentials(tenant_id, ref_row.credential_ref)
+            if creds.secret.get("snmp_community"):
+                community = creds.secret["snmp_community"]
+            if creds.secret.get("snmp_port"):
+                port = int(creds.secret["snmp_port"])
+            del creds  # RULE 6: never hold credentials beyond this scope
+    except openbao_service.OpenBaoError:
+        pass  # Use default public community if no secure credential found
+
+    telemetry = snmp_service.collect_telemetry(
+        device_id=device_id,
+        management_address=host,
+        community=community,
+        port=port,
+    )
+    return telemetry.to_dict()

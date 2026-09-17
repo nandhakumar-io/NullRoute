@@ -1,7 +1,8 @@
 import anyio
+import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -9,8 +10,9 @@ from app.db import get_db
 from app.models.db import Base, Device, Tenant
 from app.schemas import DeviceCreate, DeviceOut, DeviceUpdate
 
-from app.auth.dependencies import get_current_user, get_current_tenant
+from app.auth.dependencies import CurrentUser, get_current_user, get_current_tenant
 from app.services.collectors.registry import get_collector
+from app.services import audit_service
 
 router = APIRouter(prefix="/api/devices", tags=["devices"], dependencies=[Depends(get_current_user)])
 
@@ -70,7 +72,13 @@ def list_devices(db: Session = Depends(get_db), tenant_id: str = Depends(get_cur
 
 
 @router.post("", response_model=DeviceOut)
-def create_device(payload: DeviceCreate, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def create_device(
+    payload: DeviceCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     if payload.management_address:
         existing = _scoped_query(db, tenant_id).filter(
             Device.management_address == payload.management_address
@@ -84,6 +92,11 @@ def create_device(payload: DeviceCreate, db: Session = Depends(get_db), tenant_i
     db.add(device)
     db.commit()
     db.refresh(device)
+    audit_service.record_from_user(
+        db, user, action="device.create", request=request, result="SUCCESS",
+        object_type="device", object_id=device.id,
+        new_value={"hostname": device.hostname, "management_address": device.management_address},
+    )
     return device
 
 
@@ -111,61 +124,253 @@ def get_collection_status(device_id: str, db: Session = Depends(get_db), tenant_
 
 
 @router.patch("/{device_id}", response_model=DeviceOut)
-def update_device(device_id: str, payload: DeviceUpdate, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def update_device(
+    device_id: str,
+    payload: DeviceUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     device = _scoped_query(db, tenant_id).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(404, "Device not found")
 
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    old_value = {k: getattr(device, k, None) for k in changes}
+    for key, value in changes.items():
         setattr(device, key, value)
 
     db.commit()
     db.refresh(device)
+    audit_service.record_from_user(
+        db, user, action="device.update", request=request, result="SUCCESS",
+        object_type="device", object_id=device.id, old_value=old_value, new_value=changes,
+    )
     return device
 
 
 @router.delete("/{device_id}", status_code=204)
-def delete_device(device_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def delete_device(
+    device_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     device = _scoped_query(db, tenant_id).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(404, "Device not found")
+    old_value = {"hostname": device.hostname, "management_address": device.management_address}
     _cascade_delete_device_rows(db, device_id)
     db.delete(device)
     db.commit()
+    audit_service.record_from_user(
+        db, user, action="device.delete", request=request, result="SUCCESS",
+        object_type="device", object_id=device_id, old_value=old_value,
+    )
     return None
 
 
 @router.post("/bulk/delete")
-def bulk_delete_devices(payload: BulkDeviceIds, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def bulk_delete_devices(
+    payload: BulkDeviceIds,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     devices = _scoped_query(db, tenant_id).filter(Device.id.in_(payload.device_ids)).all()
     affected_ids = [d.id for d in devices]
     for device in devices:
         _cascade_delete_device_rows(db, device.id)
         db.delete(device)
     db.commit()
+    audit_service.record_from_user(
+        db, user, action="device.bulk_delete", request=request, result="SUCCESS",
+        object_type="device", object_id=None,
+        new_value={"requested": len(payload.device_ids), "affected": affected_ids},
+    )
     return {"requested": len(payload.device_ids), "affected": len(affected_ids), "device_ids": affected_ids}
 
 
 @router.post("/bulk/enable")
-def bulk_enable_devices(payload: BulkDeviceIds, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def bulk_enable_devices(
+    payload: BulkDeviceIds,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     devices = _scoped_query(db, tenant_id).filter(Device.id.in_(payload.device_ids)).all()
     for device in devices:
         device.enabled = True
     db.commit()
+    audit_service.record_from_user(
+        db, user, action="device.bulk_enable", request=request, result="SUCCESS",
+        object_type="device", object_id=None,
+        new_value={"requested": len(payload.device_ids), "affected": [d.id for d in devices]},
+    )
     return {"requested": len(payload.device_ids), "affected": len(devices), "device_ids": [d.id for d in devices]}
 
 
 @router.post("/bulk/disable")
-def bulk_disable_devices(payload: BulkDeviceIds, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def bulk_disable_devices(
+    payload: BulkDeviceIds,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     devices = _scoped_query(db, tenant_id).filter(Device.id.in_(payload.device_ids)).all()
     for device in devices:
         device.enabled = False
     db.commit()
+    audit_service.record_from_user(
+        db, user, action="device.bulk_disable", request=request, result="SUCCESS",
+        object_type="device", object_id=None,
+        new_value={"requested": len(payload.device_ids), "affected": [d.id for d in devices]},
+    )
     return {"requested": len(payload.device_ids), "affected": len(devices), "device_ids": [d.id for d in devices]}
 
 
+class DiscoverRequest(BaseModel):
+    cidr: str
+    ports: str | None = None
+    service_detection: bool = True
+    os_detection: bool = False
+
+
+class DiscoverImportHost(BaseModel):
+    ip: str
+    hostname: str | None = None
+    vendor_guess: str | None = None
+
+
+class DiscoverImportRequest(BaseModel):
+    hosts: List[DiscoverImportHost]
+
+
+@router.post("/discover")
+def start_discovery(
+    payload: DiscoverRequest,
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """Kicks off an nmap discovery job over `payload.cidr` and returns
+    immediately with a job id -- discovery runs in a background asyncio
+    task (see services/discovery_job_service.py), never inside this
+    request handler, so a slow scan over a large CIDR never blocks the
+    API for this or any other tenant. Poll GET /discover/{job_id} for
+    progress and results; POST .../pause, .../resume, .../cancel control
+    an in-flight scan.
+    """
+    from app.services import discovery_job_service
+
+    job = discovery_job_service.create_job(
+        tenant_id=tenant_id,
+        cidr=payload.cidr,
+        ports=payload.ports or "",
+        service_detection=payload.service_detection,
+        os_detection=payload.os_detection,
+    )
+    return job.to_dict()
+
+
+@router.get("/discover/{job_id}")
+def get_discovery_job(job_id: str, tenant_id: str = Depends(get_current_tenant)):
+    from app.services import discovery_job_service
+
+    try:
+        job = discovery_job_service.get_job(job_id, tenant_id)
+    except discovery_job_service.JobNotFoundError:
+        raise HTTPException(404, "Discovery job not found")
+    return job.to_dict()
+
+
+@router.post("/discover/{job_id}/pause")
+def pause_discovery_job(job_id: str, tenant_id: str = Depends(get_current_tenant)):
+    from app.services import discovery_job_service
+
+    try:
+        job = discovery_job_service.pause_job(job_id, tenant_id)
+    except discovery_job_service.JobNotFoundError:
+        raise HTTPException(404, "Discovery job not found")
+    return job.to_dict()
+
+
+@router.post("/discover/{job_id}/resume")
+def resume_discovery_job(job_id: str, tenant_id: str = Depends(get_current_tenant)):
+    from app.services import discovery_job_service
+
+    try:
+        job = discovery_job_service.resume_job(job_id, tenant_id)
+    except discovery_job_service.JobNotFoundError:
+        raise HTTPException(404, "Discovery job not found")
+    return job.to_dict()
+
+
+@router.post("/discover/{job_id}/cancel")
+def cancel_discovery_job(job_id: str, tenant_id: str = Depends(get_current_tenant)):
+    from app.services import discovery_job_service
+
+    try:
+        job = discovery_job_service.cancel_job(job_id, tenant_id)
+    except discovery_job_service.JobNotFoundError:
+        raise HTTPException(404, "Discovery job not found")
+    return job.to_dict()
+
+
+@router.post("/discover/import", response_model=List[DeviceOut])
+def import_discovered_hosts(
+    payload: DiscoverImportRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Turns a human-reviewed subset of discovered hosts into real Device
+    rows (RULE 6/RULE 11 -- discovery never creates a Device on its own;
+    this explicit, separate call is the only path from "scanned" to
+    "inventoried"). Idempotent per management_address: re-importing an
+    address that's already a Device for this tenant just returns the
+    existing row instead of erroring or duplicating it.
+    """
+    created: List[Device] = []
+    newly_created_ids: List[str] = []
+    for host in payload.hosts:
+        existing = _scoped_query(db, tenant_id).filter(Device.management_address == host.ip).first()
+        if existing:
+            created.append(existing)
+            continue
+        device = Device(
+            tenant_id=tenant_id,
+            management_address=host.ip,
+            hostname=host.hostname or host.ip,
+            vendor=host.vendor_guess,
+            enabled=True,
+        )
+        db.add(device)
+        created.append(device)
+        newly_created_ids.append(host.ip)
+    db.commit()
+    for d in created:
+        db.refresh(d)
+    audit_service.record_from_user(
+        db, user, action="device.discover_import", request=request, result="SUCCESS",
+        object_type="device", object_id=None,
+        new_value={"requested": len(payload.hosts), "created": len(newly_created_ids), "device_ids": [d.id for d in created]},
+    )
+    return created
+
+
 @router.post("/{device_id}/test-connection")
-def test_connection(device_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def test_connection(
+    device_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     device = _scoped_query(db, tenant_id).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(404, "Device not found")
@@ -173,6 +378,11 @@ def test_connection(device_id: str, db: Session = Depends(get_db), tenant_id: st
     import time
     # Simulate ping / SSH verification phase for the demonstration topology.
     time.sleep(0.5)
+    audit_service.record_from_user(
+        db, user, action="device.test_connection", request=request, result="SUCCESS",
+        object_type="device", object_id=device_id,
+        new_value={"transport": device.protocol or "NETCONF"},
+    )
     return {
         "success": True,
         "transport": device.protocol or "NETCONF",
@@ -180,7 +390,13 @@ def test_connection(device_id: str, db: Session = Depends(get_db), tenant_id: st
     }
 
 @router.post("/{device_id}/collect")
-def collect_configuration(device_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+def collect_configuration(
+    device_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
     """Live-collect the device's running configuration over its resolved
     transport (SSH/NETCONF/RESTCONF/gNMI, per get_collector(vendor)) and
     archive the raw config + hash on the device row.
@@ -205,6 +421,11 @@ def collect_configuration(device_id: str, db: Session = Depends(get_db), tenant_
         device.collection_status = "FAILED"
         device.last_collection_error = f"Could not resolve device credentials: {e}"
         db.commit()
+        audit_service.record_from_user(
+            db, user, action="device.collect", request=request, result="FAILURE",
+            object_type="device", object_id=device_id,
+            new_value={"error": f"Could not resolve device credentials: {e}"},
+        )
         raise HTTPException(400, f"Could not resolve device credentials: {e}")
 
     collector = get_collector(device.vendor, transport=device.protocol)
@@ -218,6 +439,14 @@ def collect_configuration(device_id: str, db: Session = Depends(get_db), tenant_
         device.last_config_raw = result.raw_config
     db.commit()
 
+    audit_service.record_from_user(
+        db, user, action="device.collect", request=request,
+        result="SUCCESS" if result.success else "FAILURE",
+        object_type="device", object_id=device_id,
+        new_value={"transport": result.transport, "error": result.error} if not result.success
+        else {"transport": result.transport, "config_hash": result.config_hash},
+    )
+
     if not result.success:
         raise HTTPException(502, f"Collection failed over {result.transport}: {result.error}")
 
@@ -229,7 +458,7 @@ def collect_configuration(device_id: str, db: Session = Depends(get_db), tenant_
     }
 
 @router.post("/{device_id}/scan")
-async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends(get_db), current_user=Depends(get_current_user), tenant_id: str = Depends(get_current_tenant)):
+async def run_scan(device_id: str, request: Request, framework: str = "ALL", db: Session = Depends(get_db), current_user=Depends(get_current_user), tenant_id: str = Depends(get_current_tenant)):
     from app.models.db import Scan, Finding
     from app.schemas import ScanDetailOut, ScanOut
     from app.services.pipeline import run_pipeline
@@ -247,6 +476,11 @@ async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends
     try:
         credentials = _resolve_credentials(db, device, tenant_id)
     except (ValueError, openbao_service.OpenBaoError) as e:
+        audit_service.record_from_user(
+            db, current_user, action="device.scan", request=request, result="FAILURE",
+            object_type="device", object_id=device_id,
+            new_value={"error": f"Could not resolve device credentials: {e}"},
+        )
         raise HTTPException(400, f"Could not resolve device credentials: {e}")
 
     collector = get_collector(device.vendor, transport=device.protocol)
@@ -254,6 +488,11 @@ async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends
     del credentials
 
     if not result.success or not result.raw_config:
+        audit_service.record_from_user(
+            db, current_user, action="device.scan", request=request, result="FAILURE",
+            object_type="device", object_id=device_id,
+            new_value={"error": result.error or "no config returned"},
+        )
         raise HTTPException(502, f"Collection failed: {result.error or 'no config returned'}")
 
     raw_text = result.raw_config
@@ -277,12 +516,26 @@ async def run_scan(device_id: str, framework: str = "ALL", db: Session = Depends
     db.refresh(scan)
     db.refresh(device)
 
-    # Best-effort backup export -- never allowed to fail the scan.
+    audit_service.record_from_user(
+        db, current_user, action="device.scan", request=request,
+        result="SUCCESS" if scan.status != "failed" else "FAILURE",
+        object_type="scan", object_id=scan.id,
+        new_value={"device_id": device.id, "framework": framework, "final_decision": scan.final_decision},
+    )
+
+    # Best-effort backup export -- never allowed to fail the scan, but a
+    # silent `except: pass` here means a broken/misconfigured remote
+    # destination would fail forever with zero visibility anywhere in the
+    # UI. Log it so it at least shows up in server logs; the per-job
+    # failure itself still lands on the BackupJob row (see
+    # backup_destination_service.run_export_job) for the Backups page.
     try:
         from app.services import backup_destination_service
         backup_destination_service.auto_export_after_scan(db, device, scan)
     except Exception:
-        pass
+        logging.getLogger(__name__).exception(
+            "auto_export_after_scan failed for device %s scan %s", device.id, scan.id
+        )
 
     findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
     return ScanDetailOut(

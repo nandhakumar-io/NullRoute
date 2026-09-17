@@ -71,7 +71,20 @@ async def _run_operation(
         new_value={"job_id": result.get("job_id"), "error_code": result.get("error_code")},
     )
     if not result.get("success"):
-        raise HTTPException(502, detail=result)
+        # `detail` must always carry a plain, human-readable message under a
+        # stable key -- every frontend caller reads `detail.error` first
+        # (see DeviceDetail.tsx pollSnmp/discoverNeighbors). Returning the
+        # raw job-result dict as `detail` (no top-level "error" key) meant
+        # that lookup missed, fell through to `detail` itself, and a React
+        # component ended up trying to render the whole object -- "Objects
+        # are not valid as a React child" -- instead of the error message.
+        raise HTTPException(
+            502,
+            detail={
+                "error": result.get("error_message") or result.get("error_code") or "Gateway operation failed",
+                **result,
+            },
+        )
     return result
 
 
@@ -150,6 +163,29 @@ async def get_health_metrics(
     the collector's NotImplementedError fallback rather than fabricating
     zeros."""
     return await _run_operation(request, device_id, "GET_HEALTH_METRICS", payload, db, tenant_id, user)
+
+
+@router.post("/{device_id}/gateway-get-neighbors")
+async def get_neighbors(
+    device_id: str,
+    request: Request,
+    payload: Optional[GatewayJobRequest] = None,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Retrieve this device's directly-observed Layer-2 neighbors (LLDP-MIB
+    over SNMP today) -- local port to remote system/port identity -- and
+    persist them as real NetworkLink rows so the topology page can draw
+    actual discovered adjacency instead of only its subnet-co-membership
+    inference. Collectors that don't implement neighbor discovery yet
+    return a clear "not implemented" error rather than fabricating a link."""
+    result = await _run_operation(request, device_id, "GET_NEIGHBORS", payload, db, tenant_id, user)
+    neighbors = (result.get("normalized_data") or {}).get("neighbors", [])
+    from app.services import topology_service
+    stored = topology_service.persist_observed_links(db, tenant_id=tenant_id, device_id=device_id, neighbors=neighbors)
+    result["links_stored"] = stored
+    return result
 
 
 @router.get("/gateway/metrics")

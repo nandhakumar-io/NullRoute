@@ -17,7 +17,8 @@ from app.auth.dependencies import (CurrentUser, get_current_tenant,
                                     get_current_user, require_permission, require_role)
 from app.db import get_db
 from app.models.db import ChangeRequest, Device, DeploymentRecord, RollbackRecord
-from app.services import audit_service, change_request_service, deployment_service, minio_service, rollback_service
+from app.services import (audit_service, blast_radius_service, change_request_service,
+                          deployment_service, minio_service, rollback_service)
 from app.auth.rbac import Permission
 
 router = APIRouter(prefix="/api/change-requests", tags=["change-requests"],
@@ -98,6 +99,39 @@ def get_change_request_configs(cr_id: str, db: Session = Depends(get_db), tenant
         "current_config_hash": cr.current_config_hash,
         "proposed_config_hash": cr.proposed_config_hash,
     }
+
+
+@router.get("/{cr_id}/blast-radius")
+def get_change_request_blast_radius(
+    cr_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """Projected impact of this change: new vulnerability exposure, compliance
+    violations, and reachability severance — plus per-node states for the
+    topology canvas.
+
+    Read-only and derived entirely from analysis already recorded at
+    validation time (see services/blast_radius_service.py). Same visibility
+    as GET /{cr_id}: a reviewer has to be able to see what they're approving.
+    """
+    cr = _get_owned(db, tenant_id, cr_id)
+    device = db.query(Device).filter(Device.id == cr.device_id).first()
+
+    current_config = None
+    proposed_config = None
+    if cr.current_config_object_key:
+        try:
+            current_config = minio_service.get_object(cr.current_config_object_key).decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - a missing blob degrades the report, never 500s it
+            current_config = None
+    if cr.proposed_config_object_key:
+        try:
+            proposed_config = minio_service.get_object(cr.proposed_config_object_key).decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            proposed_config = None
+
+    return blast_radius_service.build(cr, device, current_config, proposed_config)
 
 
 @router.post("/{cr_id}/approve")

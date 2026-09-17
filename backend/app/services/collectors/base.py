@@ -98,6 +98,21 @@ class BaseCollector(ABC):
         (HOST-RESOURCES-MIB + IF-MIB high-capacity counters)."""
         raise NotImplementedError
 
+    def get_neighbors(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        """Optional: return this device's directly-observed Layer-2
+        neighbors (local port -> remote system name + remote port) from a
+        standards-based discovery protocol table (e.g. SNMP LLDP-MIB, or a
+        vendor CLI's `show cdp/lldp neighbors detail`) -- NOT a subnet-IP
+        guess. This is what makes routers/topology.py's link list "real"
+        adjacency instead of the /24-co-membership inference in
+        services/topology_service.infer_links(). Collectors that don't
+        implement a discovery-protocol read raise NotImplementedError and
+        the caller falls back to inferred-only links for that device.
+        `data` shape: {"neighbors": [{"local_port": str, "remote_chassis_id":
+        str|None, "remote_system_name": str|None, "remote_port_id": str|None,
+        "remote_port_description": str|None, "protocol": "lldp"}]}."""
+        raise NotImplementedError
+
 
 def timed_structured(fn):
     """Same contract as `timed`, but for get_facts()/get_interfaces()

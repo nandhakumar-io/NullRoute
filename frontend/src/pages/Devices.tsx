@@ -15,7 +15,12 @@ function SnmpIndicator({ deviceId, protocol }: { deviceId: string; protocol: str
     }
     endpoints.gatewayGetFacts(deviceId, "snmp")
       .then(res => {
-        const facts = (res.data as any)?.data;
+        // The gateway wraps every structured result's fields under
+        // `normalized_data` (see backend/app/gateway/worker.py) -- this used
+        // to read `.data`, which doesn't exist on the response, so every
+        // device always fell through to "down" here regardless of whether
+        // SNMP was actually reachable.
+        const facts = (res.data as any)?.normalized_data;
         if (facts && facts.sys_uptime_ticks) {
           setStatus("up");
           setUptime(facts.sys_uptime_ticks);

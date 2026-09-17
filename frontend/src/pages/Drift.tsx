@@ -48,7 +48,7 @@ function StatCard({ label, value, accent, sub }: { label: string; value: string 
     <div className={`relative overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 p-5 flex flex-col gap-1`}>
       <div className={`absolute inset-0 opacity-10 rounded-2xl`} style={{ background: accent }} />
       <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">{label}</p>
-      <p className="text-3xl font-black text-white mt-1">{value}</p>
+      <p className="text-3xl font-black text-slate-100 mt-1">{value}</p>
       {sub && <p className="text-xs text-slate-500">{sub}</p>}
     </div>
   );
@@ -80,7 +80,7 @@ function TrendChart({ trend }: { trend: DriftTrendResponse }) {
             <div style={{ height: `${(p.high / max) * 100}%`, background: "#f97316" }} title={`${p.high} high`} />
             <div style={{ height: `${((p.total - p.critical - p.high) / max) * 100}%`, background: "#3b82f6" }} title={`${p.total - p.critical - p.high} other`} />
           </div>
-          <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-slate-800 border border-slate-700 text-white text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap shadow-xl">
+          <div className="absolute -top-7 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-10 bg-slate-800 border border-slate-700 text-slate-100 text-[10px] font-semibold px-2 py-1 rounded whitespace-nowrap shadow-xl">
             {p.total} drifts
           </div>
           <span className="text-[9px] text-slate-600 mt-1">{new Date(p.bucket_start).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
@@ -186,20 +186,42 @@ export default function DriftPage() {
   );
 
   const load = useCallback(() => {
-    Promise.all([
+    // Was Promise.all(...).catch(() => {}) -- if ANY one of these 5 calls
+    // failed (a 4xx/5xx, a network blip), the whole .then() never ran and
+    // the .catch swallowed it silently, leaving EVERY piece of state at
+    // its initial empty value -- including the device list, even when
+    // /api/devices itself succeeded fine. That's why "Select device..."
+    // could show zero options with no visible error anywhere: one
+    // unrelated endpoint (e.g. /drift/trends) failing was enough to blank
+    // the whole page. Promise.allSettled applies each result on its own
+    // and logs whichever ones failed, instead of an all-or-nothing swallow.
+    Promise.allSettled([
       api.get<DriftFleetSummary>("/api/v1/drift/summary"),
       api.get<Drift[]>("/api/v1/drift"),
       api.get<{ items: Device[] } | Device[]>("/api/devices", { params: { limit: 500 } }),
       api.get<DriftTrendResponse>("/api/v1/drift/trends", { params: { days: 90, bucket_days: 7 } }),
       api.get<FlappingDevicesResponse>("/api/v1/drift/flapping", { params: { days: 30, min_events: 3 } }),
     ]).then(([sumRes, driftRes, devRes, trendRes, flappRes]) => {
-      setSummary(sumRes.data);
-      setDrifts(driftRes.data);
-      const items = (devRes.data as any).items ?? devRes.data;
-      setDevices(Array.isArray(items) ? items : []);
-      setTrend(trendRes.data);
-      setFlapping(flappRes.data);
-    }).catch(() => {}).finally(() => setLoading(false));
+      if (sumRes.status === "fulfilled") setSummary(sumRes.value.data);
+      else console.error("Drift page: /api/v1/drift/summary failed", sumRes.reason);
+
+      if (driftRes.status === "fulfilled") setDrifts(driftRes.value.data);
+      else console.error("Drift page: /api/v1/drift failed", driftRes.reason);
+
+      if (devRes.status === "fulfilled") {
+        const items = (devRes.value.data as any).items ?? devRes.value.data;
+        setDevices(Array.isArray(items) ? items : []);
+      } else {
+        console.error("Drift page: /api/devices failed", devRes.reason);
+        setDevices([]);
+      }
+
+      if (trendRes.status === "fulfilled") setTrend(trendRes.value.data);
+      else console.error("Drift page: /api/v1/drift/trends failed", trendRes.reason);
+
+      if (flappRes.status === "fulfilled") setFlapping(flappRes.value.data);
+      else console.error("Drift page: /api/v1/drift/flapping failed", flappRes.reason);
+    }).finally(() => setLoading(false));
   }, []);
 
   const loadRoleBaselines = useCallback(() => {
@@ -352,10 +374,10 @@ export default function DriftPage() {
   return (
     <div className="min-h-screen bg-slate-950">
       {/* ── PAGE HEADER ── */}
-      <div className="px-8 pt-8 pb-6 border-b border-slate-800/60 bg-gradient-to-r from-slate-900 to-slate-950">
+      <div className="px-8 pt-8 pb-6 border-b border-slate-800/60 bg-slate-900">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
+            <h1 className="text-2xl font-black text-slate-100 tracking-tight flex items-center gap-3">
               <span className="text-2xl">📡</span> Configuration Drift
             </h1>
             <p className="text-slate-400 text-sm mt-1 max-w-2xl">
@@ -408,7 +430,7 @@ export default function DriftPage() {
         {/* ── TREND + FLAPPING ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5">
-            <p className="text-sm font-bold text-white mb-1">Drift Trend (last {trend?.days ?? 90} days)</p>
+            <p className="text-sm font-bold text-slate-100 mb-1">Drift Trend (last {trend?.days ?? 90} days)</p>
             <p className="text-xs text-slate-500 mb-4">
               Fleet-wide drift detections per {trend?.bucket_days ?? 7}-day window.
               <span className="text-red-400 ml-2">■ Critical</span>
@@ -421,7 +443,7 @@ export default function DriftPage() {
           </div>
 
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-            <p className="text-sm font-bold text-white mb-1">Flapping Devices</p>
+            <p className="text-sm font-bold text-slate-100 mb-1">Flapping Devices</p>
             <p className="text-xs text-slate-500 mb-3">
               {flapping ? `≥${flapping.min_events} drift events / ${flapping.days}d` : "Repeated drifters"}
             </p>
@@ -449,7 +471,7 @@ export default function DriftPage() {
         {weeklyOpen && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm font-bold text-white">This Week — Drifted from Golden Config</p>
+              <p className="text-sm font-bold text-slate-100">This Week — Drifted from Golden Config</p>
               <button onClick={() => setWeeklyOpen(false)} className="text-slate-500 hover:text-slate-300 text-lg leading-none">✕</button>
             </div>
             {weeklyLoading
@@ -492,7 +514,7 @@ export default function DriftPage() {
           <div className="bg-slate-900 border border-amber-800/40 rounded-2xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm font-bold text-white">Bulk Approve — Low-Risk Cosmetic Drifts</p>
+                <p className="text-sm font-bold text-slate-100">Bulk Approve — Low-Risk Cosmetic Drifts</p>
                 <p className="text-xs text-slate-500 mt-0.5">Only description/remark edits — no behavior changes.</p>
               </div>
               <button onClick={() => setLowRiskOpen(false)} className="text-slate-500 hover:text-slate-300 text-lg">✕</button>
@@ -522,7 +544,7 @@ export default function DriftPage() {
 
         {/* ── ON-DEMAND SCAN ── */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-          <p className="text-sm font-bold text-white mb-1">On-Demand Drift Scan</p>
+          <p className="text-sm font-bold text-slate-100 mb-1">On-Demand Drift Scan</p>
           <p className="text-xs text-slate-500 mb-4">Collect the live running config from a device and compare it against a baseline right now.</p>
           <form onSubmit={runScan} className="flex flex-wrap items-end gap-3">
             <div>
@@ -588,7 +610,7 @@ export default function DriftPage() {
             {/* drift list */}
             <div className="xl:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
-                <p className="text-sm font-bold text-white">Drift Records</p>
+                <p className="text-sm font-bold text-slate-100">Drift Records</p>
                 <span className="text-xs text-slate-500">{filtered.length} results</span>
               </div>
               <div className="overflow-y-auto max-h-[600px]">
@@ -633,7 +655,7 @@ export default function DriftPage() {
                       <div className="px-5 py-4 border-b border-slate-800 bg-slate-800/40">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-black text-white text-lg">{hostnameFor(detail.device_id)}</p>
+                            <p className="font-black text-slate-100 text-lg">{hostnameFor(detail.device_id)}</p>
                             <p className="text-xs text-slate-400 mt-0.5">
                               Baseline: <span className="text-slate-300">{detail.baseline.replace(/_/g," ")}</span>
                               {" · "}Detected: <span className="text-slate-300">{new Date(detail.detected_at).toLocaleString()}</span>
@@ -736,7 +758,7 @@ export default function DriftPage() {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <div>
-              <p className="text-sm font-bold text-white">Compliance Baselines by Role</p>
+              <p className="text-sm font-bold text-slate-100">Compliance Baselines by Role</p>
               <p className="text-xs text-slate-500 mt-0.5">Shared golden-config templates per device_role — scan with "Role Baseline" above to compare against these.</p>
             </div>
             {canReview && (

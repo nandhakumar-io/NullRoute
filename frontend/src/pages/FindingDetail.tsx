@@ -36,6 +36,8 @@ export default function FindingDetail() {
   const [device, setDevice] = useState<Device | null>(null);
   const [error, setError] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false);
+  const [cliRemediation, setCliRemediation] = useState<any | null>(null);
+  const [cliLoading, setCliLoading] = useState(false);
 
   useEffect(() => {
     if (!findingId) return;
@@ -43,6 +45,7 @@ export default function FindingDetail() {
     setScan(null);
     setDevice(null);
     setError(false);
+    setCliRemediation(null);
     endpoints
       .finding(findingId)
       .then((r) => setFinding(r.data))
@@ -61,6 +64,23 @@ export default function FindingDetail() {
       })
       .catch(() => {});
   }, [finding?.scan_id]);
+
+  // Vendor-specific CLI remediation, when a validated template (or AI
+  // synthesis) exists for this control. Previously this page only ever
+  // showed the finding's prose `remediation` text -- the "how to" -- and
+  // never called the same scan-level remediation endpoint ScanDetail uses
+  // to surface the actual command(s) to run, so a per-finding deep link
+  // (e.g. from Findings/Alerts) always looked less complete than opening
+  // the parent scan.
+  useEffect(() => {
+    if (!finding || finding.result !== "FAIL" || !finding.scan_id) return;
+    setCliLoading(true);
+    endpoints
+      .aiRemediation(finding.scan_id)
+      .then((r) => setCliRemediation(r.data))
+      .catch(() => setCliRemediation(null))
+      .finally(() => setCliLoading(false));
+  }, [finding?.id, finding?.scan_id, finding?.result]);
 
   if (error) return <EmptyState message="Finding not found." />;
   if (!finding) return <Loading />;
@@ -216,12 +236,59 @@ export default function FindingDetail() {
           <WhyPanel title="Why did this control fail?" rows={whyRows} defaultOpen />
         </div>
 
-        {finding.remediation && (
-          <div className="card p-4">
-            <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Remediation</div>
-            <div className="text-slate-300 text-sm whitespace-pre-wrap">{finding.remediation}</div>
-          </div>
-        )}
+        {(() => {
+          const r = cliRemediation?.remediations?.find((x: any) => x.finding_id === finding.id);
+          const hasCli = !!r?.cli_steps?.length;
+          const guidance = r?.guidance || finding.remediation;
+          if (!hasCli && !guidance && !cliLoading) return null;
+          const isTemplate = !!r?.reference;
+          return (
+            <div className="card p-4">
+              <div className="text-xs font-semibold text-slate-500 uppercase mb-1">Remediation</div>
+              {cliLoading && !r && (
+                <div className="text-xs text-slate-500">Checking for a validated CLI template…</div>
+              )}
+              {hasCli && (
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-semibold text-emerald-500">
+                      {isTemplate ? "Validated CLI Remediation" : "AI Generated CLI Remediation"}
+                    </div>
+                    {r.requires_site_values && (
+                      <span className="badge badge-medium text-[10px]">has placeholders</span>
+                    )}
+                  </div>
+                  {r.description && <div className="text-sm text-slate-400 mb-2">{r.description}</div>}
+                  <div className="space-y-0.5">
+                    {r.cli_steps.map((step: string | Record<string, string>, idx: number) => {
+                      const txt = typeof step === "string" ? step : step ? Object.keys(step)[0] : String(step);
+                      return (
+                        <div key={idx} className="font-mono text-sm text-emerald-300 whitespace-pre-wrap">
+                          {txt}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {r.save_commands?.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-0.5">
+                      {r.save_commands.map((c: string, idx: number) => (
+                        <div key={idx} className="font-mono text-sm text-cyan-300/80 whitespace-pre-wrap">
+                          # {c}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {guidance && (
+                <div className={`text-slate-300 text-sm whitespace-pre-wrap ${hasCli ? "border-t border-soc-border pt-3" : ""}`}>
+                  {guidance}
+                </div>
+              )}
+              {r?.note && <div className="text-[11px] text-amber-500/80 mt-2">{r.note}</div>}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

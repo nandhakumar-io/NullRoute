@@ -30,6 +30,10 @@ export async function getPushStatus(): Promise<"subscribed" | "unsubscribed" | "
 
 export async function subscribeToPush(): Promise<void> {
   if (!pushSupported()) throw new Error("Push notifications are not supported in this browser");
+  
+  if (!window.isSecureContext) {
+    throw new Error("Push Manager requires a Secure Context (HTTPS or localhost). Accessing via an external IP over HTTP is blocked by the browser.");
+  }
 
   const permission = await Notification.requestPermission();
   if (permission !== "granted") throw new Error("Notification permission was not granted");
@@ -40,7 +44,7 @@ export async function subscribeToPush(): Promise<void> {
 
   const subscription = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(data.public_key),
+    applicationServerKey: urlBase64ToUint8Array(data.public_key).buffer as ArrayBuffer,
   });
 
   const json = subscription.toJSON();

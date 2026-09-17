@@ -24,6 +24,7 @@ elevated nmap access should leave os_detection=False (default).
 """
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -69,6 +70,35 @@ _BANNER_VENDOR_HINTS = [
 ]
 
 DEFAULT_PORTS = ",".join(str(p) for p in sorted(_PORT_HINTS))
+
+# How many addresses go into a single nmap invocation when a discovery job
+# runs chunked (see discovery_job_service.py). Small enough that a
+# pause/cancel request takes effect within a few seconds even on a large
+# /24, without so many nmap process spawns that overhead dominates.
+CHUNK_SIZE = 8
+
+
+def expand_targets(cidr: str) -> List[str]:
+    """Turns `cidr` into an explicit list of addresses to scan one chunk at
+    a time. A single host or hostname (not a network) is returned as a
+    one-item list unchanged -- ipaddress only understands literal
+    IPs/networks, so anything it can't parse (e.g. a DNS name) is treated
+    as one opaque target, same as nmap would.
+    """
+    try:
+        network = ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        return [cidr]
+
+    if network.num_addresses <= 2:
+        # /31, /32 (or the v6 equivalents) have no distinct network/broadcast
+        # to exclude -- every address in them is a usable target.
+        return [str(ip) for ip in network]
+    return [str(ip) for ip in network.hosts()]
+
+
+def chunk_targets(targets: List[str], chunk_size: int = CHUNK_SIZE) -> List[List[str]]:
+    return [targets[i:i + chunk_size] for i in range(0, len(targets), chunk_size)]
 
 
 class NmapUnavailableError(RuntimeError):

@@ -71,9 +71,9 @@ def _rules_cisco() -> List[Rule]:
 
 def _rules_juniper() -> List[Rule]:
     return [
-        (re.compile(r"^set system host-name\s+(\S+)", re.M), "device.hostname", lambda m: m.group(1)),
-        (re.compile(r"^set system services ssh\b", re.M), "management.ssh.enabled", lambda m: True),
-        (re.compile(r"^set system services ssh protocol-version v2", re.M), "management.ssh.version", lambda m: 2),
+        (re.compile(r"^set system host-name\s+(\S+)|^host-name\s+(\S+)", re.M), "device.hostname", lambda m: m.group(1) or m.group(2)),
+        (re.compile(r"^set system services ssh\b|^ssh\b", re.M), "management.ssh.enabled", lambda m: True),
+        (re.compile(r"^set system services ssh protocol-version v2|^protocol-version v2", re.M), "management.ssh.version", lambda m: 2),
         (re.compile(r"^set system login idle-time (\d+)", re.M), "management.ssh.idle_timeout", lambda m: int(m.group(1)) * 60),
         (re.compile(r"^set system services telnet", re.M), "management.telnet.enabled", lambda m: True),
         (re.compile(r"^set system services web-management http\b(?!s)", re.M), "management.http.enabled", lambda m: True),
@@ -81,11 +81,18 @@ def _rules_juniper() -> List[Rule]:
         (re.compile(r"^set system syslog host (\S+)", re.M), "logging.remote_syslog", lambda m: True),
         (re.compile(r"^set system login user .* authentication", re.M), "aaa.local_fallback", lambda m: True),
         (re.compile(r"^set system root-authentication plain-text-password", re.M), "password_policy.encrypted_storage", lambda m: False),
-        (re.compile(r"^set system root-authentication encrypted-password", re.M), "password_policy.encrypted_storage", lambda m: True),
+        (re.compile(r"^set system root-authentication encrypted-password|^encrypted-password\s+(\S+)", re.M), "password_policy.encrypted_storage", lambda m: True),
         (re.compile(r"^set snmp community (\S+)", re.M), "snmp.community_strings_default",
          lambda m: m.group(1).strip('"').lower() in ("public", "private")),
         (re.compile(r"^set system ntp server\s+(\S+)", re.M), "logging.ntp_synced", lambda m: True),
         (re.compile(r"^set system login message", re.M), "management.banner_configured", lambda m: True),
+        # Flattened JSON/XML rules to prevent AI hallucination
+        (re.compile(r"^name\s+(?!admin|any|messages|\*|authorization|interactive-commands|public)(ge|xe|et|-|mgmt|PROXMOX|STUDENT|0)[^\s]*", re.I), "interfaces.name", lambda m: m.group(0).split()[-1]),
+        (re.compile(r"^port-mode\s+access", re.M), "interfaces.port_security_enabled", lambda m: True),
+        (re.compile(r"^class\s+super-user", re.M), "aaa.enabled", lambda m: True),
+        (re.compile(r"^uid\s+\d+", re.M), "aaa.enabled", lambda m: True),
+        (re.compile(r"^(name)\s+(admin|messages|\*|any|public|authorization|interactive-commands|\d+)", re.I), "extra_parameters.unknown_evidence", lambda m: True),
+        (re.compile(r"^(members)\s+\S+", re.I), "extra_parameters.unknown_evidence", lambda m: True),
     ]
 
 

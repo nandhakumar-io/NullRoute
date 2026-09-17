@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl \
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl nmap \
     && rm -rf /var/lib/apt/lists/*
 
 # Build context is the repo root (see docker-compose.yml), so paths are

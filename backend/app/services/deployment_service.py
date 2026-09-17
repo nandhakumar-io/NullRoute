@@ -23,6 +23,7 @@ only ever invoked by an authenticated human actor via the router
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -275,4 +276,71 @@ async def deploy_change_request(
     dr.completed_at = datetime.utcnow()
     db.commit()
     db.refresh(dr)
+
+    # Auto-Rollback Safety Net: 60-second unreachability guard.
+    # If post-deploy verification passed on the hash, we trust the config is
+    # deployed correctly. But the DRIFTED case (hash mismatch) means the device
+    # may no longer be management-reachable via SSH. Schedule a background check
+    # so operators don't get locked out silently.
+    if dr.status == "DRIFTED":
+        import asyncio as _asyncio
+
+        async def _auto_reachability_check():
+            await _asyncio.sleep(60)
+            try:
+                from app.db import SessionLocal as _SL
+                from app.services import alert_service as _alert_svc
+                _db = _SL()
+                try:
+                    _dr = _db.query(DeploymentRecord).get(dr.id)
+                    _cr = _db.query(ChangeRequest).get(cr.id) if _dr else None
+                    _device = _db.query(Device).get(dr.device_id) if _dr else None
+                    if not (_dr and _cr and _device):
+                        return
+                    # Only auto-rollback if no human has already done it
+                    if _dr.rolled_back:
+                        return
+                    # Attempt a quick SSH probe to verify reachability
+                    reachable = False
+                    try:
+                        import socket as _sock
+                        with _sock.create_connection(
+                            (_device.management_address or _device.hostname, 22), timeout=10
+                        ):
+                            reachable = True
+                    except Exception:
+                        reachable = False
+
+                    if not reachable:
+                        logger.warning(
+                            "Auto-rollback triggered for deployment %s — device %s unreachable 60s post-deploy",
+                            _dr.id, _device.management_address,
+                        )
+                        from app.services import rollback_service as _rb_svc
+                        try:
+                            await _rb_svc.rollback_deployment(
+                                _db, _dr,
+                                initiated_by="system:auto-rollback",
+                                reason="Device unreachable 60 seconds after deployment — automatic safety revert",
+                            )
+                        except Exception as rb_err:  # noqa: BLE001
+                            logger.error("Auto-rollback execution failed: %s", rb_err)
+                            try:
+                                await _alert_svc.alert_rollback_failed(
+                                    _db, cr.tenant_id, _device.id, _dr.id,
+                                    f"Auto-rollback failed after 60s lockout detection: {rb_err}",
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass
+                finally:
+                    _db.close()
+            except Exception:  # noqa: BLE001
+                logger.exception("Auto-rollback background task crashed unexpectedly")
+
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_auto_reachability_check())
+        except RuntimeError:
+            pass  # No running loop in test context — skip silently
+
     return dr

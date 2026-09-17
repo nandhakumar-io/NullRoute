@@ -575,7 +575,7 @@ export interface TopologyNode {
 }
 
 export interface TopologyLink {
-  subnet: string;
+  subnet?: string | null;
   source_device_id: string;
   source_interface: string | null;
   target_device_id: string;
@@ -586,6 +586,80 @@ export interface TopologyLink {
 export interface Topology {
   nodes: TopologyNode[];
   links: TopologyLink[];
+  has_interface_data?: boolean;
+  observed_link_count?: number;
+  inferred_link_count?: number;
+}
+
+export interface SimulatableCategory {
+  category: string;
+  severity: string;
+  title: string;
+}
+
+/** One row in any of the three blast-radius sections. */
+export interface BlastRadiusItem {
+  label: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
+  why?: string | null;
+  source?: string;
+  /** vulnerability_exposure only */
+  change?: "added" | "removed";
+  config_line?: string;
+  /** compliance_violations only */
+  control_id?: string | null;
+  /** reachability_severance only */
+  before?: string;
+  after?: string;
+}
+
+/**
+ * `status` is the load-bearing field: "NOT_ANALYZED" means the underlying
+ * analysis never ran, which is NOT the same as "analyzed, nothing found".
+ * The UI must render those two cases differently.
+ */
+export interface BlastRadiusSection {
+  status: "ANALYZED" | "NOT_ANALYZED";
+  reason?: string | null;
+  items: BlastRadiusItem[];
+  isolated_nodes?: string[];
+  changed_flow_count?: number;
+  added_line_count?: number;
+  removed_line_count?: number;
+  opa_decision?: string | null;
+  batfish_status?: string | null;
+  route_delta?: Record<string, number>;
+}
+
+export type BlastRadiusNodeState = "isolated" | "violating" | "exposed" | "ok" | "unknown";
+
+export interface BlastRadiusNode {
+  device_id: string | null;
+  hostname: string | null;
+  state: BlastRadiusNodeState;
+  reasons: string[];
+  is_change_target: boolean;
+}
+
+export interface BlastRadius {
+  change_request_id: string;
+  device_id: string;
+  hostname: string | null;
+  cr_status: string;
+  final_decision: string | null;
+  final_reason: string | null;
+  risk_score: number | null;
+  risk_level: string | null;
+  vulnerability_exposure: BlastRadiusSection;
+  compliance_violations: BlastRadiusSection;
+  reachability_severance: BlastRadiusSection;
+  node_states: BlastRadiusNode[];
+  summary: {
+    total_items: number;
+    severity_counts: Record<string, number>;
+    analyzed_sections: string[];
+    fully_unanalyzed: boolean;
+  };
 }
 
 export interface TopologyGroup {
@@ -913,10 +987,21 @@ export interface DiscoveredHost {
   os_guess: string | null;
 }
 
-export interface DiscoverResponse {
+export interface DiscoveryJob {
+  id: string;
   cidr: string;
+  ports: string;
+  service_detection: boolean;
+  os_detection: boolean;
+  status: "PENDING" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED";
+  total_targets: number;
+  scanned_targets: number;
+  progress_pct: number;
   host_count: number;
   hosts: DiscoveredHost[];
+  error: string | null;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface DiscoverImportPayload {
@@ -1048,13 +1133,19 @@ export const endpoints = {
   collectAndScanDevice: (id: string, framework = "ALL", transport?: string) =>
     api.post<ScanDetail>(`/api/devices/${id}/scan`, { transport: transport || undefined }, { params: { framework } }),
 
-  // Network Discovery
+  // Network Discovery -- job-based: POST kicks off a background nmap scan
+  // and returns immediately with a job id; poll getDiscoveryJob for
+  // progress/results, and pause/resume/cancel an in-flight scan.
   discoverNetwork: (cidr: string, ports?: string, serviceDetection = true) =>
-    api.post<DiscoverResponse>("/api/devices/discover", { cidr, ports, service_detection: serviceDetection }),
+    api.post<DiscoveryJob>("/api/devices/discover", { cidr, ports, service_detection: serviceDetection }),
   importDiscoveredDevices: (payload: DiscoverImportPayload) =>
     api.post<Device[]>("/api/devices/discover/import", payload),
   discover: (payload: { cidr: string; ports?: string; service_detection?: boolean; os_detection?: boolean }) =>
-    api.post<DiscoverResponse>("/api/devices/discover", payload),
+    api.post<DiscoveryJob>("/api/devices/discover", payload),
+  getDiscoveryJob: (jobId: string) => api.get<DiscoveryJob>(`/api/devices/discover/${jobId}`),
+  pauseDiscoveryJob: (jobId: string) => api.post<DiscoveryJob>(`/api/devices/discover/${jobId}/pause`),
+  resumeDiscoveryJob: (jobId: string) => api.post<DiscoveryJob>(`/api/devices/discover/${jobId}/resume`),
+  cancelDiscoveryJob: (jobId: string) => api.post<DiscoveryJob>(`/api/devices/discover/${jobId}/cancel`),
   discoverImport: (payload: DiscoverImportPayload) =>
     api.post<Device[]>("/api/devices/discover/import", payload),
 
@@ -1193,6 +1284,10 @@ export const endpoints = {
     api.post(`/api/devices/${deviceId}/gateway-get-interfaces`, { protocol }),
   gatewayGetHealthMetrics: (deviceId: string, protocol?: string) =>
     api.post(`/api/devices/${deviceId}/gateway-get-health-metrics`, { protocol }),
+  gatewayGetNeighbors: (deviceId: string, protocol?: string) =>
+    api.post<{ success: boolean; normalized_data?: { neighbors?: any[]; neighbor_count?: number }; links_stored?: number; error_message?: string }>(
+      `/api/devices/${deviceId}/gateway-get-neighbors`, { protocol },
+    ),
   gatewaySupportedOperations: () => api.get<{ read_only_operations: string[] }>("/api/devices/gateway/operations"),
   metricsHistory: (deviceId: string, hours = 24) =>
     api.get<{ device_id: string; count: number; snapshots: any[] }>(
@@ -1223,6 +1318,15 @@ export const endpoints = {
   alerts: (params?: { status?: string; severity?: string; category?: string }) =>
     api.get<{ count: number; alerts: Alert[] }>("/api/alerts", { params }),
   acknowledgeAlert: (id: string) => api.post<Alert>(`/api/alerts/${id}/acknowledge`),
+
+  // --- Simulated alerts (onboarding / channel-wiring verification) ---
+  simulatableCategories: () =>
+    api.get<{ categories: SimulatableCategory[] }>("/api/alerts/simulate/categories"),
+  simulateAlert: (payload: { category: string; severity?: string; device_id?: string }) =>
+    api.post<{ alert: Alert; dispatch_results: Record<string, string> }>(
+      "/api/alerts/simulate",
+      payload,
+    ),
 
   // --- Enterprise alerting: channels / rules / push ---
   alertCategories: () => api.get<{ categories: string[]; severities: string[] }>("/api/alerts/categories"),
@@ -1263,6 +1367,8 @@ export const endpoints = {
     api.post<DeploymentRecord>(`/api/change-requests/${id}/deploy`, opts),
   changeRequestDeployments: (id: string) =>
     api.get<{ count: number; deployments: DeploymentRecord[] }>(`/api/change-requests/${id}/deployments`),
+  changeRequestBlastRadius: (id: string) =>
+    api.get<BlastRadius>(`/api/change-requests/${id}/blast-radius`),
 
   // GNS3
   gns3Servers: () => api.get("/api/gns3/servers"),

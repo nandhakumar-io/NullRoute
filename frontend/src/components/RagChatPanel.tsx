@@ -22,6 +22,7 @@ type ChatMessage = {
  */
 export default function RagChatPanel() {
   const [open, setOpen] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,7 +88,7 @@ export default function RagChatPanel() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-40 w-[380px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-4rem)] bg-soc-panel border border-soc-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col overflow-hidden">
+    <div className={`fixed bottom-6 right-6 z-40 bg-soc-panel border border-soc-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col overflow-hidden transition-all duration-300 ${isMaximized ? "w-[90vw] md:w-[800px] h-[90vh] md:h-[800px]" : "w-[380px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-4rem)]"}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-soc-border bg-slate-900/40">
         <div className="flex items-center gap-2 min-w-0">
@@ -107,6 +108,13 @@ export default function RagChatPanel() {
             className="w-7 h-7 flex items-center justify-center rounded-md text-slate-500 hover:text-slate-200 hover:bg-slate-700/50 transition-colors disabled:opacity-40"
           >
             <RefreshIcon spinning={reindexing} />
+          </button>
+          <button
+            onClick={() => setIsMaximized(!isMaximized)}
+            title={isMaximized ? "Restore size" : "Maximize"}
+            className="w-7 h-7 flex items-center justify-center rounded-md text-slate-500 hover:text-slate-200 hover:bg-slate-700/50 transition-colors"
+          >
+            {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
           </button>
           <button
             onClick={() => setOpen(false)}
@@ -220,6 +228,20 @@ function RefreshIcon({ spinning }: { spinning?: boolean }) {
       <polyline points="23 4 23 10 17 10" />
       <polyline points="1 20 1 14 7 14" />
       <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  );
+}
+function MaximizeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+    </svg>
+  );
+}
+function RestoreIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="6" width="12" height="12" rx="1" />
     </svg>
   );
 }

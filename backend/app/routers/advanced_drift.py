@@ -274,7 +274,7 @@ def bulk_approve_drift(
 
 
 @router.get("/drift/{drift_id}", response_model=DriftDetail)
-def get_drift(drift_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_drift(drift_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
     drift = db.get(ConfigDrift, drift_id)
     if not drift:
         raise HTTPException(status_code=404, detail="Drift record not found")
@@ -282,7 +282,7 @@ def get_drift(drift_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(get_
 
 
 @router.get("/drift/{drift_id}/rollback-recommendation", response_model=RollbackRecommendationResponse)
-def get_rollback_recommendation(drift_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def get_rollback_recommendation(drift_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
     drift = db.get(ConfigDrift, drift_id)
     if not drift:
         raise HTTPException(status_code=404, detail="Drift record not found")
@@ -291,7 +291,7 @@ def get_rollback_recommendation(drift_id: uuid.UUID, db: Session = Depends(get_d
 
 @router.post("/drift/{drift_id}/remediate", response_model=dict, status_code=202)
 async def remediate_drift(
-    drift_id: uuid.UUID,
+    drift_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(DRIFT_REVIEW_ROLES),
 ):
@@ -330,7 +330,7 @@ async def remediate_drift(
 
 @router.patch("/drift/{drift_id}", response_model=DriftRead)
 def update_drift_status(
-    drift_id: uuid.UUID,
+    drift_id: str,
     payload: DriftStatusUpdate,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(DRIFT_REVIEW_ROLES),
@@ -363,7 +363,7 @@ def update_drift_status(
 
 
 @router.get("/devices/{device_id}/drift", response_model=list[DriftRead])
-def list_device_drift_history(device_id: uuid.UUID, db: Session = Depends(get_db), _=Depends(get_current_user)):
+def list_device_drift_history(device_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
     device = db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -372,7 +372,7 @@ def list_device_drift_history(device_id: uuid.UUID, db: Session = Depends(get_db
 
 @router.post("/devices/{device_id}/drift/scan", response_model=DriftScanResponse)
 def scan_device_drift(
-    device_id: uuid.UUID,
+    device_id: str,
     payload: DriftScanRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Depends(get_current_user),
@@ -386,7 +386,7 @@ def scan_device_drift(
         raise HTTPException(status_code=404, detail="Device not found")
 
     try:
-        result = drift_service.detect_drift(db, device, baseline=payload.baseline, triggered_by=current_user.email)
+        result = drift_service.detect_drift(db, device, baseline=payload.baseline, triggered_by=current_user.username)
     except drift_service.NoBaselineError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     except RuntimeError as exc:

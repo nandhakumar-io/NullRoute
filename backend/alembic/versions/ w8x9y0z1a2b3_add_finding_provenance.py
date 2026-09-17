@@ -21,10 +21,11 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('findings', sa.Column('source', sa.String(), nullable=True))
-    op.add_column('findings', sa.Column('confidence', sa.Float(), nullable=True))
-
+    # op.add_column('findings', sa.Column('source', sa.String(), nullable=True))
+    # op.add_column('findings', sa.Column('confidence', sa.Float(), nullable=True))
+    pass
 
 def downgrade():
-    op.drop_column('findings', 'confidence')
-    op.drop_column('findings', 'source')
+    # op.drop_column('findings', 'confidence')
+    # op.drop_column('findings', 'source')
+    pass

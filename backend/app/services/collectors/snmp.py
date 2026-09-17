@@ -330,6 +330,98 @@ class SNMPCollector(BaseCollector):
         )
 
     @timed_structured
+    def get_neighbors(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        """LLDP-MIB walk (IEEE 802.1AB) -- vendor-agnostic Layer-2 neighbor
+        discovery, same rationale as get_health_metrics() using
+        HOST-RESOURCES-MIB instead of a per-vendor CDP/proprietary MIB: one
+        code path across Cisco/Juniper/Arista/FortiGate/Palo Alto rather
+        than a per-vendor OID table (RULE 11). Walks lldpRemTable (remote
+        system/port identity, keyed by local port number) and lldpLocPortTable
+        (local port number -> local port name) so results can be reported
+        against the same interface names get_interfaces()/topology_extractor
+        already use. Devices with LLDP disabled/unsupported simply return an
+        empty neighbor list, never a guess (RULE 10)."""
+        if not PYSNMP_AVAILABLE:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error="pysnmp is not installed; SNMP probing unavailable in this environment",
+            )
+        secret = credentials.secret
+        try:
+            management_address = _validate_target(device)
+        except ValueError as e:
+            return StructuredResult(success=False, vendor=device.vendor, hostname=device.hostname, error=str(e))
+
+        def _walk_column(base_oid: str) -> Dict[str, str]:
+            async def _walk():
+                results = []
+                async for (error_indication, error_status, error_index, var_binds) in bulk_cmd(
+                    SnmpEngine(),
+                    _auth_data(secret),
+                    _transport(secret, management_address),
+                    ContextData(),
+                    0, 25,
+                    ObjectType(ObjectIdentity(base_oid)),
+                    lexicographicMode=False,
+                ):
+                    results.append((error_indication, error_status, error_index, var_binds))
+                return results
+
+            rows = _run_async(_walk())
+            out: Dict[str, str] = {}
+            for error_indication, error_status, error_index, var_binds in rows:
+                if error_indication or error_status:
+                    # LLDP-MIB unsupported/disabled on this agent -- treat as
+                    # "no neighbors observed", not a hard failure, since
+                    # sysDescr/IF-MIB already proved the device is reachable.
+                    return {}
+                for oid, value in var_binds:
+                    oid_str = str(oid)
+                    if not oid_str.startswith(base_oid + "."):
+                        continue
+                    out[oid_str[len(base_oid) + 1:]] = value.prettyPrint() if hasattr(value, "prettyPrint") else str(value)
+            return out
+
+        try:
+            # lldpLocPortTable: local port index -> local interface name, so
+            # neighbors can be reported against the same port names as
+            # get_interfaces()/show-cmd interface extraction.
+            loc_port_names = _walk_column("1.0.8802.1.1.2.1.3.7.1.3")   # lldpLocPortId
+
+            # lldpRemTable is indexed by (timeMark, localPortNum, remIndex);
+            # the local port number is the *second* sub-identifier.
+            rem_sys_name = _walk_column("1.0.8802.1.1.2.1.4.1.1.9")    # lldpRemSysName
+            rem_port_id = _walk_column("1.0.8802.1.1.2.1.4.1.1.7")     # lldpRemPortId
+            rem_port_desc = _walk_column("1.0.8802.1.1.2.1.4.1.1.8")   # lldpRemPortDesc
+            rem_chassis_id = _walk_column("1.0.8802.1.1.2.1.4.1.1.5")  # lldpRemChassisId
+        except Exception as e:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"SNMP error walking LLDP-MIB: {e}", secret),
+            )
+
+        neighbors: List[Dict[str, Any]] = []
+        for suffix, sys_name in rem_sys_name.items():
+            parts = suffix.split(".")
+            local_port_num = parts[1] if len(parts) >= 2 else suffix
+            local_port_name = loc_port_names.get(local_port_num, f"port-{local_port_num}")
+            neighbors.append({
+                "local_port": local_port_name,
+                "remote_system_name": sys_name or None,
+                "remote_port_id": rem_port_id.get(suffix) or None,
+                "remote_port_description": rem_port_desc.get(suffix) or None,
+                "remote_chassis_id": rem_chassis_id.get(suffix) or None,
+                "protocol": "lldp",
+            })
+
+        return StructuredResult(
+            success=True,
+            vendor=device.vendor,
+            hostname=device.hostname,
+            data={"neighbors": neighbors, "neighbor_count": len(neighbors)},
+        )
+
+    @timed_structured
     def get_health_metrics(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
         """Live health/performance snapshot: per-CPU load (HOST-RESOURCES-MIB
         hrProcessorLoad), RAM utilization (hrStorage, RAM-typed rows only),

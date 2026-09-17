@@ -41,9 +41,24 @@ _STOPWORDS = {
 }
 
 
+def _stem(word: str) -> str:
+    """Very small suffix strip so "findings" matches "finding", "devices"
+    matches "device", etc. Not a real stemmer (no Porter rules) -- just
+    enough to stop plural/singular mismatches from tanking lexical overlap,
+    which was silently starving the "Ask NetSecAuditor" panel of hits it
+    should have found."""
+    for suffix in ("ies",):
+        if word.endswith(suffix) and len(word) > 4:
+            return word[: -len(suffix)] + "y"
+    for suffix in ("es", "s"):
+        if word.endswith(suffix) and len(word) > 3 and not word.endswith("ss"):
+            return word[: -len(suffix)]
+    return word
+
+
 def _tokenize(text: str) -> List[str]:
     words = re.findall(r"[a-z0-9][a-z0-9._-]*", (text or "").lower())
-    return [w for w in words if w not in _STOPWORDS and len(w) > 1]
+    return [_stem(w) for w in words if w not in _STOPWORDS and len(w) > 1]
 
 
 def upsert_document(db: Session, tenant_id: str, source_type: str, source_id: Optional[str],
@@ -134,6 +149,44 @@ def reindex_tenant(db: Session, tenant_id: str, limit_per_type: int = 500) -> Di
     return counts
 
 
+def index_scan_results(db: Session, tenant_id: str, scan: "Scan", device: "Device") -> Dict[str, int]:
+    """Incremental counterpart to reindex_tenant(): upsert just the
+    documents affected by one freshly-completed scan (the device, plus any
+    of *its* still-open failing findings) instead of rescanning the whole
+    tenant. Called from pipeline.run_pipeline() right after a scan
+    finishes, so newly-discovered findings are answerable in the RAG chat
+    within the same request that created them -- no manual reindex click
+    needed."""
+    counts = {"findings": 0, "devices": 0}
+
+    if device is not None:
+        content = (
+            f"Device {device.hostname or device.id}, vendor {device.vendor}, "
+            f"management address {device.management_address}, "
+            f"last compliance score {device.last_compliance_score}. Tags: {device.tags}."
+        )
+        upsert_document(
+            db, tenant_id, "device", device.id, title=f"Device: {device.hostname or device.id}", content=content,
+            doc_metadata={"vendor": device.vendor, "compliance_score": device.last_compliance_score},
+        )
+        counts["devices"] += 1
+
+    findings = db.query(Finding).filter(Finding.scan_id == scan.id, Finding.result == "FAIL").all()
+    for f in findings:
+        content = (
+            f"Finding {f.control_id} ({f.framework}) severity {f.severity}: {f.title}. "
+            f"Expected: {f.expected_value}. Actual: {f.actual_value}. "
+            f"Evidence: {f.evidence_line or 'n/a'}. Remediation: {f.remediation or 'n/a'}."
+        )
+        upsert_document(
+            db, tenant_id, "finding", f.id, title=f"{f.control_id}: {f.title}", content=content,
+            doc_metadata={"severity": f.severity, "framework": f.framework, "scan_id": f.scan_id},
+        )
+        counts["findings"] += 1
+
+    return counts
+
+
 def search(db: Session, tenant_id: str, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """Lexical retrieval: score every tenant document by token-overlap TF
     against the query, with a small boost for title matches. Deterministic
@@ -188,6 +241,18 @@ async def answer_query(db: Session, tenant_id: str, question: str, asked_by: Opt
     generation call fed `hits` as context -- everything else (retrieval,
     logging) stays the same."""
     hits = search(db, tenant_id, question, top_k=top_k)
+    if not hits and db.query(RagDocument.id).filter(RagDocument.tenant_id == tenant_id).first() is None:
+        # Nothing has ever been indexed for this tenant (fresh install, or a
+        # tenant that predates incremental indexing). Rather than surfacing
+        # the generic "try reindexing" fallback, do the reindex ourselves
+        # once and retry -- this is what makes the first question in a new
+        # session actually answerable instead of always needing a manual
+        # button click first.
+        try:
+            reindex_tenant(db, tenant_id)
+            hits = search(db, tenant_id, question, top_k=top_k)
+        except Exception:
+            logger.exception("auto-reindex-on-empty-corpus failed for tenant %s", tenant_id)
     answer = _extractive_answer(question, hits)
 
     log = RagQueryLog(

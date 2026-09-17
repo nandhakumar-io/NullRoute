@@ -206,7 +206,16 @@ function SnapshotsTab({ onExported }: { onExported: () => void }) {
     const device = devices.find((d) => d.id === selectedDeviceId);
     setBackingUp(true);
     try {
-      await endpoints.collectDeviceConfig(selectedDeviceId, device?.protocol || undefined);
+      // NOTE: this used to call endpoints.collectDeviceConfig() (POST
+      // /api/devices/{id}/collect), which only writes device.last_config_raw
+      // on the Device row -- it never creates a Scan, so the collected
+      // config could never appear in the snapshot list below no matter how
+      // many times "Take Backup Now" reported success. collectAndScanDevice
+      // (POST /api/devices/{id}/scan) is the endpoint that actually creates
+      // an archived, listable Scan row (see routers/backups.py's docstring:
+      // a "snapshot" IS a Scan with raw_config_path set) and triggers
+      // auto-export to any configured remote destinations.
+      await endpoints.collectAndScanDevice(selectedDeviceId, "ALL", device?.protocol || undefined);
       loadSnapshots(selectedDeviceId);
     } catch (e: any) {
       alert(e?.response?.data?.detail || "Backup request failed");

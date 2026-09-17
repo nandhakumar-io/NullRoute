@@ -61,6 +61,128 @@ def acknowledge_alert(
     alert = alert_service.acknowledge_alert(db, alert, acknowledged_by=user.username)
     return alert_service.to_dict(alert)
 
+
+# ---------------------------------------------------------------------------
+# Simulated alerts -- onboarding / channel-verification aid
+# ---------------------------------------------------------------------------
+#
+# The Alerts feed is empty on a fresh install until real drift or a real
+# critical finding occurs, which gives an operator no way to confirm their
+# webhook / ntfy / email / browser-push wiring actually works until the
+# first genuine incident -- exactly the wrong moment to discover it doesn't.
+#
+# This endpoint creates a REAL Alert row through the REAL
+# alert_service.create_alert() path, so it exercises the same rule
+# matching and channel dispatch a genuine alert would. It is not a UI-only
+# stub; the returned `dispatch_results` is the actual per-channel outcome.
+#
+# INTEGRITY (important): a simulated alert must never be mistakable for a
+# real security event in the feed, in a report, or in an exported evidence
+# package. Every row created here is therefore marked three ways --
+# `extra.simulated = True`, `extra.simulated_by`, and a "[SIMULATED]" title
+# prefix -- and the action is written to the audit log with the acting
+# user. Anything that counts or reports on alerts can filter on
+# `extra.simulated`.
+
+SIMULATABLE_CATEGORIES: Dict[str, Dict[str, str]] = {
+    "CONFIGURATION_DRIFT": {
+        "severity": "HIGH",
+        "title": "Configuration drift detected on device",
+        "detail": (
+            "Running configuration no longer matches the approved golden baseline. "
+            "3 line(s) added, 1 removed. Simulated event — no device was contacted."
+        ),
+    },
+    "CRITICAL_FINDING": {
+        "severity": "CRITICAL",
+        "title": "Critical compliance finding raised by scan",
+        "detail": (
+            "A control mapped to CIS/NIST failed with CRITICAL severity. "
+            "Simulated event — no scan was run."
+        ),
+    },
+    "VULNERABILITY_BREACH": {
+        "severity": "CRITICAL",
+        "title": "Known-exploited vulnerability matched on device platform",
+        "detail": (
+            "Detected platform/version matches a CVE on the CISA KEV list. "
+            "Simulated event — no vulnerability feed was queried."
+        ),
+    },
+}
+
+
+class SimulateRequest(BaseModel):
+    category: str = Field(..., description="One of SIMULATABLE_CATEGORIES")
+    severity: Optional[str] = Field(
+        None, description="Override severity; defaults to the category's natural severity."
+    )
+    device_id: Optional[str] = Field(None, description="Optional device to attribute the alert to.")
+
+
+@router.get("/simulate/categories")
+def list_simulatable_categories():
+    """Drives the Alerts empty-state button group, so the UI never hardcodes
+    a category the backend doesn't actually know how to simulate."""
+    return {
+        "categories": [
+            {"category": c, "severity": meta["severity"], "title": meta["title"]}
+            for c, meta in SIMULATABLE_CATEGORIES.items()
+        ]
+    }
+
+
+@router.post("/simulate")
+async def simulate_alert(
+    payload: SimulateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(MANAGE_ALERTING),
+):
+    meta = SIMULATABLE_CATEGORIES.get(payload.category)
+    if not meta:
+        raise HTTPException(
+            400,
+            f"Unsupported simulation category '{payload.category}'. "
+            f"Supported: {', '.join(SIMULATABLE_CATEGORIES)}",
+        )
+
+    severity = payload.severity or meta["severity"]
+    if severity not in alert_service.VALID_SEVERITIES:
+        raise HTTPException(
+            400, f"Invalid severity '{severity}'. Valid: {', '.join(alert_service.VALID_SEVERITIES)}"
+        )
+
+    alert = await alert_service.create_alert(
+        db,
+        tenant_id=tenant_id,
+        category=payload.category,
+        severity=severity,
+        title=f"[SIMULATED] {meta['title']}",
+        detail=meta["detail"],
+        device_id=payload.device_id,
+        extra={
+            "simulated": True,
+            "simulated_by": user.username,
+            "simulated_at": datetime.utcnow().isoformat(),
+        },
+    )
+
+    audit_service.record_from_user(
+        db, user, action="alert.simulate", request=request, result="SUCCESS",
+        object_type="alert", object_id=alert.id,
+        new_value={"category": payload.category, "severity": severity, "simulated": True},
+    )
+
+    return {
+        "alert": alert_service.to_dict(alert),
+        # The real per-channel dispatch outcome -- this is what makes the
+        # button a genuine wiring test rather than a cosmetic one.
+        "dispatch_results": alert.dispatch_results or {},
+    }
+
+
 # ---------------------------------------------------------------------------
 # Alert channels (email / ntfy / webhook / push) -- configurable per tenant
 # ---------------------------------------------------------------------------
@@ -264,6 +386,10 @@ ALERT_CATEGORIES = [
     "CRITICAL_FINDING", "HIGH_RISK", "OPA_FAILURE", "BATFISH_VIOLATION",
     "AI_UNKNOWN_CONFIGURATION", "AI_LOW_CONFIDENCE", "DEVICE_COLLECTION_FAILURE",
     "CONFIGURATION_DRIFT", "FABRIC_ANCHOR_FAILURE", "EVIDENCE_INTEGRITY_FAILURE",
+    # Raised by services/vulnerability_service when a device's detected
+    # platform/version matches a known-exploited CVE. Registered here so
+    # AlertRule routing can target it like any other category.
+    "VULNERABILITY_BREACH",
 ]
 
 

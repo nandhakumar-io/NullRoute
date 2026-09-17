@@ -105,6 +105,9 @@ def init_db():
         # command.upgrade(cfg, "head")
         pass
     except Exception:
+        pass
+    finally:
+        # Always ensure missing tables are created gracefully
         Base.metadata.create_all(bind=engine)
 
 

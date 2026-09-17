@@ -9,6 +9,7 @@ import {
   AlertRule,
   AlertRuleCreate,
   PushSubscriptionSummary,
+  SimulatableCategory,
 } from "../api";
 import { PageHeader, Loading, EmptyState, SeverityBadge, StatCard } from "../components/ui";
 import { pushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from "../lib/push";
@@ -106,22 +107,163 @@ export default function Alerts() {
 // Alert feed
 // ---------------------------------------------------------------------------
 
+/**
+ * Buttons that create a REAL alert through the real dispatch path, so an
+ * operator can prove their webhook / ntfy / email / push wiring works
+ * without waiting for a genuine incident.
+ *
+ * Simulated alerts are marked server-side (`extra.simulated`) and render
+ * with a "SIMULATED" badge in the feed — they are never presented as real
+ * security events.
+ */
+function SimulateEventButtons({ onSimulated }: { onSimulated: () => void }) {
+  const [cats, setCats] = useState<SimulatableCategory[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<{ category: string; dispatch: Record<string, string> } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    endpoints
+      .simulatableCategories()
+      .then((r) => setCats(r.data.categories))
+      .catch(() => setCats([]));
+  }, []);
+
+  async function fire(category: string) {
+    setBusy(category);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await endpoints.simulateAlert({ category });
+      setResult({ category, dispatch: r.data.dispatch_results || {} });
+      onSimulated();
+    } catch (e: any) {
+      setError(
+        e?.response?.status === 403
+          ? "Your role can't create alerts. Ask an admin or operator to run the simulation."
+          : e?.response?.data?.detail || "Simulation failed — see server logs.",
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (cats === null) return null;
+  if (cats.length === 0) return null;
+
+  return (
+    <div className="mt-6 pt-5 border-t border-soc-border/60">
+      <div className="text-sm font-medium text-slate-300">Verify your alert pipeline</div>
+      <div className="text-xs text-slate-500 mt-1 max-w-lg mx-auto">
+        Generate a test event to confirm your channels and browser push actually fire. These are
+        recorded as simulated and are clearly badged in the feed.
+      </div>
+      <div className="flex flex-wrap gap-2 justify-center mt-4">
+        {cats.map((c) => (
+          <button
+            key={c.category}
+            onClick={() => fire(c.category)}
+            disabled={busy !== null}
+            title={c.title}
+            className="px-3 py-2 rounded-lg text-xs font-medium border border-soc-border
+                       bg-soc-panel/60 backdrop-blur text-slate-300
+                       hover:border-cyan-600/70 hover:text-cyan-300 hover:bg-cyan-950/30
+                       transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {busy === c.category ? "Dispatching…" : `Simulate ${c.category.replace(/_/g, " ")}`}
+          </button>
+        ))}
+      </div>
+
+      {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
+
+      {result && (
+        <div className="mt-4 mx-auto max-w-lg text-left rounded-lg border border-soc-border bg-soc-panel/50 p-3">
+          <div className="text-xs text-slate-300 font-medium mb-1.5">
+            {result.category.replace(/_/g, " ")} dispatched — channel results:
+          </div>
+          {Object.keys(result.dispatch).length === 0 ? (
+            <div className="text-xs text-slate-500 italic">
+              No channels are configured, so the alert was stored but not delivered anywhere. Add a
+              channel in the Channels tab, then simulate again.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {Object.entries(result.dispatch).map(([ch, outcome]) => {
+                const ok = /sent|ok|success|delivered/i.test(outcome);
+                const skipped = /skip/i.test(outcome);
+                return (
+                  <div key={ch} className="flex items-start gap-2 text-xs">
+                    <span
+                      className={`mt-1 inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                        ok ? "bg-emerald-400" : skipped ? "bg-slate-500" : "bg-red-400"
+                      }`}
+                    />
+                    <span className="text-slate-400 font-mono">{ch}</span>
+                    <span
+                      className={
+                        ok ? "text-emerald-400" : skipped ? "text-slate-500" : "text-red-400"
+                      }
+                    >
+                      {outcome}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeedTab() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<string>("OPEN");
   const [severity, setSeverity] = useState<string>("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Bumped after a simulation so the poller briefly switches to a fast
+  // cadence -- the operator should see the alert land within ~a second,
+  // which is the whole point of the button.
+  const [liveUntil, setLiveUntil] = useState<number>(0);
 
-  function load() {
-    setLoading(true);
-    endpoints
-      .alerts({ status: status || undefined, severity: severity || undefined })
-      .then((r) => setAlerts(r.data.alerts))
-      .finally(() => setLoading(false));
-  }
+  // `silent` keeps the spinner from flashing on every background poll.
+  const load = useCallback(
+    (silent = false) => {
+      if (!silent) setLoading(true);
+      endpoints
+        .alerts({ status: status || undefined, severity: severity || undefined })
+        .then((r) => setAlerts(r.data.alerts))
+        .finally(() => {
+          if (!silent) setLoading(false);
+        });
+    },
+    [status, severity],
+  );
 
-  useEffect(load, [status, severity]);
+  useEffect(() => load(), [load]);
+
+  // There's no alert WebSocket/SSE channel on the backend today, so this is
+  // polling: 2s for 20s after a simulation (so the feed visibly reacts),
+  // 15s otherwise. Both are cheap -- GET /api/alerts is a single indexed
+  // tenant-scoped query.
+  useEffect(() => {
+    const id = setInterval(
+      () => {
+        if (document.hidden) return; // don't poll a backgrounded tab
+        load(true);
+      },
+      Date.now() < liveUntil ? 2000 : 15000,
+    );
+    return () => clearInterval(id);
+  }, [load, liveUntil]);
+
+  const handleSimulated = useCallback(() => {
+    setLiveUntil(Date.now() + 20000);
+    load(true);
+  }, [load]);
 
   async function handleAck(a: Alert) {
     setBusyId(a.id);
@@ -158,7 +300,30 @@ function FeedTab() {
         </select>
       </div>
       {loading && <Loading />}
-      {!loading && alerts.length === 0 && <EmptyState message="No alerts match the current filters." />}
+      {!loading && alerts.length === 0 && (
+        <div
+          className="px-8 py-10 rounded-xl text-center border border-dashed border-soc-border
+                     bg-soc-panel/40 backdrop-blur-sm"
+        >
+          <div className="text-slate-400 text-sm">
+            {status || severity
+              ? "No alerts match the current filters."
+              : "No alerts yet — nothing has breached a policy or drifted from baseline."}
+          </div>
+          {(status || severity) && (
+            <button
+              onClick={() => {
+                setStatus("");
+                setSeverity("");
+              }}
+              className="mt-2 text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+            >
+              Clear filters
+            </button>
+          )}
+          <SimulateEventButtons onSimulated={handleSimulated} />
+        </div>
+      )}
       {!loading &&
         alerts.map((a) => (
           <div key={a.id} className="card">
@@ -170,6 +335,14 @@ function FeedTab() {
                   <span className={`badge ${a.status === "OPEN" ? "badge-fail" : "badge-pass"}`}>
                     {a.status}
                   </span>
+                  {(a.extra as any)?.simulated && (
+                    <span
+                      className="badge border border-amber-600/50 bg-amber-950/40 text-amber-300"
+                      title={`Test event created by ${(a.extra as any)?.simulated_by || "a user"} — not a real security event.`}
+                    >
+                      SIMULATED
+                    </span>
+                  )}
                 </div>
                 <div className="text-slate-200 font-medium mt-1">{a.title}</div>
                 {a.detail && <div className="text-xs text-slate-500 mt-1">{a.detail}</div>}

@@ -162,7 +162,7 @@ export default function App() {
                   <Icon name={group.icon} className="w-[18px] h-[18px] shrink-0" />
                   {!collapsed && (
                     <>
-                      <span className="flex-1 text-left text-[13px] font-medium">{group.label}</span>
+                      <span className="rail-nav-group-label flex-1 text-left text-[13px]">{group.label}</span>
                       <Icon
                         name="chevron"
                         className={clsx("w-3.5 h-3.5 shrink-0 transition-transform", isClosed && "-rotate-90")}
@@ -180,15 +180,16 @@ export default function App() {
                         title={collapsed ? item.label : undefined}
                         className={({ isActive }) =>
                           clsx(
-                            "relative block rounded-md text-[13px] font-medium transition-colors truncate",
+                            "rail-nav-item relative block rounded-md text-[13px] transition-colors truncate",
+                            isActive && "active",
                             collapsed ? "mx-auto w-2 h-2 rounded-full my-2" : "px-2.5 py-1.5",
                             isActive
                               ? collapsed
                                 ? "bg-seal"
-                                : "bg-white/[0.06] text-white"
+                                : "bg-white/[0.08] text-white"
                               : collapsed
                               ? "bg-rail-border"
-                              : "text-rail-textDim hover:bg-white/[0.04] hover:text-rail-text"
+                              : "text-rail-textDim hover:bg-white/[0.06] hover:text-rail-text"
                           )
                         }
                       >

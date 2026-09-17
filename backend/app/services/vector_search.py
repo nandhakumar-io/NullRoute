@@ -45,7 +45,7 @@ def embed_text(text_in: str) -> Optional[List[float]]:
     if not registry.enabled or registry.embedder is None:
         return None
     embedder = registry.embedder
-    if embedder.backend_name not in ("minilm", "minilm-remote") or embedder.encode_fn is None:
+    if embedder.backend_name not in ("minilm", "minilm-remote", "remote-minilm") or embedder.encode_fn is None:
         return None
     try:
         return embedder.encode_fn(text_in)

@@ -326,6 +326,11 @@ export interface DashboardStats {
   // Phase 1 security-audit dashboard (SIH26155).
   total_findings: number;
   configuration_drift_count: number;
+  // Unified-dashboard KPIs -- the backend computed these already, they were
+  // just silently dropped by an incomplete Pydantic schema (see schemas.py).
+  devices_out_of_baseline: number;
+  mttr_hours: number | null;
+  mttr_improvement_pct: number | null;
 }
 
 export interface AuditLogEntry {
@@ -589,6 +594,13 @@ export interface Topology {
   has_interface_data?: boolean;
   observed_link_count?: number;
   inferred_link_count?: number;
+}
+
+export interface SimulateDriftResult {
+  deployment: DeploymentRecord;
+  simulated: true;
+  alert_dispatched: boolean;
+  next_step: { description: string; rollback_url: string };
 }
 
 export interface SimulatableCategory {
@@ -963,6 +975,8 @@ export interface DeploymentRecord {
   post_verification_passed: boolean | null;
   post_scan_id: string | null;
   error: string | null;
+  /** True only after a VERIFIED rollback — never speculative. */
+  rolled_back?: boolean;
   started_at: string | null;
   completed_at: string | null;
   // OpenConfig/gNMI metadata -- never credentials.
@@ -1369,6 +1383,15 @@ export const endpoints = {
     api.get<{ count: number; deployments: DeploymentRecord[] }>(`/api/change-requests/${id}/deployments`),
   changeRequestBlastRadius: (id: string) =>
     api.get<BlastRadius>(`/api/change-requests/${id}/blast-radius`),
+  /** Dev-mode only (backend returns 404 unless ENABLE_DEV_SIMULATION=true). */
+  simulateDeploymentDrift: (crId: string, deploymentId?: string) =>
+    api.post<SimulateDriftResult>(`/api/change-requests/${crId}/simulate-drift`, {
+      deployment_id: deploymentId ?? null,
+    }),
+  rollbackDeployment: (crId: string, deploymentId: string, reason?: string) =>
+    api.post(`/api/change-requests/${crId}/deployments/${deploymentId}/rollback`, {
+      reason: reason ?? null,
+    }),
 
   // GNS3
   gns3Servers: () => api.get("/api/gns3/servers"),

@@ -6,9 +6,10 @@ record, verify integrity (recompute hash vs. stored hash), and the demo-safe
 tamper simulation / restore pair used to show INTEGRITY_FAILURE detection.
 
 Fabric anchoring status (fabric_status/fabric_tx_id) is surfaced as stored on
-the record. Until app.services.fabric_service is backed by a real Gateway,
-those fields stay NOT_ANCHORED — this router never fabricates a transaction
-id or block number.
+the record: NOT_ANCHORED when FABRIC_ENABLED=false, ANCHORED with a real
+transaction id once app.services.fabric_service has anchored it via the
+fabric-gateway, or FABRIC_UNAVAILABLE if the gateway was unreachable — this
+router never fabricates a transaction id or block number.
 """
 from typing import List
 

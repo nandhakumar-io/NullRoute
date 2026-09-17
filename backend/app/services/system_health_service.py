@@ -327,7 +327,7 @@ async def _check_ollama() -> ServiceHealth:
 
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{OLLAMA_HOST}/api/tags")
+            resp = await client.get(f"{OLLAMA_HOST}/health")
             resp.raise_for_status()
             models = [m.get("name", "") for m in resp.json().get("models", [])]
             if any(LLM_MODEL in m for m in models):

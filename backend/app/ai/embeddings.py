@@ -98,8 +98,11 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
         return None
         
     examples = _load_reference_dataset(dataset_path)
-    if not examples:
-        return None
+    # NOTE: we allow empty examples — the reference dataset is only needed for
+    # embeddings.nearest() (intent-classification), not for embed_text() calls
+    # made by vector_search.find_similar_mappings() for HITL RAG retrieval.
+    # Bailing here when AI_REFERENCE_DATASET is blank blocks all remote
+    # embedding calls, which is the wrong trade-off.
         
     if embeddings_path and os.path.isfile(embeddings_path):
         try:
@@ -116,7 +119,7 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
         import json
         req = urllib.request.Request(
             url,
-            data=json.dumps({"text": text}).encode("utf-8"),
+            data=json.dumps({"prompt": text, "text": text}).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
         if api_key:
@@ -132,7 +135,7 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
 
     # If we didn't load from a numpy file, encode each reference example via the API
     # Since this blocks startup, let's just make sure we do it.
-    if not examples[0].vector:
+    if examples and not examples[0].vector:
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
             vectors = list(executor.map(encode, [ex.text for ex in examples]))

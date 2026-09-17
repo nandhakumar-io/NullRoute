@@ -14,7 +14,9 @@ export default function TrainingCenter() {
   // Reviews Tab state
   const [pending, setPending] = useState<CommandMapping[] | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [correctionReasons, setCorrectionReasons] = useState<Record<string, string>>({});
+  const [reviewError, setReviewError] = useState<Record<string, string>>({});
 
   // Datasets Tab state
   const [datasets, setDatasets] = useState<DatasetVersion[] | null>(null);
@@ -70,11 +72,39 @@ export default function TrainingCenter() {
   };
 
   async function review(id: string, action: "approve" | "correct" | "reject") {
-    await endpoints.reviewMapping(id, { 
-      action, 
+    setReviewError((prev) => ({ ...prev, [id]: "" }));
+
+    // A correction is only meaningful if the reviewer actually told us what
+    // the AI got wrong: which parameter it maps to AND what the true value
+    // is. Sending a placeholder value here would get embedded and stored as
+    // permanent (wrong) ground truth for the DistilBERT retraining set, so
+    // we refuse to submit a correction that's missing either field instead
+    // of silently fabricating one.
+    if (action === "correct") {
+      if (!edits[id]) {
+        setReviewError((prev) => ({ ...prev, [id]: "Pick the correct security parameter before submitting a correction." }));
+        return;
+      }
+      if (!editValues[id]?.trim()) {
+        setReviewError((prev) => ({ ...prev, [id]: "Enter the actual value observed in the config before submitting a correction." }));
+        return;
+      }
+      if (!correctionReasons[id]?.trim()) {
+        setReviewError((prev) => ({ ...prev, [id]: "A reason is required so this correction is useful as training signal." }));
+        return;
+      }
+    }
+
+    const normalized_facts =
+      action === "correct"
+        ? { facts: [{ parameter: edits[id], value: editValues[id].trim() }] }
+        : undefined;
+
+    await endpoints.reviewMapping(id, {
+      action,
       normalized_parameter: edits[id] ? edits[id] : undefined,
-      normalized_facts: edits[id] ? { [edits[id]]: "some_value" } : undefined,
-      correction_reason: correctionReasons[id]
+      normalized_facts,
+      correction_reason: correctionReasons[id],
     });
     load();
   }
@@ -219,6 +249,15 @@ export default function TrainingCenter() {
                             </select>
                           </div>
                           <div className="mt-3">
+                            <label className="block text-xs text-slate-500 mb-1">Corrected value (what the config actually shows, required for corrections)</label>
+                            <input
+                              defaultValue={m.example_value}
+                              onChange={(e) => setEditValues((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                              className="w-full bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-cyan-600"
+                              placeholder="e.g. enabled, 22, true — the ground-truth value for this parameter"
+                            />
+                          </div>
+                          <div className="mt-3">
                             <label className="block text-xs text-slate-500 mb-1">Reason for correction (required for corrections)</label>
                             <input
                               onChange={(e) => setCorrectionReasons((prev) => ({ ...prev, [m.id]: e.target.value }))}
@@ -226,6 +265,9 @@ export default function TrainingCenter() {
                               placeholder="Why was the AI wrong?"
                             />
                           </div>
+                          {reviewError[m.id] && (
+                            <div className="mt-2 text-xs text-red-400">{reviewError[m.id]}</div>
+                          )}
                         </div>
 
                         <div className="flex flex-col gap-2 shrink-0 w-32">

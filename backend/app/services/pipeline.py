@@ -207,6 +207,10 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
                     title=bf_f["title"], severity=bf_f["severity"], result="FAIL",
                     parameter=f"{bf_f['source_zone']}->{bf_f['destination_zone']}",
                     evidence_line=bf_f.get("detail"), remediation="Correct ACL/segmentation to block this path.",
+                    # Same denormalized vendor field OPA findings carry --
+                    # without it Batfish findings were silently excluded
+                    # from vendor_scores and the cross-vendor matrix too.
+                    vendor=device.vendor or guess.vendor or None,
                 ))
         db.commit()
         await events.publish("compliance.batfish.completed", {"scan_id": scan.id, "status": batfish_status})

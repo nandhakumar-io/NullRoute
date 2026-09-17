@@ -149,8 +149,15 @@ def correct_mapping(
     mapping.status = "approved"
     if normalized_facts:
         if "facts" in normalized_facts and isinstance(normalized_facts["facts"], list) and len(normalized_facts["facts"]) > 0:
-            mapping.normalized_parameter = normalized_facts["facts"][0].get("parameter", mapping.normalized_parameter)
-    
+            fact0 = normalized_facts["facts"][0]
+            mapping.normalized_parameter = fact0.get("parameter", mapping.normalized_parameter)
+            # A correction's whole point is that the AI's original
+            # example_value was wrong -- persist the reviewer's real value
+            # too, not just the parameter name, so the mapping (and any UI
+            # re-reading it) reflects the corrected ground truth.
+            if fact0.get("value") not in (None, ""):
+                mapping.example_value = fact0["value"]
+
     mapping.confidence = max(mapping.confidence or 0.0, 0.95)
     mapping.reviewed_by = user.username if hasattr(user, "username") and user.username else "admin"
     mapping.reviewed_at = datetime.utcnow()

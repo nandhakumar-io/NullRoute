@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch, api } from "../api";
+import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch } from "../api";
 import {
   PageHeader, Loading, ScoreRing, SeverityBadge, ResultBadge, StatusBadge, EmptyState,
   DecisionPipeline, opaTone, batfishTone, riskTone, decisionTone, PipelineStepData,
@@ -30,10 +30,6 @@ const AI_DECISION_TONE: Record<string, string> = {
   UNKNOWN: "badge-na",
 };
 
-// HITL feedback types
-type FeedbackAction = "approve" | "reject" | "correct";
-type FeedbackStatus = "idle" | "loading" | "done" | "error";
-
 export default function ScanDetail() {
   const { scanId } = useParams();
   const navigate = useNavigate();
@@ -52,27 +48,6 @@ export default function ScanDetail() {
   const [complianceMatrix, setComplianceMatrix] = useState<Array<Record<string, any>> | null>(null);
   const [vulnMatches, setVulnMatches] = useState<DeviceVulnerabilityMatch[] | null>(null);
   const [correlating, setCorrelating] = useState(false);
-
-  // HITL per-analysis feedback state
-  const [hitlStatus, setHitlStatus] = useState<Record<string, { status: FeedbackStatus; action?: FeedbackAction }>>({});
-  const [editTargetId, setEditTargetId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-
-  const submitFeedback = async (analysisId: string, action: FeedbackAction, correctedParam?: string) => {
-    setHitlStatus((prev) => ({ ...prev, [analysisId]: { status: "loading", action } }));
-    try {
-      await api.post("/api/ai/training-feedback", {
-        scan_id: scanId,
-        analysis_id: analysisId,
-        action,
-        corrected_parameter: correctedParam || null,
-        correction_reason: correctedParam ? `User corrected via inline editor` : undefined,
-      });
-      setHitlStatus((prev) => ({ ...prev, [analysisId]: { status: "done", action } }));
-    } catch {
-      setHitlStatus((prev) => ({ ...prev, [analysisId]: { status: "error", action } }));
-    }
-  };
 
   useEffect(() => {
     let isActive = true;
@@ -472,66 +447,14 @@ export default function ScanDetail() {
                   )}
                 </div>
                 <div className="space-y-3 max-h-96 overflow-auto">
-                  {aiAnalysis.analyses.map((a) => {
-                    const fb = hitlStatus[a.id];
-                    const isDone = fb?.status === "done";
-                    const isLoading = fb?.status === "loading";
-                    return (
-                    <div key={a.id} className={`rounded-lg border ${isDone ? "border-green-800/40 bg-green-900/10" : "border-slate-800/50 bg-transparent"} transition-colors`}>
-                      <div className="flex items-center justify-between mb-1.5 px-2 pt-2">
+                  {aiAnalysis.analyses.map((a) => (
+                    <div key={a.id}>
+                      <div className="flex items-center justify-between mb-1.5 px-1">
                         <span className="font-mono text-base text-slate-400">{a.intent}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={`badge ${AI_DECISION_TONE[a.decision] || "badge-na"}`}>
-                            {a.decision.replace(/_/g, " ")}
-                          </span>
-                          {/* HITL Feedback Buttons */}
-                          {isDone ? (
-                            <span className="text-xs text-green-400 font-medium px-2">✓ {fb.action}</span>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <button
-                                id={`hitl-approve-${a.id}`}
-                                title="Correct — approve as-is"
-                                disabled={isLoading}
-                                onClick={() => submitFeedback(a.id, "approve")}
-                                className="px-2 py-0.5 rounded text-xs font-medium bg-green-900/30 hover:bg-green-800/40 border border-green-800/50 text-green-400 transition-colors disabled:opacity-50"
-                              >{isLoading && fb?.action === "approve" ? "…" : "👍"}</button>
-                              <button
-                                id={`hitl-reject-${a.id}`}
-                                title="Incorrect — reject this interpretation"
-                                disabled={isLoading}
-                                onClick={() => submitFeedback(a.id, "reject")}
-                                className="px-2 py-0.5 rounded text-xs font-medium bg-red-900/30 hover:bg-red-800/40 border border-red-800/50 text-red-400 transition-colors disabled:opacity-50"
-                              >{isLoading && fb?.action === "reject" ? "…" : "👎"}</button>
-                              <button
-                                id={`hitl-edit-${a.id}`}
-                                title="Correct with your own mapping"
-                                disabled={isLoading}
-                                onClick={() => { setEditTargetId(a.id); setEditValue(a.intent || ""); }}
-                                className="px-2 py-0.5 rounded text-xs font-medium bg-amber-900/30 hover:bg-amber-800/40 border border-amber-800/50 text-amber-400 transition-colors disabled:opacity-50"
-                              >✏️</button>
-                            </div>
-                          )}
-                        </div>
+                        <span className={`badge ${AI_DECISION_TONE[a.decision] || "badge-na"}`}>
+                          {a.decision.replace(/_/g, " ")}
+                        </span>
                       </div>
-                      {/* Inline Edit Panel */}
-                      {editTargetId === a.id && (
-                        <div className="mx-2 mb-2 flex items-center gap-2 p-2 rounded bg-amber-950/20 border border-amber-800/30">
-                          <input
-                            autoFocus
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            placeholder="Correct intent (e.g. BgpEnabled)"
-                            className="flex-1 bg-slate-900 text-slate-200 text-sm px-2 py-1 rounded border border-slate-700 focus:outline-none focus:border-amber-500"
-                          />
-                          <button
-                            onClick={() => { submitFeedback(a.id, "correct", editValue); setEditTargetId(null); }}
-                            className="text-xs px-3 py-1 rounded bg-amber-600/80 hover:bg-amber-500 text-white font-medium"
-                          >Apply</button>
-                          <button onClick={() => setEditTargetId(null)} className="text-xs px-2 py-1 rounded bg-slate-800 text-slate-400 hover:text-white">Cancel</button>
-                        </div>
-                      )}
-                      <div className="px-2 pb-2">
                       <WhyPanel
                         title={a.requires_review ? "Why is review required?" : "Why?"}
                         rows={[
@@ -562,10 +485,8 @@ export default function ScanDetail() {
                           },
                         ]}
                       />
-                      </div>
                     </div>
-                    );
-                  })}
+                  ))}
                 </div>
               </div>
             </div>
@@ -598,6 +519,36 @@ export default function ScanDetail() {
                 </div>
               )}
             </div>
+
+            {remediations?.device_vulnerabilities?.length > 0 && (
+              <div className="card border-red-900/50 bg-red-950/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-red-400 text-sm">⚠</span>
+                  <div className="font-semibold text-red-300 text-sm">
+                    {remediations.device_vulnerabilities.length} actively-exploited vulnerabilit
+                    {remediations.device_vulnerabilities.length === 1 ? "y" : "ies"} on this device
+                  </div>
+                </div>
+                <div className="text-xs text-slate-400 mb-2">
+                  Confirmed under active exploitation per CISA's Known Exploited Vulnerabilities
+                  catalog — separate from the compliance findings below, and not fixed by any
+                  network config change.
+                </div>
+                <div className="space-y-1.5">
+                  {remediations.device_vulnerabilities.map((v: any) => (
+                    <div key={v.cve_id} className="text-xs bg-slate-900/40 rounded px-2 py-1.5">
+                      <span className="font-mono text-red-300">{v.cve_id}</span>
+                      {v.cvss_score != null && (
+                        <span className="text-slate-500"> · CVSS {v.cvss_score}</span>
+                      )}
+                      {v.remediation_advice && (
+                        <span className="text-slate-400"> — {v.remediation_advice}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div id="remediation" className="card scroll-mt-24">
               <div className="flex items-center justify-between mb-3">
@@ -680,7 +631,20 @@ export default function ScanDetail() {
                               <div className="space-y-0.5">
                                 {r.cli_steps.map((step: string | Record<string, string>, idx: number) => {
                                   const txt = typeof step === "string" ? step : step ? Object.keys(step)[0] : String(step);
-                                  return <div key={idx} className="font-mono text-sm text-emerald-300 whitespace-pre-wrap">{txt}</div>;
+                                  // Firmware advisories are deterministic facts from the
+                                  // vulnerability DB, not commands to paste in -- style them
+                                  // distinctly so they're never mistaken for the network fix.
+                                  const isAdvisory = txt.startsWith("! [FIRMWARE ADVISORY]");
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={`font-mono text-sm whitespace-pre-wrap ${
+                                        isAdvisory ? "text-amber-300/90 mt-1.5" : "text-emerald-300"
+                                      }`}
+                                    >
+                                      {txt}
+                                    </div>
+                                  );
                                 })}
                               </div>
                               {r.save_commands?.length > 0 && (

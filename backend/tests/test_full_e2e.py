@@ -62,7 +62,7 @@ def run_full_flow():
 
         # Phase 4: Remediation is Generated
         print("\n[4/5] Generating LLM Remediation logic...")
-        r = client.get(f"{API_URL}/api/scans/{scan_id}/remediation?generate_cli=true", timeout=120)
+        r = client.get(f"{API_URL}/api/scans/{scan_id}/remediation/generate-cli", timeout=120)
         r.raise_for_status()
         remediations = r.json().get("remediations", [])
         cli_count = r.json().get("cli_generated_count")

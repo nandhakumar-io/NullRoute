@@ -8,6 +8,9 @@ POST /api/change-requests/{id}/reject    admin/security_analyst
 """
 from __future__ import annotations
 
+import logging
+import os
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -17,9 +20,12 @@ from app.auth.dependencies import (CurrentUser, get_current_tenant,
                                     get_current_user, require_permission, require_role)
 from app.db import get_db
 from app.models.db import ChangeRequest, Device, DeploymentRecord, RollbackRecord
-from app.services import (audit_service, blast_radius_service, change_request_service,
-                          deployment_service, minio_service, rollback_service)
+from app.services import (alert_service, audit_service, blast_radius_service,
+                          change_request_service, deployment_service, minio_service,
+                          rollback_service)
 from app.auth.rbac import Permission
+
+logger = logging.getLogger("change_request_router")
 
 router = APIRouter(prefix="/api/change-requests", tags=["change-requests"],
                     dependencies=[Depends(get_current_user)])
@@ -208,9 +214,15 @@ async def deploy(
             db, cr, initiated_by=user.username,
             credential_ref_id=credential_ref_id, transport=transport, framework=framework,
         )
+        return deployment_service.to_dict(dr)
     except ValueError as e:
         raise HTTPException(409, str(e))
-    return deployment_service.to_dict(dr)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise e
+
+
 
 
 @router.get("/{cr_id}/deployments")
@@ -234,6 +246,143 @@ def _get_owned_deployment(db: Session, tenant_id: str, cr_id: str, deployment_id
     if not dr:
         raise HTTPException(404, "Deployment not found")
     return dr
+
+
+# ---------------------------------------------------------------------------
+# Developer-mode drift simulation
+# ---------------------------------------------------------------------------
+#
+# Exercising the drift -> alert -> rollback path normally requires breaking a
+# real device's connectivity. This endpoint forces an already-completed
+# deployment into DRIFTED and fires the REAL alert_rollback_required() path,
+# so the loop can be demonstrated in a browser with no device involved.
+#
+# SCOPE -- read this before demoing it: this triggers the *operator-initiated*
+# rollback path. After this call the deployment is DRIFTED and a
+# "rollback required" alert exists; a human then clicks Roll Back, which runs
+# rollback_service. Nothing reverts on its own. There is no unattended
+# auto-revert in this codebase (RULE 4/5 -- see rollback_service.py and
+# deployment_service.py:265), and this endpoint does not add one.
+#
+# INTEGRITY: this writes a verdict into deployment_records, which is an
+# evidence table that feeds reports and audit exports. A simulated drift that
+# reads as a real one would corrupt that evidence, so every row it touches is
+# stamped "[SIMULATED DRIFT]" with the acting user, the route is disabled
+# unless ENABLE_DEV_SIMULATION=true, and the action is audit-logged.
+
+ENABLE_DEV_SIMULATION = os.getenv("ENABLE_DEV_SIMULATION", "false").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
+# A deployment is only "active" (and therefore driftable) once the push has
+# actually landed. PENDING/FAILED deployments never reached the device.
+_DRIFTABLE_STATUSES = ("DEPLOYED", "VERIFIED")
+
+
+@router.post("/{cr_id}/simulate-drift")
+async def simulate_drift(
+    cr_id: str,
+    request: Request,
+    # embed=True: with a single Body parameter FastAPI would otherwise expect
+    # a bare JSON string as the whole body, not {"deployment_id": ...}.
+    deployment_id: Optional[str] = Body(default=None, embed=True),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Force this change request's most recent active deployment into DRIFTED,
+    firing the real rollback-required alert, without touching a device.
+
+    Demonstrates drift detection and the operator-initiated rollback path.
+    Does NOT demonstrate an automatic revert — the platform has none.
+
+    Disabled unless ENABLE_DEV_SIMULATION=true.
+    """
+    if not ENABLE_DEV_SIMULATION:
+        # 404 rather than 403: in a production deployment this route should be
+        # indistinguishable from one that doesn't exist.
+        raise HTTPException(404, "Not Found")
+
+    cr = _get_owned(db, tenant_id, cr_id)
+
+    if deployment_id:
+        dr = _get_owned_deployment(db, tenant_id, cr_id, deployment_id)
+    else:
+        dr = (
+            db.query(DeploymentRecord)
+            .filter(
+                DeploymentRecord.change_request_id == cr_id,
+                DeploymentRecord.tenant_id == tenant_id,
+                DeploymentRecord.status.in_(_DRIFTABLE_STATUSES),
+            )
+            .order_by(DeploymentRecord.started_at.desc())
+            .first()
+        )
+        if not dr:
+            raise HTTPException(
+                409,
+                "No active deployment to drift. Deploy this change request first — "
+                f"only deployments in {'/'.join(_DRIFTABLE_STATUSES)} can be simulated as drifted.",
+            )
+
+    if dr.status not in _DRIFTABLE_STATUSES:
+        raise HTTPException(
+            409,
+            f"Deployment {dr.id} is {dr.status}; only {'/'.join(_DRIFTABLE_STATUSES)} "
+            "deployments can be simulated as drifted.",
+        )
+    if dr.rolled_back:
+        raise HTTPException(409, f"Deployment {dr.id} has already been rolled back.")
+
+    device = db.query(Device).filter(Device.id == dr.device_id).first()
+    prior_status = dr.status
+
+    detail = (
+        f"[SIMULATED DRIFT] Post-deployment configuration hash does not match the approved "
+        f"proposed configuration (change_request={cr.id}, deployment={dr.id}). "
+        f"Injected by {user.username} via the developer drift simulator — no device was contacted "
+        f"and no real drift occurred."
+    )
+
+    dr.status = "DRIFTED"
+    dr.post_verification_passed = False
+    # Deliberately overwrite rather than append: a simulated row must not carry
+    # a real post-deploy hash that would make the fake drift look corroborated.
+    dr.post_config_hash = None
+    dr.error = detail
+    dr.completed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(dr)
+
+    # The real alert path -- same call deployment_service makes on genuine drift.
+    alert_dispatched = False
+    if device is not None:
+        try:
+            await alert_service.alert_rollback_required(db, cr.tenant_id, device.id, dr.id, detail)
+            alert_dispatched = True
+        except Exception:  # noqa: BLE001 - a dispatch failure must not undo the state change
+            logger.warning("Simulated-drift rollback alert dispatch failed", exc_info=True)
+
+    audit_service.record_from_user(
+        db, user, action="deployment.simulate_drift", request=request, result="SUCCESS",
+        object_type="deployment_record", object_id=dr.id,
+        old_value={"status": prior_status},
+        new_value={"status": "DRIFTED", "simulated": True},
+    )
+
+    return {
+        "deployment": deployment_service.to_dict(dr),
+        "simulated": True,
+        "alert_dispatched": alert_dispatched,
+        # The next step is a human action, not an automatic one.
+        "next_step": {
+            "description": (
+                "Deployment is now DRIFTED and a rollback-required alert has been raised. "
+                "Rollback is operator-initiated — the platform will not revert on its own."
+            ),
+            "rollback_url": f"/api/change-requests/{cr_id}/deployments/{dr.id}/rollback",
+        },
+    }
 
 
 @router.post("/{cr_id}/deployments/{deployment_id}/rollback")

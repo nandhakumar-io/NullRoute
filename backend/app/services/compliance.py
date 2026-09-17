@@ -116,6 +116,12 @@ def opa_decision_to_findings(decision: OPADecision, baseline: SecurityBaselineMo
             "remediation": _remediation_for(f.get("remediation"), vendor),
             "source": prov.source if prov else None,
             "confidence": prov.confidence if prov else None,
+            # Denormalized so vendor_scores / the cross-vendor compliance
+            # matrix (routers/compliance.py) can filter/group without a
+            # join -- previously computed above but never attached to the
+            # row, so every OPA finding landed with vendor=NULL and both
+            # of those views were always empty.
+            "vendor": vendor or None,
         })
     return findings
 

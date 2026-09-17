@@ -168,7 +168,7 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
         f"Raw configuration line: {line}\n\nRespond with JSON only."
     )
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             resp = await client.post(
                 f"{OLLAMA_HOST}/generate",
                 json={
@@ -200,15 +200,20 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
                 ))
             
             return interps if interps else _offline_heuristic_interpret(line)
-    except Exception:
+    except Exception as e:
+        import traceback
+        print(f"DEBUG EXCEPTION for '{line}': {type(e).__name__} - {repr(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"DEBUG HTTP RESPONSE TEXT: {e.response.text}")
+        print(traceback.format_exc())
         results = _offline_heuristic_interpret(line)
         for result in results:
             if retrieved_knowledge:
                 result.retrieved_knowledge = [k["pattern"] for k in retrieved_knowledge] + result.retrieved_knowledge
             result.confidence = min(result.confidence, max(CONFIDENCE_THRESHOLD - 0.05, 0.0))
             result.needs_human_review = True
-            result.model_version = f"{result.model_version}+qwen3_unavailable"
-            result.reasoning = "Qwen3/Ollama unavailable — degraded to offline keyword heuristic; forced to human review."
+            result.model_version = f"{result.model_version}+{LLM_MODEL}_unavailable"
+            result.reasoning = f"{LLM_MODEL}/Ollama unavailable — degraded to offline keyword heuristic; forced to human review."
         return results
 
 

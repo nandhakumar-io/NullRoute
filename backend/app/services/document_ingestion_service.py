@@ -140,7 +140,7 @@ def chunk_by_section(text: str) -> List[Dict[str, str]]:
 async def _llm_available() -> bool:
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            resp = await client.get(f"{OLLAMA_BASE_URL}/health")
             return resp.status_code == 200
     except httpx.HTTPError:
         return False
@@ -171,7 +171,7 @@ async def extract_control_fields_via_llm(heading: str, body: str) -> Optional[Di
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
+                f"{OLLAMA_BASE_URL}/generate",
                 json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False, "format": "json"},
             )
             resp.raise_for_status()
@@ -243,11 +243,16 @@ async def run_ingestion_job(db: Session, job_id: str) -> None:
             )
 
         created = 0
-        for section in sections:
-            fields: Optional[Dict[str, Any]] = None
+        import asyncio
+        async def _process_section(section: Dict[str, Any]) -> tuple:
+            fields = None
             if llm_up:
                 fields = await extract_control_fields_via_llm(section["heading"], section["body"])
+            return section, fields
 
+        results = await asyncio.gather(*[_process_section(s) for s in sections])
+
+        for section, fields in results:
             if fields:
                 control_service.create_control(
                     db,

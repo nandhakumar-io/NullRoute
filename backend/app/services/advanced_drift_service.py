@@ -191,6 +191,12 @@ def _resolve_baseline_config(db: Session, device: Device, baseline: DriftBaselin
             "utf-8", errors="replace"
         )
     except Exception as exc:  # noqa: BLE001 - surfaced to caller as a NoBaselineError
+        exc_str = str(exc)
+        if "NoSuchKey" in exc_str or "does not exist" in exc_str:
+            raise NoBaselineError(
+                f"The previous backup file for '{device.hostname}' is missing from storage (it may have been deleted or expired). "
+                "Please take a new backup before running a drift scan against it."
+            ) from exc
         raise NoBaselineError(
             f"The stored backup for '{device.hostname}' could not be read from storage: {exc}"
         ) from exc

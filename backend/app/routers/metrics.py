@@ -197,7 +197,7 @@ def get_compliance_summary(
     import httpx, os
     ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
     try:
-        resp = httpx.get(f"{ollama_host}/api/tags", timeout=3.0)
+        resp = httpx.get(f"{ollama_host}/health", timeout=3.0)
         ollama_reachable = resp.status_code == 200
     except Exception:
         ollama_reachable = False

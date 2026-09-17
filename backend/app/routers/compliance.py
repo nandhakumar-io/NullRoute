@@ -1,4 +1,5 @@
 from collections import defaultdict
+import builtins as _builtins
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import List, Optional
@@ -308,6 +309,64 @@ def dashboard_metrics(range: str = "30d", db: Session = Depends(get_db)):
     ]
     compliance_score = round(sum(scores_in_range) / len(scores_in_range), 1) if scores_in_range else 0.0
 
+    # --- Time-series buckets (Task 4) --------------------------------------
+    # This previously always returned `timeseries=[]`, which is why the
+    # "Compliance Score Over Time" and "Findings by Severity Over Time"
+    # charts on Dashboard.tsx rendered "No scans in this window yet." even
+    # with real data present -- the charts and the Recharts wiring already
+    # existed on the frontend; only this computation was missing.
+    #
+    # Bucketing: hourly for 24h (24 buckets), daily otherwise (7/30/90
+    # buckets) -- matches formatBucketLabel()'s hour-vs-day formatting on
+    # the frontend. A bucket with no completed scan gets
+    # compliance_score=None (charted as a gap via Recharts `connectNulls`
+    # on the compliance line), not 0 -- a flat 0% would misreport "no data"
+    # as "total failure", which is a meaningfully different, false signal.
+    if range == "24h":
+        bucket_count, bucket_delta = 24, timedelta(hours=1)
+    else:
+        bucket_count, bucket_delta = RANGE_TO_DAYS.get(range, 30), timedelta(days=1)
+
+    now = datetime.utcnow()
+    bucket_starts = [now - bucket_delta * (bucket_count - i) for i in _builtins.range(bucket_count)]
+    bucket_ends = bucket_starts[1:] + [now]
+
+    window_scans = (
+        db.query(Scan)
+        .filter(Scan.status == "completed", Scan.created_at >= bucket_starts[0])
+        .all()
+    )
+    window_scan_ids = [s.id for s in window_scans]
+    window_findings = (
+        db.query(Finding)
+        .filter(Finding.scan_id.in_(window_scan_ids), Finding.result == "FAIL")
+        .all()
+        if window_scan_ids
+        else []
+    )
+    findings_by_scan: dict = defaultdict(list)
+    for f in window_findings:
+        findings_by_scan[f.scan_id].append(f)
+
+    timeseries: List[DashboardMetricPoint] = []
+    for start, end in zip(bucket_starts, bucket_ends):
+        bucket_scans = [s for s in window_scans if start <= s.created_at < end]
+        bucket_scores = [s.compliance_score for s in bucket_scans if s.compliance_score is not None]
+        bucket_sev = defaultdict(int)
+        for s in bucket_scans:
+            for f in findings_by_scan.get(s.id, []):
+                bucket_sev[f.severity] += 1
+        timeseries.append(DashboardMetricPoint(
+            bucket=start.isoformat(),
+            compliance_score=round(sum(bucket_scores) / len(bucket_scores), 1) if bucket_scores else None,
+            critical_findings=bucket_sev["CRITICAL"],
+            high_findings=bucket_sev["HIGH"],
+            medium_findings=bucket_sev["MEDIUM"],
+            low_findings=bucket_sev["LOW"],
+            open_findings=sum(bucket_sev.values()),
+            resolved_findings=0,  # per-bucket resolution isn't tracked; see `resolved` above for the window total
+        ))
+
     return DashboardMetrics(
         range=range,
         compliance_score=compliance_score,
@@ -317,7 +376,7 @@ def dashboard_metrics(range: str = "30d", db: Session = Depends(get_db)):
         low_findings=sev_counts["LOW"],
         open_findings=sum(sev_counts.values()),
         resolved_findings=resolved,
-        timeseries=[],
+        timeseries=timeseries,
     )
 
 

@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-LLM_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama")
 
 # Points contributed per FAIL finding, by severity. Tuned so a single
 # CRITICAL alone lands solidly in the CRITICAL risk band, matching the
@@ -221,7 +221,7 @@ def _llm_drift_summary(diff_text: str, findings: List[str]) -> tuple[Optional[st
         )
         with httpx.Client(timeout=30.0) as client:
             resp = client.post(
-                f"{OLLAMA_HOST}/api/generate",
+                f"{OLLAMA_HOST}/generate",
                 json={"model": LLM_MODEL, "prompt": prompt, "stream": False},
             )
             resp.raise_for_status()

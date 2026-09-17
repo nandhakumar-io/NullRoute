@@ -176,12 +176,58 @@ function DiffPanel({ crId }: { crId: string }) {
   );
 }
 
-function DeploymentCard({ d }: { d: DeploymentRecord }) {
+function DeploymentCard({
+  d,
+  crId,
+  canRollback,
+  onChanged,
+}: {
+  d: DeploymentRecord;
+  crId: string;
+  canRollback: boolean;
+  onChanged: () => void;
+}) {
   const code = explicitCodeIn(d.error);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [rollbackMsg, setRollbackMsg] = useState<string | null>(null);
+  const simulated = (d.error || "").startsWith("[SIMULATED DRIFT]");
+  const needsRollback = d.status === "DRIFTED" && !d.rolled_back;
+
+  async function doRollback() {
+    setRollingBack(true);
+    setRollbackMsg(null);
+    try {
+      const r = await endpoints.rollbackDeployment(
+        crId,
+        d.id,
+        simulated ? "Reverting a simulated drift (developer sandbox)." : undefined,
+      );
+      setRollbackMsg(`Rollback ${(r.data as any)?.status || "submitted"}.`);
+      onChanged();
+    } catch (e: any) {
+      setRollbackMsg(
+        e?.response?.status === 403
+          ? "Your role can't roll back deployments — admin or operator is required."
+          : e?.response?.data?.detail || "Rollback failed — see server logs.",
+      );
+    } finally {
+      setRollingBack(false);
+    }
+  }
+
   return (
     <div className="rounded-lg border border-soc-border bg-soc-bg/40 p-3 text-xs space-y-1.5">
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`badge ${STATUS_TONE[d.status] || "badge-na"}`}>{d.status}</span>
+        {simulated && (
+          <span
+            className="badge border border-amber-600/50 bg-amber-950/40 text-amber-300"
+            title="Injected by the developer drift simulator — no real drift occurred."
+          >
+            SIMULATED
+          </span>
+        )}
+        {d.rolled_back && <span className="badge badge-pass">ROLLED BACK</span>}
         <span className="font-mono text-slate-400">transport: {d.transport || "—"}</span>
         {code && <span className={`badge ${EXPLICIT_CODE_TONE[code]}`}>{code}</span>}
         {d.started_at && (
@@ -189,6 +235,31 @@ function DeploymentCard({ d }: { d: DeploymentRecord }) {
         )}
       </div>
       {d.error && <div className="text-red-400">{d.error}</div>}
+
+      {needsRollback && (
+        <div className="rounded-md border border-red-900/50 bg-red-950/20 p-2.5 space-y-2">
+          <div className="text-red-300 font-medium">Rollback required</div>
+          <div className="text-slate-400 leading-relaxed">
+            Post-deployment verification failed, so a rollback-required alert was raised. This
+            platform does not revert automatically — an operator has to initiate it.
+          </div>
+          {canRollback ? (
+            <button
+              onClick={doRollback}
+              disabled={rollingBack}
+              className="px-3 py-1.5 rounded-md bg-red-600/90 hover:bg-red-500 text-white
+                         text-xs font-medium transition-colors disabled:opacity-40"
+            >
+              {rollingBack ? "Reverting…" : "Roll back to pre-change config"}
+            </button>
+          ) : (
+            <div className="text-slate-500 italic">
+              Requires the admin or operator role.
+            </div>
+          )}
+          {rollbackMsg && <div className="text-slate-300">{rollbackMsg}</div>}
+        </div>
+      )}
       {d.transport === "gnmi" && (d.model_name || d.request_hash) && (
         <div className="text-slate-400 space-y-0.5">
           <div>model: <span className="font-mono">{d.model_name || "—"}</span> · operation: <span className="font-mono">{d.operation || "—"}</span></div>
@@ -219,6 +290,90 @@ function DeploymentCard({ d }: { d: DeploymentRecord }) {
   );
 }
 
+/**
+ * Developer sandbox: force an active deployment into DRIFTED without touching
+ * a device, so the drift → alert → operator-rollback loop can be demonstrated
+ * in a browser.
+ *
+ * Deliberately NOT labelled as an auto-rollback demo. Nothing in this platform
+ * reverts on its own (RULE 4/5) — this drives the *operator-initiated* path,
+ * and the copy says so, because an evaluator who walks away believing the
+ * revert was automatic has been misled by the demo.
+ *
+ * Hides itself entirely when the backend returns 404 (ENABLE_DEV_SIMULATION
+ * unset), which is the expected production state.
+ */
+function SimulateDriftTrigger({
+  crId,
+  deployments,
+  onSimulated,
+}: {
+  crId: string;
+  deployments: DeploymentRecord[];
+  onSimulated: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  const driftable = deployments.find(
+    (d) => (d.status === "DEPLOYED" || d.status === "VERIFIED") && !d.rolled_back,
+  );
+
+  if (unavailable || !driftable) return null;
+
+  async function fire() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await endpoints.simulateDeploymentDrift(crId, driftable!.id);
+      setMsg(
+        r.data.alert_dispatched
+          ? "Drift injected and a rollback-required alert was raised. Use the rollback button above to revert."
+          : "Drift injected, but the alert could not be dispatched — check the server logs.",
+      );
+      onSimulated();
+    } catch (e: any) {
+      if (e?.response?.status === 404) {
+        // Route is compiled out in this environment. Disappear quietly.
+        setUnavailable(true);
+        return;
+      }
+      setMsg(
+        e?.response?.status === 403
+          ? "Your role can't simulate drift — admin or operator is required."
+          : e?.response?.data?.detail || "Could not simulate drift.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-amber-800/50 bg-amber-950/10 p-3 text-xs space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="badge border border-amber-600/50 bg-amber-950/40 text-amber-300">DEV</span>
+        <span className="text-slate-300 font-medium">Simulate Deployment Drift</span>
+      </div>
+      <div className="text-slate-400 leading-relaxed">
+        Forces the active deployment into <span className="font-mono">DRIFTED</span> and fires the
+        real rollback-required alert — no device is contacted. Exercises the{" "}
+        <span className="text-slate-300">operator-initiated</span> rollback path; the platform does
+        not revert automatically.
+      </div>
+      <button
+        onClick={fire}
+        disabled={busy}
+        className="px-3 py-1.5 rounded-md border border-amber-700/60 bg-amber-950/30
+                   text-amber-300 hover:bg-amber-900/40 transition-colors disabled:opacity-40"
+      >
+        {busy ? "Injecting drift…" : "Simulate drift on latest deployment"}
+      </button>
+      {msg && <div className="text-slate-300">{msg}</div>}
+    </div>
+  );
+}
+
 function LockIcon() {
   return (
     <svg viewBox="0 0 16 16" className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -231,6 +386,9 @@ function LockIcon() {
 export default function ChangeRequests() {
   const { hasRole } = useAuth();
   const canApprove = hasRole("security_analyst"); // true for security_analyst OR admin
+  // Deploy/rollback/simulate-drift are all gated require_role("admin","operator")
+  // on the backend; mirror that here so the UI disables rather than 403s.
+  const canDeploy = hasRole("operator"); // true for operator OR admin
   const [items, setItems] = useState<ChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -429,8 +587,19 @@ export default function ChangeRequests() {
                             <div className="text-xs text-slate-500">No deployment attempts yet.</div>
                           )}
                           {(deploymentsById[cr.id] || []).map((d) => (
-                            <DeploymentCard key={d.id} d={d} />
+                            <DeploymentCard
+                              key={d.id}
+                              d={d}
+                              crId={cr.id}
+                              canRollback={canDeploy}
+                              onChanged={() => loadDeployments(cr.id)}
+                            />
                           ))}
+                          <SimulateDriftTrigger
+                            crId={cr.id}
+                            deployments={deploymentsById[cr.id] || []}
+                            onSimulated={() => loadDeployments(cr.id)}
+                          />
                         </div>
                       )}
                     </div>

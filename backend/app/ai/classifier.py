@@ -116,7 +116,7 @@ def _try_load_remote_classifier(url: str, api_key: str, timeout: float) -> Optio
         import json
         req = urllib.request.Request(
             url,
-            data=json.dumps({"text": text}).encode("utf-8"),
+            data=json.dumps({"prompt": text, "text": text}).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
         if api_key:

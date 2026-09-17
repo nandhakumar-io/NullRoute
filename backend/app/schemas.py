@@ -254,6 +254,17 @@ class DashboardStats(BaseModel):
     # need a second round-trip just to show the headline number.
     total_findings: int = 0
     configuration_drift_count: int = 0
+    # Unified-dashboard KPIs (Task 4). NOTE: `dashboard()` in
+    # routers/compliance.py already computed these three values before this
+    # fix -- they were just silently dropped on the way out, because
+    # pydantic BaseModel.__init__ ignores unrecognized kwargs by default
+    # rather than raising. So /api/dashboard never 500'd; the "devices out
+    # of baseline" and MTTR posture chips just always rendered as if no
+    # data existed. Declaring the fields here is the entire fix -- the
+    # computation itself was already correct.
+    devices_out_of_baseline: int = 0
+    mttr_hours: Optional[float] = None
+    mttr_improvement_pct: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------

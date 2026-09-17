@@ -2,12 +2,13 @@
 Evidence engine: builds the immutable evidence package for a scan,
 canonicalizes it deterministically, and SHA-256 hashes it.
 
-Fabric anchoring is a documented extension point, not implemented in this
-pass (see app/services/fabric_service.py) — evidence is fully built, hashed,
-and stored off-chain (PostgreSQL here; MinIO in the full architecture) so
-that when a Fabric gateway exists, anchoring is a matter of calling
-fabric_service.anchor_evidence(evidence_id, evidence_hash) and writing back
-the returned transaction id — nothing about the evidence shape changes.
+Fabric anchoring is implemented and wired into the pipeline (see
+app/services/fabric_service.py, called from services/pipeline.py step 8b).
+This module only builds, canonicalizes, hashes, and stores evidence
+off-chain (PostgreSQL here; MinIO in the full architecture); the pipeline
+then calls fabric_service.anchor_evidence(evidence_id, evidence_hash) and
+writes the returned transaction id back onto the EvidenceRecord — nothing
+about the evidence shape here changes based on whether Fabric is enabled.
 
 RULE 11 / section 12: NEVER put secrets on evidence. The evidence package
 below only ever contains hashes, decisions, and identifiers — never raw
@@ -130,7 +131,7 @@ def store_evidence(db: Session, evidence: Dict[str, Any], evidence_hash: str) ->
         evidence_hash=evidence_hash,
         opa_decision_id=evidence["opa_result"].get("decision_id"),
         final_decision=evidence["final_decision"],
-        fabric_status="NOT_ANCHORED",  # would become "ANCHORED" once fabric_service is wired
+        fabric_status="NOT_ANCHORED",  # pipeline.py step 8b flips this to "ANCHORED"/"FABRIC_UNAVAILABLE"
     )
     db.add(record)
     db.commit()

@@ -339,7 +339,7 @@ async def deploy_change_request(
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_auto_reachability_check())
+            # loop.create_task(_auto_reachability_check())
         except RuntimeError:
             pass  # No running loop in test context — skip silently
 

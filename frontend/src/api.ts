@@ -1478,8 +1478,14 @@ export const endpoints = {
   // GNS3
   gns3Servers: () => api.get("/api/gns3/servers"),
   addGns3Server: (data: any) => api.post("/api/gns3/servers", data),
+  deleteGns3Server: (serverId: string) => api.delete(`/api/gns3/servers/${serverId}`),
+  pingGns3Server: (serverId: string) => api.get(`/api/gns3/servers/${serverId}/ping`),
   gns3Labs: (serverId: string) => api.get(`/api/gns3/servers/${serverId}/labs`),
-  importGns3Lab: (serverId: string, labId: string) => api.post(`/api/gns3/servers/${serverId}/labs/${labId}/import`),
+  gns3Topology: (serverId: string, labId: string) => api.get(`/api/gns3/servers/${serverId}/labs/${labId}/topology`),
+  startGns3Lab: (serverId: string, labId: string) => api.post(`/api/gns3/servers/${serverId}/labs/${labId}/start`),
+  stopGns3Lab: (serverId: string, labId: string) => api.post(`/api/gns3/servers/${serverId}/labs/${labId}/stop`),
+  importGns3Lab: (serverId: string, labId: string, nodeIds?: string[]) =>
+    api.post(`/api/gns3/servers/${serverId}/labs/${labId}/import`, { node_ids: nodeIds ?? null }),
 
   // --- Unified Control Library ---
   controls: (params?: { domain?: string; status?: string; limit?: number; offset?: number }) =>

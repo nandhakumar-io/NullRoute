@@ -265,13 +265,13 @@ def submit_training_feedback(
         AIAnalysis.id == analysis_id,
         AIAnalysis.scan_id == scan_id,
     ).first()
-    if not analysis:
-        raise HTTPException(404, "AI analysis record not found")
-
-    mapping = db.query(CommandMapping).filter(
-        CommandMapping.raw_command_hash == analysis.raw_command_hash,
-        CommandMapping.tenant_id == tenant_id,
-    ).first()
+    import hashlib
+    all_mappings = db.query(CommandMapping).all()
+    mapping = None
+    for m in all_mappings:
+        if hashlib.sha256(m.raw_command_pattern.encode("utf-8")).hexdigest() == analysis.raw_command_hash:
+            mapping = m
+            break
 
     if not mapping:
         raise HTTPException(404, "No command mapping found for this AI analysis — cannot record feedback")
@@ -288,9 +288,22 @@ def submit_training_feedback(
     elif action == "correct":
         if not corrected_parameter:
             raise HTTPException(422, "corrected_parameter is required for action='correct'")
+        
+        # Determine value automatically, or default to True if it's an enable flag
+        value = True
+        if "=" in corrected_parameter:
+            parts = [p.strip() for p in corrected_parameter.split("=", 1)]
+            corrected_parameter = parts[0]
+            val_str = parts[1].lower()
+            if val_str in ("false", "0", "no"): value = False
+            elif val_str not in ("true", "1", "yes"): value = parts[1]
+
         hitl_service.correct_mapping(
             db, mapping,
-            normalized_facts={"intent": corrected_parameter},
+            normalized_facts={
+                "intent": corrected_parameter,
+                "facts": [{"parameter": corrected_parameter, "value": value}]
+            },
             correction_reason=correction_reason or f"User corrected '{analysis.intent}' → '{corrected_parameter}'",
             user=user,
         )

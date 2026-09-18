@@ -170,6 +170,7 @@ export default function Devices() {
   const [loading, setLoading] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [page, setPage] = useState(1);
   const limit = 20;
@@ -191,6 +192,10 @@ export default function Devices() {
     load();
     const interval = setInterval(() => load(true), 5000);
     return () => clearInterval(interval);
+  }, [page, search]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
   }, [page, search]);
 
   const handleSave = async (data: DeviceCreatePayload, creds: any) => {
@@ -252,6 +257,61 @@ export default function Devices() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (confirm(`Are you sure you want to delete ${selectedIds.size} selected devices?`)) {
+      setPageError(null);
+      try {
+        await endpoints.bulkDeleteDevices(Array.from(selectedIds));
+        setSelectedIds(new Set());
+        load();
+      } catch (err: any) {
+        setPageError(err?.response?.data?.detail || "Failed to bulk delete devices.");
+      }
+    }
+  };
+
+  const handleBulkEnable = async () => {
+    if (selectedIds.size === 0) return;
+    setPageError(null);
+    try {
+      await endpoints.bulkEnableDevices(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      load();
+    } catch (err: any) {
+      setPageError(err?.response?.data?.detail || "Failed to bulk enable devices.");
+    }
+  };
+
+  const handleBulkDisable = async () => {
+    if (selectedIds.size === 0) return;
+    setPageError(null);
+    try {
+      await endpoints.bulkDisableDevices(Array.from(selectedIds));
+      setSelectedIds(new Set());
+      load();
+    } catch (err: any) {
+      setPageError(err?.response?.data?.detail || "Failed to bulk disable devices.");
+    }
+  };
+
+  const toggleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked && devices) {
+      setSelectedIds(new Set(devices.map(d => d.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   if (!devices) return <Loading />;
 
   return (
@@ -274,14 +334,31 @@ export default function Devices() {
             {pageError}
           </div>
         )}
-        <div className="flex gap-4 mb-4 items-center">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <input 
             type="text" 
             placeholder="Search hostname, IP, or tags..." 
-            className="input max-w-sm" 
+            className="input max-w-sm flex-1 w-full" 
             value={search} 
             onChange={(e) => { setSearch(e.target.value); setPage(1); }} 
           />
+          {selectedIds.size > 0 && (
+            <div className="flex gap-2 items-center bg-soc-panel border border-soc-border rounded-lg p-1.5 shadow-lg">
+              <span className="text-xs text-slate-400 font-medium px-2">{selectedIds.size} selected</span>
+              <button onClick={handleBulkEnable} className="btn-secondary py-1 px-3 text-xs bg-slate-800 hover:bg-slate-700">
+                Enable
+              </button>
+              <button onClick={handleBulkDisable} className="btn-secondary py-1 px-3 text-xs bg-slate-800 hover:bg-slate-700">
+                Disable
+              </button>
+              <button 
+                onClick={handleBulkDelete} 
+                className="btn-secondary py-1 px-3 text-xs border-red-900/60 text-red-400 hover:bg-red-900/40"
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
         {loading && <div className="text-cyan-400 text-sm mb-2 text-right">Refreshing inventory...</div>}
         {devices.length === 0 && !loading ? (
@@ -291,7 +368,15 @@ export default function Devices() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-slate-500 border-b border-soc-border bg-slate-900/30">
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 w-8">
+                    <input 
+                      type="checkbox" 
+                      onChange={toggleSelectAll} 
+                      checked={devices && devices.length > 0 && selectedIds.size === devices.length} 
+                      className="rounded border-soc-border bg-slate-800 text-cyan-500 focus:ring-cyan-500/50 w-4 h-4" 
+                    />
+                  </th>
+                  <th className="px-4 py-3 min-w-[50px]">Status</th>
                   <th className="px-4 py-3">Hostname / Name</th>
                   <th className="px-4 py-3">Mgmt IP</th>
                   <th className="px-4 py-3">Hardware / OS</th>
@@ -303,7 +388,15 @@ export default function Devices() {
               </thead>
               <tbody>
                 {devices.map((d) => (
-                  <tr key={d.id} className={`border-b border-soc-border/50 hover:bg-slate-800/30 ${!d.enabled ? 'opacity-50' : ''}`}>
+                  <tr key={d.id} className={`border-b border-soc-border/50 hover:bg-slate-800/30 transition-colors ${!d.enabled ? 'opacity-50' : ''} ${selectedIds.has(d.id) ? 'bg-cyan-900/10' : ''}`}>
+                    <td className="px-4 py-3">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.has(d.id)} 
+                        onChange={() => toggleSelect(d.id)} 
+                        className="rounded border-soc-border bg-slate-800 text-cyan-500 focus:ring-cyan-500/50 w-4 h-4 cursor-pointer" 
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <button onClick={() => toggleStatus(d)} className={`w-3 h-3 rounded-full ${d.enabled ? 'bg-emerald-500' : 'bg-slate-500'}`} title={d.enabled ? 'Enabled (Click to disable)' : 'Disabled (Click to enable)'} />
                     </td>

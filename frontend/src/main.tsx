@@ -35,7 +35,7 @@ import EvidenceLedger from "./pages/EvidenceLedger";
 import Drift from "./pages/Drift";
 import Schedules from "./pages/Schedules";
 import Alerts from "./pages/Alerts";
-import AiAnalysisOverview from "./pages/AiAnalysisOverview";
+import AIAnalysisOverview from "./pages/AIAnalysisOverview";
 import AuditLog from "./pages/AuditLog";
 import ConfigSearch from "./pages/ConfigSearch";
 import NetworkScans from "./pages/NetworkScans";
@@ -87,7 +87,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="schedules" element={<Schedules />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="review-queue" element={<ReviewQueue />} />
-          <Route path="ai-analysis" element={<AiAnalysisOverview />} />
+          <Route path="ai-analysis" element={<AIAnalysisOverview />} />
           <Route path="audit-log" element={<AuditLog />} />
           <Route path="gns3-integration" element={<Gns3Integration />} />
           <Route path="control-library" element={<ControlLibrary />} />

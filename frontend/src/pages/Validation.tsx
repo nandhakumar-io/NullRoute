@@ -6,7 +6,9 @@ import {
   opaTone, batfishTone, riskTone, decisionTone, PipelineStepData,
 } from "../components/ui";
 
-const DECISION_OPTIONS = ["ALL", "PASS", "REVIEW", "BLOCK"];
+const DECISION_OPTIONS = ["ALL", "PASS", "REVIEW", "BLOCK", "PENDING"];
+type SortMode = "priority" | "recent";
+const DECISION_PRIORITY: Record<string, number> = { BLOCK: 0, REVIEW: 1, PASS: 3 };
 
 function DecisionPill({ decision }: { decision: string | null | undefined }) {
   const cls =
@@ -34,6 +36,8 @@ export default function Validation() {
   const [devices, setDevices] = useState<Record<string, Device>>({});
   const [loading, setLoading] = useState(true);
   const [decisionFilter, setDecisionFilter] = useState("ALL");
+  const [frameworkFilter, setFrameworkFilter] = useState("ALL");
+  const [sortMode, setSortMode] = useState<SortMode>("priority");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
@@ -51,10 +55,20 @@ export default function Validation() {
     }).finally(() => setLoading(false));
   }, []);
 
+  const frameworks = useMemo(
+    () => Array.from(new Set(scans.map((s) => s.framework).filter(Boolean))).sort(),
+    [scans]
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return scans
-      .filter((s) => decisionFilter === "ALL" || s.final_decision === decisionFilter)
+    const rows = scans
+      .filter((s) => {
+        if (decisionFilter === "ALL") return true;
+        if (decisionFilter === "PENDING") return !s.final_decision;
+        return s.final_decision === decisionFilter;
+      })
+      .filter((s) => frameworkFilter === "ALL" || s.framework === frameworkFilter)
       .filter((s) => {
         if (!q) return true;
         const device = devices[s.device_id];
@@ -65,7 +79,19 @@ export default function Validation() {
           device?.management_address?.toLowerCase().includes(q)
         );
       });
-  }, [scans, decisionFilter, search, devices]);
+    if (sortMode === "priority") {
+      // Stable sort: BLOCK, then REVIEW, then PENDING, then PASS last —
+      // the point of a validation queue is to surface what needs a human
+      // first, not to make them scroll past a wall of PASS rows to find
+      // the one BLOCK. Ties keep their original (most-recent-first) order.
+      return [...rows].sort((a, b) => {
+        const pa = DECISION_PRIORITY[a.final_decision || "PENDING"] ?? 2;
+        const pb = DECISION_PRIORITY[b.final_decision || "PENDING"] ?? 2;
+        return pa - pb;
+      });
+    }
+    return rows;
+  }, [scans, decisionFilter, frameworkFilter, search, devices, sortMode]);
 
   if (loading) return <Loading />;
 
@@ -76,6 +102,9 @@ export default function Validation() {
     PENDING: scans.filter((s) => !s.final_decision).length,
   };
 
+  const statCardCls = (active: boolean) =>
+    `text-left transition-all ${active ? "ring-2 ring-cyan-600 rounded-xl" : "hover:opacity-80"}`;
+
   return (
     <div className="pb-10">
       <PageHeader
@@ -83,11 +112,22 @@ export default function Validation() {
         subtitle="Correlated decision per scan — OPA (deterministic policy) × Batfish (network behavior) × Risk, per the correlation precedence rules. The LLM never determines this outcome."
       />
 
-      <div className="px-8 grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Passed" value={counts.PASS} tone="good" />
-        <StatCard label="Needs Review" value={counts.REVIEW} tone="medium" />
-        <StatCard label="Blocked" value={counts.BLOCK} tone="critical" />
-        <StatCard label="Pending" value={counts.PENDING} tone="default" />
+      <div className="px-8 grid grid-cols-2 md:grid-cols-4 gap-4 mb-2">
+        <button className={statCardCls(decisionFilter === "PASS")} onClick={() => setDecisionFilter(decisionFilter === "PASS" ? "ALL" : "PASS")}>
+          <StatCard label="Passed" value={counts.PASS} tone="good" />
+        </button>
+        <button className={statCardCls(decisionFilter === "REVIEW")} onClick={() => setDecisionFilter(decisionFilter === "REVIEW" ? "ALL" : "REVIEW")}>
+          <StatCard label="Needs Review" value={counts.REVIEW} tone="medium" />
+        </button>
+        <button className={statCardCls(decisionFilter === "BLOCK")} onClick={() => setDecisionFilter(decisionFilter === "BLOCK" ? "ALL" : "BLOCK")}>
+          <StatCard label="Blocked" value={counts.BLOCK} tone="critical" />
+        </button>
+        <button className={statCardCls(decisionFilter === "PENDING")} onClick={() => setDecisionFilter(decisionFilter === "PENDING" ? "ALL" : "PENDING")}>
+          <StatCard label="Pending" value={counts.PENDING} tone="default" />
+        </button>
+      </div>
+      <div className="px-8 mb-6 text-xs text-slate-500">
+        Click a card to filter by that decision · showing the {scans.length} most recent scans
       </div>
 
       <div className="px-8 pb-8 space-y-4">
@@ -95,8 +135,18 @@ export default function Validation() {
           <div className="flex gap-3 items-center flex-wrap">
             <select className="select text-sm" value={decisionFilter} onChange={(e) => setDecisionFilter(e.target.value)}>
               {DECISION_OPTIONS.map((d) => (
-                <option key={d} value={d}>{d === "ALL" ? "All decisions" : d}</option>
+                <option key={d} value={d}>{d === "ALL" ? "All decisions" : d === "PENDING" ? "Pending" : d}</option>
               ))}
+            </select>
+            {frameworks.length > 1 && (
+              <select className="select text-sm" value={frameworkFilter} onChange={(e) => setFrameworkFilter(e.target.value)}>
+                <option value="ALL">All frameworks</option>
+                {frameworks.map((f) => <option key={f} value={f}>{f}</option>)}
+              </select>
+            )}
+            <select className="select text-sm" value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)}>
+              <option value="priority">Needs attention first</option>
+              <option value="recent">Most recent first</option>
             </select>
             <input
               className="input w-64 text-sm"
@@ -117,9 +167,9 @@ export default function Validation() {
             <Link
               key={s.id}
               to={needsRemediation ? `/scans/${s.id}#remediation` : `/scans/${s.id}`}
-              className="card block p-6 hover:border-cyan-700/60 hover:shadow-cyan-900/10 transition-all"
+              className="card block p-5 hover:border-cyan-700/60 hover:shadow-cyan-900/10 transition-all"
             >
-              <div className="flex items-start justify-between gap-6 flex-wrap mb-5">
+              <div className="flex items-start justify-between gap-6 flex-wrap mb-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-3 flex-wrap">
                     <span className="font-semibold text-lg text-slate-200">
@@ -148,33 +198,13 @@ export default function Validation() {
                 </div>
               </div>
 
-              {/* Normalized state + pass/fail called out big and up front, so the
-                  two things an operator scans for are readable at a glance —
-                  no need to open the scan or squint at the pipeline dots below. */}
-              <div className="flex items-center gap-3 flex-wrap mb-4">
-                <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-                  s.status === "failed" ? "border-red-900 bg-red-950/30" : "border-emerald-900 bg-emerald-950/20"
-                }`}>
-                  <span className={`w-2.5 h-2.5 rounded-full ${s.status === "failed" ? "bg-red-500" : "bg-emerald-500"}`} />
-                  <span className="text-sm font-semibold text-slate-200">
-                    Normalized: {s.status === "failed" ? "Failed" : "Modeled"}
-                  </span>
-                </div>
-                <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-                  s.final_decision === "PASS" ? "border-emerald-900 bg-emerald-950/20"
-                    : s.final_decision === "BLOCK" ? "border-red-900 bg-red-950/30"
-                    : "border-amber-900 bg-amber-950/20"
-                }`}>
-                  <span className={`w-2.5 h-2.5 rounded-full ${
-                    s.final_decision === "PASS" ? "bg-emerald-500" : s.final_decision === "BLOCK" ? "bg-red-500" : "bg-amber-500"
-                  }`} />
-                  <span className="text-sm font-semibold text-slate-200">
-                    Decision: {s.final_decision || "PENDING"}
-                  </span>
-                </div>
-              </div>
-
-              <DecisionPipeline size="lg" steps={buildSteps(s)} />
+              {/* Decision + compliance score above already tell you pass/fail
+                  at a glance -- this strip used to repeat both as a second
+                  pair of "Normalized" / "Decision" chips directly above the
+                  pipeline dots that show the same two values a third time.
+                  Cut straight to the pipeline; it's the one place that adds
+                  information (OPA/Batfish/Risk), not just re-states it. */}
+              <DecisionPipeline size="sm" steps={buildSteps(s)} />
 
               {needsRemediation && (
                 <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-soc-border">

@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { endpoints, AIHealth, AIModelsInfo } from "../api";
 import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
 
+// "AI Enabled / Classifier Loaded / Embedder Loaded" used to open this page
+// as three more copies of the exact same up/down badges System Health
+// already shows in its "AI / ML Pipelines" card -- this is the third
+// place in the app that said the same "loaded / not loaded" thing. This
+// page's actual job is the stuff System Health has no room for: which
+// model version is active, what backend/path each component resolves to,
+// and the decision thresholds -- so that's what leads now, with a link
+// out for anyone who just wants the up/down check.
 export default function AIAnalysisOverview() {
   const [health, setHealth] = useState<AIHealth | null>(null);
   const [models, setModels] = useState<AIModelsInfo | null>(null);
@@ -30,27 +39,20 @@ export default function AIAnalysisOverview() {
         {!loading && error && <EmptyState message={error} />}
         {!loading && !error && health && (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <StatCard
-                label="AI Enabled"
-                value={health.ai_enabled ? "Yes" : "No"}
-                tone={health.ai_enabled ? "good" : "default"}
-              />
-              <StatCard
-                label="Classifier"
-                value={health.classifier_loaded ? "Loaded" : "Not loaded"}
-                tone={health.classifier_loaded ? "good" : "critical"}
-              />
-              <StatCard
-                label="Embedder"
-                value={health.embedder_loaded ? "Loaded" : "Not loaded"}
-                tone={health.embedder_loaded ? "good" : "critical"}
-              />
-              <StatCard label="Reference Examples" value={health.reference_examples} />
-            </div>
+            {!health.ai_enabled && (
+              <div className="card border border-amber-800/60 bg-amber-950/20 text-sm text-amber-300">
+                AI is disabled for this tenant — configuration lines that don't match a known parser will be
+                left unclassified rather than interpreted.
+              </div>
+            )}
 
             <div className="card">
-              <div className="font-semibold text-slate-200 mb-3">Model Version</div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-semibold text-slate-200">Model Version</div>
+                <Link to="/system/health" className="text-xs text-cyan-400 hover:underline whitespace-nowrap">
+                  Component up/down status →
+                </Link>
+              </div>
               <div className="text-sm text-slate-400 space-y-1">
                 <div>
                   Active model version: <span className="font-mono text-cyan-400">{health.model_version}</span>
@@ -59,6 +61,7 @@ export default function AIAnalysisOverview() {
                   <div className="truncate">
                     Reference dataset:{" "}
                     <span className="font-mono text-slate-500">{health.reference_dataset}</span>
+                    {" "}({health.reference_examples} examples)
                   </div>
                 )}
               </div>
@@ -104,7 +107,8 @@ export default function AIAnalysisOverview() {
             <div className="text-xs text-slate-500">
               Per-scan AI interpretations (intent, confidence, semantic similarity, decision) are shown on each
               scan's detail page. AI can identify and explain configuration intent, but never issues a compliance
-              PASS/FAIL — that authority stays with OPA and Batfish.
+              PASS/FAIL — that authority stays with OPA and Batfish. For confidence trends and drift detection
+              over time, see <Link to="/observability" className="text-cyan-400 hover:underline">Observability</Link>.
             </div>
           </>
         )}

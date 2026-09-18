@@ -37,7 +37,7 @@ export default function ScanDetail() {
   const [scan, setScan] = useState<ScanDetailType | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRecord | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<ScanAIAnalysis | null>(null);
-  const [remediations, setRemediations] = useState<any>(null);
+  const [remediations, setRemediations] = useState<any>(undefined);
   const [rerunning, setRerunning] = useState(false);
 
   const [currentSnapshot, setCurrentSnapshot] = useState<any>(null);
@@ -909,6 +909,11 @@ export default function ScanDetail() {
                   <span className="text-base text-slate-500">{scan.findings.length} total</span>
                 </div>
               </div>
+              {remediations === undefined && pipelineCompleted && (
+                <div className="text-sm text-cyan-400 mb-3 border border-cyan-900/60 bg-cyan-950/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <span className="animate-pulse">●</span> Synthesizing AI remediation commands and control guidance...
+                </div>
+              )}
               {remediations === null && (
                 <div className="text-sm text-amber-400 mb-3 border border-amber-900/60 bg-amber-950/20 rounded-lg px-3 py-2">
                   AI remediation suggestions could not be generated for this scan (the AI service may be

@@ -49,6 +49,7 @@ def set_or_append_dotted(model: SecurityBaselineModel, dotted_path: str, value, 
 def _rules_cisco() -> List[Rule]:
     return [
         (re.compile(r"^hostname\s+(\S+)", re.M), "device.hostname", lambda m: m.group(1)),
+        (re.compile(r"^ip domain-name\s+(\S+)", re.M), "extra_parameters.domain_name", lambda m: m.group(1)),
         (re.compile(r"^ip ssh version\s+(\d)", re.M), "management.ssh.version", lambda m: int(m.group(1))),
         (re.compile(r"^ip ssh time-out\s+(\d+)", re.M), "management.ssh.idle_timeout", lambda m: int(m.group(1)) * 60),
         (re.compile(r"^line vty.*\n(?:.*\n)*?\s*transport input (\S+)", re.M), "management.ssh.enabled",

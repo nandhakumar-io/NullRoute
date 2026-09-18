@@ -46,23 +46,28 @@ def _cascade_delete_device_rows(db: Session, device_id: str) -> None:
     deleting the device itself, so DELETE /api/devices/{id} never 500s with
     a ForeignKeyViolation once the device has scans/evidence/etc. attached.
 
-    Generic over Base.metadata rather than a hand-maintained table list --
-    devices.id is referenced from ~20 tables (scans, findings, evidence,
-    deployment records, topology links, ...) and a static list silently
-    drifts out of date as new FK'd tables are added. Column names that
-    reference devices.id are device_id, source_device_id, or
-    target_device_id (see NetworkLink); all three are covered.
+    Uses SQLAlchemy's topological sort (sorted_tables) in REVERSE order so
+    that child tables (e.g. deployment_records → change_requests → device)
+    are always deleted before their parents. Previously this used forward
+    sorted_tables order which is alphabetical/ASC-dependency, causing
+    change_requests to be deleted while deployment_records still referenced
+    them via FK, resulting in a psycopg2.errors.ForeignKeyViolation 500.
     """
     from sqlalchemy import delete as sa_delete
 
     device_fk_cols = ("device_id", "source_device_id", "target_device_id")
-    for table in Base.metadata.sorted_tables:
+
+    # sorted_tables gives tables in dependency order (parents before children).
+    # Reversing it gives children before parents — exactly what DELETE needs.
+    for table in reversed(list(Base.metadata.sorted_tables)):
         if table.name == "devices":
             continue
         for col_name in device_fk_cols:
             col = table.columns.get(col_name)
             if col is not None and any(fk.column.table.name == "devices" for fk in col.foreign_keys):
                 db.execute(sa_delete(table).where(col == device_id))
+                break  # only one device_fk_col per table needed
+
 
 
 @router.get("", response_model=dict)

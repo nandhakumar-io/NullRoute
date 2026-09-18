@@ -3,6 +3,19 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      // Global type-scale bump for visibility (spec: "increase text size
+      // visibility across all pages"). Overriding the scale here, rather
+      // than editing every page's className list, guarantees every current
+      // and future use of text-xs/sm/base/lg/xl grows consistently in one
+      // place. Values are nudged up ~1-2px each with matching line-heights;
+      // default Tailwind uses 12/14/16/18/20px, this uses 13/15/17/19/21px.
+      fontSize: {
+        xs: ["0.8125rem", { lineHeight: "1.2rem" }],   // 13px (was 12px)
+        sm: ["0.9375rem", { lineHeight: "1.4rem" }],   // 15px (was 14px)
+        base: ["1.0625rem", { lineHeight: "1.65rem" }], // 17px (was 16px)
+        lg: ["1.1875rem", { lineHeight: "1.8rem" }],   // 19px (was 18px)
+        xl: ["1.3125rem", { lineHeight: "1.85rem" }],  // 21px (was 20px)
+      },
       colors: {
         soc: {
           bg: "#0b1220",

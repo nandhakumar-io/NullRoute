@@ -69,26 +69,26 @@ export default function SideBySideDiff({ currentConfig, proposedConfig }: Props)
 
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-700">
-      <table className="w-full text-xs font-mono border-collapse">
+      <table className="w-full text-sm leading-relaxed font-mono border-collapse">
         <thead>
-          <tr className="bg-slate-800 text-slate-400">
-            <th className="text-left px-3 py-1.5 font-semibold uppercase tracking-wide w-1/2">Current</th>
-            <th className="text-left px-3 py-1.5 font-semibold uppercase tracking-wide w-1/2">Proposed</th>
+          <tr className="bg-slate-800 text-slate-300 sticky top-0">
+            <th className="text-left px-4 py-2.5 text-sm font-semibold uppercase tracking-wide w-1/2">Current</th>
+            <th className="text-left px-4 py-2.5 text-sm font-semibold uppercase tracking-wide w-1/2">Proposed</th>
           </tr>
         </thead>
         <tbody className="bg-slate-900">
           {rows.map((row, i) => (
             <tr key={i} className={ROW_CLASS[row.kind]}>
               <td
-                className={`px-3 py-0.5 align-top whitespace-pre-wrap break-all border-r border-slate-800 ${
-                  row.kind === "removed" || row.kind === "changed" ? "text-red-500" : "text-slate-300"
+                className={`px-4 py-1 align-top whitespace-pre-wrap break-all border-r border-slate-800 ${
+                  row.kind === "removed" || row.kind === "changed" ? "text-red-400" : "text-slate-200"
                 }`}
               >
                 {row.left ?? ""}
               </td>
               <td
-                className={`px-3 py-0.5 align-top whitespace-pre-wrap break-all ${
-                  row.kind === "added" || row.kind === "changed" ? "text-emerald-500" : "text-slate-300"
+                className={`px-4 py-1 align-top whitespace-pre-wrap break-all ${
+                  row.kind === "added" || row.kind === "changed" ? "text-emerald-400" : "text-slate-200"
                 }`}
               >
                 {row.right ?? ""}

@@ -218,7 +218,11 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
     )
 
     import asyncio
-    
+    # Bound concurrency (not coverage) for large configs with many FAIL
+    # findings -- every finding still gets a remediation entry, we just
+    # avoid firing hundreds of simultaneous Ollama requests at once.
+    _semaphore = asyncio.Semaphore(20)
+
     async def _generate(f: Finding) -> Dict[str, Any]:
         template = remediation_templates.get_template(f.control_id, vendor)
         if template:
@@ -263,16 +267,17 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     "Output ONLY a JSON array of strings containing the commands exactly, without markdown fences or explanations."
                     + vuln_prompt_suffix
                 )
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    resp = await client.post(
-                        f"{OLLAMA_HOST}/generate",
-                        json={
-                            "model": LLM_MODEL,
-                            "prompt": system_prompt,
-                            "stream": False
-                        }
-                    )
-                    resp.raise_for_status()
+                async with _semaphore:
+                    async with httpx.AsyncClient(timeout=120.0) as client:
+                        resp = await client.post(
+                            f"{OLLAMA_HOST}/generate",
+                            json={
+                                "model": LLM_MODEL,
+                                "prompt": system_prompt,
+                                "stream": False
+                            }
+                        )
+                        resp.raise_for_status()
                     text = resp.json().get("response", "[]").strip()
                     if "```json" in text:
                         text = text.split("```json")[-1].split("```")[0].strip()

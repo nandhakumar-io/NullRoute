@@ -71,7 +71,10 @@ def to_dict(dr: DeploymentRecord) -> Dict[str, Any]:
     }
 
 
-def _resolve_credentials(db: Session, device: Device, tenant_id: str, credential_ref_id: Optional[str] = None):
+def _resolve_credentials(
+    db: Session, device: Device, tenant_id: str,
+    credential_ref_id: Optional[str] = None, transport: Optional[str] = None,
+):
     from app.gateway import connectors
     if connectors.GATEWAY_MOCK_CONNECTOR:
         return openbao_service.DeviceCredentials(credential_type="mock", secret={"username": "mock", "password": "mock"})
@@ -79,11 +82,24 @@ def _resolve_credentials(db: Session, device: Device, tenant_id: str, credential
     query = db.query(DeviceCredentialRef).filter(
         DeviceCredentialRef.device_id == device.id, DeviceCredentialRef.tenant_id == tenant_id,
     )
-    ref_row = (
-        query.filter(DeviceCredentialRef.id == credential_ref_id).first()
-        if credential_ref_id else
-        query.order_by(DeviceCredentialRef.created_at.desc()).first()
-    )
+    ref_row = None
+    if credential_ref_id:
+        ref_row = query.filter(DeviceCredentialRef.id == credential_ref_id).first()
+    elif transport:
+        # Prefer a credential ref whose type actually matches the transport
+        # being used for this deployment (e.g. don't hand SSH-only
+        # credentials to a NETCONF push/collect just because it's the most
+        # recently created ref on the device) -- falls back to the newest
+        # ref of any type if nothing matches, same as before.
+        from app.services.collectors.registry import credential_type_matches_transport
+        candidates = query.order_by(DeviceCredentialRef.created_at.desc()).all()
+        ref_row = next(
+            (c for c in candidates if credential_type_matches_transport(c.credential_type, transport)),
+            candidates[0] if candidates else None,
+        )
+    else:
+        ref_row = query.order_by(DeviceCredentialRef.created_at.desc()).first()
+
     if not ref_row:
         raise ValueError("No credential reference on file for this device")
     return openbao_service.get_device_credentials(tenant_id, ref_row.credential_ref)
@@ -115,7 +131,7 @@ async def deploy_change_request(
     db.refresh(dr)
 
     try:
-        credentials = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id)
+        credentials = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id, transport=dr.transport)
     except (ValueError, openbao_service.OpenBaoError) as e:
         dr.status = "FAILED"
         dr.error = f"Could not resolve device credentials: {e}"
@@ -127,7 +143,20 @@ async def deploy_change_request(
     # 1. Pre-deployment hash verification -- never deploy over an unknown
     #    intervening change (RULE: verify current device hash matches
     #    expected hash before deployment; abort if not).
-    collector = get_collector(device.vendor)
+    #
+    # IMPORTANT: pass the *deployment's* transport through, not just the
+    # vendor. get_collector(vendor) alone falls back to that vendor's
+    # default transport priority (e.g. plain "ssh" for cisco_ios), which
+    # silently ignores an operator's explicit choice of transport="netconf"
+    # (or "gnmi") for this deployment. That mismatch is what produced
+    # errors like "transport: netconf ... TCP connection to device failed
+    # ... cisco_ios 172.17.1.18:22" -- the push correctly went out over
+    # NETCONF (port 830) but pre/post verification collection was still
+    # being attempted over SSH (port 22) with the wrong credential set,
+    # even though both SSH and NETCONF work fine independently. Pre- and
+    # post-deployment collection must always use the SAME transport that
+    # was actually used (or requested) for the push.
+    collector = get_collector(device.vendor, transport=dr.transport)
     pre_result = await anyio.to_thread.run_sync(collector.collect_config, device, credentials)
     if not pre_result.success or not pre_result.raw_config:
         dr.status = "FAILED"
@@ -198,7 +227,7 @@ async def deploy_change_request(
     # 3. Post-deployment collection + verification. Re-resolve credentials
     #    fresh (the earlier reference was deliberately dropped after push).
     try:
-        post_credentials = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id)
+        post_credentials = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id, transport=dr.transport)
         post_result = await anyio.to_thread.run_sync(collector.collect_config, device, post_credentials)
         del post_credentials
     except (ValueError, openbao_service.OpenBaoError) as e:
@@ -224,7 +253,7 @@ async def deploy_change_request(
     if os.environ.get("PYATS_ENABLED", "false").strip().lower() in ("1", "true", "yes", "on"):
         try:
             from app.services.verification.registry import get_verifier
-            verify_credentials = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id)
+            verify_credentials = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id, transport=dr.transport)
             verifier = get_verifier("pyats_genie")
             verify_result = await anyio.to_thread.run_sync(verifier.verify, device, verify_credentials)
             del verify_credentials

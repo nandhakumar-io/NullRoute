@@ -98,7 +98,7 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
         unknown_lines = baseline.extra_parameters.pop("_unknown_lines", [])
         if unknown_lines:
             await events.publish("ai.mapping.required", {"scan_id": scan.id, "count": len(unknown_lines)})
-        for line in unknown_lines[:60]:  # cap for demo latency
+        for line in unknown_lines:
             # 3a. Trained-AI intent classification (DistilBERT + MiniLM hybrid
             #     decision engine) — purely an interpretation signal, persisted
             #     for review; it never sets compliance PASS/FAIL and never
@@ -123,13 +123,24 @@ async def run_pipeline(db: Session, scan: Scan, raw_text: str, framework: str = 
             ))
 
         import asyncio
-        async def _process_line(line: str):
-            retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line, tenant_id=scan.tenant_id)
-            interp_vendor = device.vendor or guess.vendor
-            interps = await interpret_line(interp_vendor, line, retrieved)
-            return interp_vendor, interps
+        # Bound *concurrency*, not coverage: every unknown line must still be
+        # normalized (and therefore eligible for remediation) no matter how
+        # large the uploaded config is. The old `unknown_lines[:60]` slice
+        # silently dropped everything past the first 60 unknown lines from
+        # both normalization and downstream remediation on large configs --
+        # a semaphore-limited gather keeps demo/production latency in check
+        # without ever skipping lines.
+        _CONCURRENCY = 20
+        semaphore = asyncio.Semaphore(_CONCURRENCY)
 
-        tasks = [_process_line(line) for line in unknown_lines[:60] if line.strip()]
+        async def _process_line(line: str):
+            async with semaphore:
+                retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line, tenant_id=scan.tenant_id)
+                interp_vendor = device.vendor or guess.vendor
+                interps = await interpret_line(interp_vendor, line, retrieved)
+                return interp_vendor, interps
+
+        tasks = [_process_line(line) for line in unknown_lines if line.strip()]
         results = await asyncio.gather(*tasks) if tasks else []
 
         for interp_vendor, interps in results:

@@ -90,11 +90,11 @@ function DiffPanel({ crId }: { crId: string }) {
     };
   }, [crId]);
 
-  if (loading) return <div className="text-xs text-slate-500 py-2">Loading diff…</div>;
-  if (err) return <div className="text-xs text-red-400 py-2">{err}</div>;
+  if (loading) return <div className="text-sm text-slate-500 py-2">Loading diff…</div>;
+  if (err) return <div className="text-sm text-red-400 py-2">{err}</div>;
   return (
     <div className="space-y-1.5">
-      <div className="text-[11px] text-slate-500">
+      <div className="text-xs text-slate-500">
         Left is the device's current, vulnerable configuration. Right is the AI-proposed remediation CLI —
         it is syntax only until a human clicks Approve below.
       </div>
@@ -143,7 +143,7 @@ function DeploymentCard({
   }
 
   return (
-    <div className="rounded-lg border border-soc-border bg-soc-bg/40 p-3 text-xs space-y-1.5">
+    <div className="rounded-lg border border-soc-border bg-soc-bg/40 p-3 text-sm space-y-1.5">
       <div className="flex items-center gap-2 flex-wrap">
         <span className={`badge ${STATUS_TONE[d.status] || "badge-na"}`}>{d.status}</span>
         {simulated && (
@@ -175,7 +175,7 @@ function DeploymentCard({
               onClick={doRollback}
               disabled={rollingBack}
               className="px-3 py-1.5 rounded-md bg-red-600/90 hover:bg-red-500 text-white
-                         text-xs font-medium transition-colors disabled:opacity-40"
+                         text-sm font-medium transition-colors disabled:opacity-40"
             >
               {rollingBack ? "Reverting…" : "Roll back to pre-change config"}
             </button>
@@ -277,7 +277,7 @@ function SimulateDriftTrigger({
   }
 
   return (
-    <div className="rounded-lg border border-dashed border-amber-800/50 bg-amber-950/10 p-3 text-xs space-y-2">
+    <div className="rounded-lg border border-dashed border-amber-800/50 bg-amber-950/10 p-3 text-sm space-y-2">
       <div className="flex items-center gap-2">
         <span className="badge border border-amber-600/50 bg-amber-950/40 text-amber-300">DEV</span>
         <span className="text-slate-300 font-medium">Simulate Deployment Drift</span>
@@ -422,7 +422,7 @@ export default function ChangeRequests() {
         subtitle="Proposed configuration changes, validated through the same OPA/Batfish/risk pipeline as scans. AI synthesizes the syntax; it physically cannot execute until a designated Network Admin or Security Analyst clicks Approve."
         action={
           <select
-            className="input-sm bg-soc-panel border border-soc-border rounded px-2 py-1 text-sm text-slate-300"
+            className="input-sm bg-soc-panel border border-soc-border rounded px-2 py-1 text-base text-slate-300"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
@@ -437,7 +437,7 @@ export default function ChangeRequests() {
       />
       <div className="px-8 pb-8 space-y-3">
         {error && (
-          <div className="card border-red-900/60 bg-red-950/20 text-sm text-red-400">{error}</div>
+          <div className="card border-red-900/60 bg-red-950/20 text-base text-red-400">{error}</div>
         )}
         {loading && <Loading />}
         {!loading && items.length === 0 && (
@@ -453,15 +453,15 @@ export default function ChangeRequests() {
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs text-slate-400">device {cr.device_id}</span>
+                    <span className="font-mono text-sm text-slate-400">device {cr.device_id}</span>
                     <span className={`badge ${STATUS_TONE[cr.status] || "badge-na"}`}>{cr.status}</span>
                     {cr.source === "ai_suggestion" && <span className="badge badge-medium">AI-suggested</span>}
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">
+                  <div className="text-sm text-slate-500 mt-1">
                     Created {new Date(cr.created_at).toLocaleString()}
                     {cr.created_by && ` by ${cr.created_by}`}
                   </div>
-                  <div className="text-xs text-slate-400 mt-2 flex items-center gap-3 flex-wrap">
+                  <div className="text-sm text-slate-400 mt-2 flex items-center gap-3 flex-wrap">
                     <span>OPA: {cr.opa_decision || "—"}</span>
                     <span>Batfish: {cr.batfish_status || "—"}</span>
                     <span>
@@ -469,7 +469,7 @@ export default function ChangeRequests() {
                     </span>
                     <span className="font-semibold text-slate-300">Final: {cr.final_decision || "—"}</span>
                   </div>
-                  {cr.final_reason && <div className="text-xs text-slate-500 mt-1">{cr.final_reason}</div>}
+                  {cr.final_reason && <div className="text-sm text-slate-500 mt-1">{cr.final_reason}</div>}
                   {cr.snapshot_diff && cr.snapshot_diff.status !== "NOT_CHECKED" && (
                     <SnapshotDiffPanel diff={cr.snapshot_diff} />
                   )}
@@ -479,7 +479,7 @@ export default function ChangeRequests() {
                       exactly what's being proposed before/while deciding. */}
                   <div className="mt-3">
                     <button
-                      className="text-xs text-slate-400 hover:text-slate-200 underline decoration-dotted"
+                      className="text-sm text-slate-400 hover:text-slate-200 underline decoration-dotted"
                       onClick={() => setDiffOpenId(diffOpenId === cr.id ? null : cr.id)}
                     >
                       {diffOpenId === cr.id ? "Hide config diff" : "View config diff (current vs. proposed)"}
@@ -492,10 +492,10 @@ export default function ChangeRequests() {
                   </div>
 
                   {cr.status === "REJECTED" && cr.rejection_reason && (
-                    <div className="text-xs text-red-400 mt-1">Rejected: {cr.rejection_reason}</div>
+                    <div className="text-sm text-red-400 mt-1">Rejected: {cr.rejection_reason}</div>
                   )}
                   {cr.status === "APPROVED" && cr.approved_by && (
-                    <div className="text-xs text-emerald-400 mt-1">
+                    <div className="text-sm text-emerald-400 mt-1">
                       Approved by {cr.approved_by} at {cr.approved_at && new Date(cr.approved_at).toLocaleString()}
                     </div>
                   )}
@@ -503,7 +503,7 @@ export default function ChangeRequests() {
                   {(cr.status === "APPROVED" || cr.status === "DEPLOYED" || cr.status === "FAILED") && (
                     <div className="mt-3">
                       <button
-                        className="text-xs text-slate-400 hover:text-slate-200 underline decoration-dotted"
+                        className="text-sm text-slate-400 hover:text-slate-200 underline decoration-dotted"
                         onClick={() => toggleHistory(cr.id)}
                       >
                         {expandedId === cr.id ? "Hide deployment history" : "Show deployment history"}
@@ -511,7 +511,7 @@ export default function ChangeRequests() {
                       {expandedId === cr.id && (
                         <div className="mt-2 space-y-2">
                           {(deploymentsById[cr.id] || []).length === 0 && (
-                            <div className="text-xs text-slate-500">No deployment attempts yet.</div>
+                            <div className="text-sm text-slate-500">No deployment attempts yet.</div>
                           )}
                           {(deploymentsById[cr.id] || []).map((d) => (
                             <DeploymentCard
@@ -537,7 +537,7 @@ export default function ChangeRequests() {
                     <div className="flex flex-col gap-1.5 items-end">
                       <div className="flex gap-2">
                         <button
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-900/40 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-900/40"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-900/40 text-emerald-300 border border-emerald-800/60 hover:bg-emerald-900/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-emerald-900/40"
                           disabled={busyId === cr.id || !canApprove}
                           title={canApprove ? undefined : "Requires Security Analyst or Admin role"}
                           onClick={() => approve(cr.id)}
@@ -546,7 +546,7 @@ export default function ChangeRequests() {
                           Approve
                         </button>
                         <button
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-900/40 text-red-300 border border-red-800/60 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-900/40"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-900/40 text-red-300 border border-red-800/60 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-900/40"
                           disabled={busyId === cr.id || !canApprove}
                           title={canApprove ? undefined : "Requires Security Analyst or Admin role"}
                           onClick={() => reject(cr.id)}
@@ -555,7 +555,7 @@ export default function ChangeRequests() {
                           Reject
                         </button>
                       </div>
-                      <div className="text-[10px] text-slate-500 max-w-[220px] text-right leading-snug">
+                      <div className="text-xs text-slate-500 max-w-[220px] text-right leading-snug">
                         {canApprove
                           ? "AI synthesized this syntax — it cannot execute until you click Approve."
                           : "Locked: only a Security Analyst or Admin can approve or reject this change."}
@@ -565,7 +565,7 @@ export default function ChangeRequests() {
                   {cr.status === "APPROVED" && (
                     <div className="flex gap-2 items-center">
                       <select
-                        className="bg-soc-panel border border-soc-border rounded px-2 py-1 text-xs text-slate-300"
+                        className="bg-soc-panel border border-soc-border rounded px-2 py-1 text-sm text-slate-300"
                         value={transportById[cr.id] || "ssh"}
                         onChange={(e) => setTransportById((prev) => ({ ...prev, [cr.id]: e.target.value }))}
                       >
@@ -574,7 +574,7 @@ export default function ChangeRequests() {
                         ))}
                       </select>
                       <button
-                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-900/40 text-sky-300 border border-sky-800/60 hover:bg-sky-900/60 disabled:opacity-50"
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium bg-sky-900/40 text-sky-300 border border-sky-800/60 hover:bg-sky-900/60 disabled:opacity-50"
                         disabled={busyId === cr.id}
                         onClick={() => deploy(cr.id)}
                       >

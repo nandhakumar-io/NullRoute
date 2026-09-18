@@ -8,8 +8,9 @@ html {
    * fine on a dense dark dashboard but is too small for a lot of real
    * screens/reviewers. Bumping the root size scales every rem-based
    * Tailwind text-* utility up proportionally without touching each
-   * call site. */
-  font-size: 19px;
+   * call site. Raised again (19px -> 21px) for a further visibility
+   * pass across every page, not just individual components. */
+  font-size: 21px;
 }
 
 body {
@@ -17,13 +18,17 @@ body {
 }
 
 /* Hard floor for the smallest, pixel-fixed text utilities (arbitrary
- * values like text-[10px]/[11px]/[13px] ignore the root font-size change
- * above since they're absolute px, not rem). Bring them up to a legible
- * floor on both themes. The nav rail (App.tsx) is built almost entirely
- * out of text-[13px]/[11px], so this is also the fix for "nav text too
- * small/hard to read". */
-.text-\[10px\], .text-\[11px\] { font-size: 13px !important; }
-.text-\[13px\] { font-size: 15px !important; }
+ * values like text-[9px]/[10px]/[11px]/[13px] ignore the root font-size
+ * change above since they're absolute px, not rem). Bring them up to a
+ * legible floor on both themes. The nav rail (App.tsx) is built almost
+ * entirely out of text-[13px]/[11px], so this is also the fix for "nav
+ * text too small/hard to read". Raised again for the app-wide visibility
+ * pass -- every text-[Npx] utility in the whole codebase, not just the
+ * two or three sizes most pages happened to use. */
+.text-\[9px\], .text-\[10px\], .text-\[11px\] { font-size: 15px !important; }
+.text-\[12px\] { font-size: 16px !important; }
+.text-\[13px\] { font-size: 17px !important; }
+.text-\[14px\] { font-size: 18px !important; }
 
 /* Nav rail: bump weight + a touch of letter-spacing so labels read clearly
  * against the dark rail background at a glance, not just "technically

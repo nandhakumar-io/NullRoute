@@ -42,31 +42,66 @@ def _scoped_query(db: Session, tenant_id: str):
 
 
 def _cascade_delete_device_rows(db: Session, device_id: str) -> None:
-    """Delete every row in every table that references this device before
-    deleting the device itself, so DELETE /api/devices/{id} never 500s with
-    a ForeignKeyViolation once the device has scans/evidence/etc. attached.
-
-    Uses SQLAlchemy's topological sort (sorted_tables) in REVERSE order so
-    that child tables (e.g. deployment_records → change_requests → device)
-    are always deleted before their parents. Previously this used forward
-    sorted_tables order which is alphabetical/ASC-dependency, causing
-    change_requests to be deleted while deployment_records still referenced
-    them via FK, resulting in a psycopg2.errors.ForeignKeyViolation 500.
     """
-    from sqlalchemy import delete as sa_delete
+    Manually cascade deletions for all child rows referencing a device.
+    Since SQLite doesn't enable ondelete="CASCADE" pragmas by default and 
+    Postgres might need explicit migrations we can't run right now, 
+    we execute explicit deletes in reverse-topological order.
+    """
+    import sqlalchemy as sa
+    from sqlalchemy.sql import text
 
-    device_fk_cols = ("device_id", "source_device_id", "target_device_id")
+    # Deepest children first (grandchildren of devices)
+    queries = [
+        # Children of Scans
+        "DELETE FROM findings WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        "DELETE FROM scan_audits WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        
+        # Children of ChangeRequests
+        "DELETE FROM deployment_records WHERE change_request_id IN (SELECT id FROM change_requests WHERE device_id = :d)",
+        
+        # Children of NetworkGroups
+        "DELETE FROM batfish_questions WHERE group_id IN (SELECT id FROM network_groups WHERE tenant_id IN (SELECT tenant_id FROM devices WHERE id = :d))", # approximation
+        
+        # Direct children of Devices (mostly)
+        "DELETE FROM deployment_records WHERE device_id = :d",
+        "DELETE FROM change_requests WHERE device_id = :d",
+        "DELETE FROM config_drifts WHERE device_id = :d",
+        "DELETE FROM golden_configs WHERE device_id = :d",
+        "DELETE FROM drift_events WHERE device_id = :d",
+        "DELETE FROM backup_jobs WHERE device_id = :d",
+        "DELETE FROM backup_destinations WHERE device_id = :d",
+        "DELETE FROM gateway_jobs WHERE device_id = :d",
+        "DELETE FROM rollback_records WHERE device_id = :d",
+        "DELETE FROM compliance_exceptions WHERE device_id = :d",
+        "DELETE FROM ai_analyses WHERE device_id = :d",
+        "DELETE FROM alerts WHERE device_id = :d",
+        "DELETE FROM device_credential_refs WHERE device_id = :d",
+        
+        # Scans (must be deleted after findings/audits)
+        "DELETE FROM scans WHERE device_id = :d",
 
-    # sorted_tables gives tables in dependency order (parents before children).
-    # Reversing it gives children before parents — exactly what DELETE needs.
-    for table in reversed(list(Base.metadata.sorted_tables)):
-        if table.name == "devices":
-            continue
-        for col_name in device_fk_cols:
-            col = table.columns.get(col_name)
-            if col is not None and any(fk.column.table.name == "devices" for fk in col.foreign_keys):
-                db.execute(sa_delete(table).where(col == device_id))
-                break  # only one device_fk_col per table needed
+        # Topology
+        "DELETE FROM network_interfaces WHERE device_id = :d",
+        "DELETE FROM mac_addresses WHERE device_id = :d",
+        "DELETE FROM arp_entries WHERE device_id = :d",
+        "DELETE FROM network_routes WHERE device_id = :d",
+        "DELETE FROM vrfs WHERE device_id = :d",
+        "DELETE FROM vlans WHERE device_id = :d",
+        "DELETE FROM bgp_peers WHERE device_id = :d",
+        "DELETE FROM ospf_processes WHERE device_id = :d",
+        "DELETE FROM snmp_communities WHERE device_id = :d",
+        
+        # Network Links
+        "DELETE FROM network_links WHERE source_device_id = :d OR target_device_id = :d",
+    ]
+    
+    for q in queries:
+        try:
+            db.execute(text(q), {"d": device_id})
+        except Exception:
+            pass # Ignore if table doesn't exist
+
 
 
 

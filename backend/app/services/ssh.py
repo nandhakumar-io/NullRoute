@@ -56,6 +56,7 @@ class SSHDeployer(BaseDeployer):
             "secret": secret.get("enable_password", ""),
             "timeout": int(secret.get("timeout", 20)),
             "port": int(secret.get("port", 22)),
+            "ssh_config_file": "/opt/NullRoute/backend/.ssh_config",
         }
 
         try:

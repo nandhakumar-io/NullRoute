@@ -1,11 +1,20 @@
-from typing import Optional
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.ai.model_registry import get_registry
-from app.ai.schemas import AIHealth, AIModelInfo, AIModelsOut
+from app.ai.schemas import (
+    AIHealth,
+    AIModelInfo,
+    AIModelsOut,
+    ConfidenceTrendOut,
+    ConfidenceTrendPoint,
+    ModelHistoryPoint,
+)
 from app.db import get_db
-from app.models.db import AIAnalysis, CommandMapping, Device, Scan
+from app.models.db import AIAnalysis, CommandMapping, Device, ModelRegistryEntry, Scan
 
 from app.auth.dependencies import get_current_tenant, get_current_user, require_role
 
@@ -141,6 +150,95 @@ def ai_models():
             "classifier_confidence": registry.thresholds.classifier_confidence,
             "semantic_similarity": registry.thresholds.semantic_similarity,
         },
+    )
+
+
+@router.get("/ai/confidence-trend", response_model=ConfidenceTrendOut)
+def get_confidence_trend(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """Reviewer-facing 'is the classifier drifting' view (Section 10).
+
+    Buckets this tenant's AIAnalysis rows by day and reports the average
+    classifier confidence / semantic similarity / review rate per day,
+    plus the model-registry lifecycle (retrain -> accuracy) so a dip in
+    confidence can be correlated against an actual model change rather
+    than eyeballed from raw numbers. Computed entirely from rows already
+    persisted during scans -- never a synthetic or interpolated value,
+    and a day with zero analyses is simply absent rather than filled in.
+    """
+    registry = get_registry()
+    window_start = datetime.utcnow() - timedelta(days=max(1, min(days, 365)))
+
+    rows = (
+        db.query(AIAnalysis)
+        .filter((AIAnalysis.tenant_id == tenant_id) | (AIAnalysis.tenant_id.is_(None)))
+        .filter(AIAnalysis.created_at >= window_start)
+        .order_by(AIAnalysis.created_at.asc())
+        .all()
+    )
+
+    buckets: Dict[str, List[AIAnalysis]] = defaultdict(list)
+    for r in rows:
+        if r.created_at:
+            buckets[r.created_at.date().isoformat()].append(r)
+
+    threshold = registry.thresholds.classifier_confidence
+    points: List[ConfidenceTrendPoint] = []
+    for day in sorted(buckets.keys()):
+        day_rows = buckets[day]
+        n = len(day_rows)
+        below_threshold = sum(1 for r in day_rows if r.classifier_confidence < threshold)
+        requires_review = sum(1 for r in day_rows if r.requires_review)
+        points.append(
+            ConfidenceTrendPoint(
+                date=day,
+                analysis_count=n,
+                avg_classifier_confidence=round(sum(r.classifier_confidence for r in day_rows) / n, 4),
+                avg_semantic_similarity=round(sum(r.semantic_similarity for r in day_rows) / n, 4),
+                requires_review_rate=round(requires_review / n, 4),
+                below_threshold_rate=round(below_threshold / n, 4),
+            )
+        )
+
+    # Drift signal: compare the average of the earliest vs the most recent
+    # quarter of the window (never fewer than 1 day on each side), so a
+    # single noisy day can't flip the flag either way.
+    drift_detected = False
+    drift_alert_delta = 0.10
+    if len(points) >= 2:
+        span = max(1, len(points) // 4)
+        earliest_avg = sum(p.avg_classifier_confidence for p in points[:span]) / span
+        recent_avg = sum(p.avg_classifier_confidence for p in points[-span:]) / span
+        drift_detected = (earliest_avg - recent_avg) >= drift_alert_delta
+
+    history_rows = (
+        db.query(ModelRegistryEntry)
+        .filter(ModelRegistryEntry.model_type == "classifier")
+        .order_by(ModelRegistryEntry.training_timestamp.asc().nulls_last())
+        .all()
+    )
+    model_history = [
+        ModelHistoryPoint(
+            model_id=m.id,
+            model_version=(m.metrics or {}).get("model_version") if m.metrics else None,
+            status=m.status,
+            accuracy=(m.metrics or {}).get("accuracy") if m.metrics else None,
+            dataset_version=m.dataset_version,
+            training_timestamp=m.training_timestamp.isoformat() if m.training_timestamp else None,
+        )
+        for m in history_rows
+    ]
+
+    return ConfidenceTrendOut(
+        current_model_version=registry.model_version,
+        confidence_threshold=threshold,
+        drift_detected=drift_detected,
+        drift_alert_delta=drift_alert_delta,
+        points=points,
+        model_history=model_history,
     )
 
 

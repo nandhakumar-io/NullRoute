@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { endpoints, Device, DiscoveredHost, DiscoverResponse, NetworkScanJob, NetworkScanJobCreate } from "../api";
-import { PageHeader, Loading } from "../components/ui";
-import StatCard from "../components/StatCard";
+import { endpoints, Device, DiscoveredHost, DiscoveryJob, NetworkScanJob, NetworkScanJobCreate } from "../api";
+import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
 
 const FRAMEWORKS = ["ALL", "CIS", "NIST", "DISA_STIG", "ISO_27001"];
 const DEFAULT_PORTS = "22,23,80,161,443,830,8443,6030,57400";
@@ -191,14 +190,15 @@ function ScanJobsTab({ devices }: { devices: Device[] }) {
 
       {jobs.length > 0 && (
         <div className="px-8 mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatCard label="Total Scan Jobs" value={jobs.length} accent="blue" />
-          <StatCard label="In Progress" value={jobs.filter(j => j.status === 'RUNNING' || j.status === 'PENDING').length} accent="amber" />
-          <StatCard label="Finished" value={jobs.filter(j => j.status === 'COMPLETED' || j.status === 'PARTIAL' || j.status === 'FAILED').length} accent="green" />
+          <StatCard label="Total Scan Jobs" value={jobs.length} tone="good" />
+          <StatCard label="In Progress" value={jobs.filter(j => j.status === 'RUNNING' || j.status === 'PENDING').length} tone="medium" />
+          <StatCard label="Finished" value={jobs.filter(j => j.status === 'COMPLETED' || j.status === 'PARTIAL' || j.status === 'FAILED').length} tone="low" />
         </div>
       )}
 
-      <div className="px-8 mb-8 mt-6">        {jobs.length === 0 ? (
-          <div className="card text-slate-500 text-sm">No network scan jobs yet. Create one above.</div>
+      <div className="px-8 mb-8 mt-6">
+        {jobs.length === 0 ? (
+          <EmptyState message="No network scan jobs yet. Create one above." />
         ) : (
           <div className="card p-0 overflow-x-auto">
             <table className="w-full text-sm">
@@ -255,7 +255,7 @@ function DiscoveryTab({ existingDevices, onImported }: { existingDevices: Device
   const [ports, setPorts] = useState(DEFAULT_PORTS);
   const [serviceDetection, setServiceDetection] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<DiscoverResponse | null>(null);
+  const [result, setResult] = useState<DiscoveryJob | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const existingAddresses = useRef<Set<string>>(new Set());

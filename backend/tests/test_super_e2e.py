@@ -173,8 +173,15 @@ def test_super_e2e_full_pipeline(db):
     if r_bf.status_code == 200:
         bf_data = r_bf.json()
         print(f"  -> Batfish status={bf_data.get('status')}, issues={bf_data.get('issues_found', 0)}")
-    else:
-        print(f"  -> Batfish unavailable (acceptable for local env): {batfish_status}")
+    # Use the batfish_status embedded on the scan detail to confirm Batfish
+    # actually ran, not just silently fell back to UNAVAILABLE.
+    print(f"  -> Scan-level batfish_status={batfish_status}")
+    assert batfish_status != "BATFISH_UNAVAILABLE", (
+        f"Batfish ran but returned UNAVAILABLE — coordinator may be unreachable "
+        f"or snapshot directory missing. Got batfish_status={batfish_status}"
+    )
+    print(f"  -> ✅ Batfish analysis completed with status={batfish_status}")
+
 
     # -----------------------------------------------------------------------
     # STAGE 6 — AI Remediation generation (LLM-powered)
@@ -302,7 +309,34 @@ def test_super_e2e_full_pipeline(db):
     # -----------------------------------------------------------------------
     # STAGE 12 — Compliance report (cryptographic evidence artifact)
     # -----------------------------------------------------------------------
-    print("\n=== STAGE 12: Compliance Report Generation ===")
+    print("\n=== STAGE 12: Compliance Report + Blockchain Anchoring ===")
+
+    # Verify evidence record was created and blockchain anchor attempted
+    from app.db import SessionLocal as _SL
+    from app.models.db import EvidenceRecord
+    _db = _SL()
+    try:
+        evidence_record = _db.query(EvidenceRecord).filter(EvidenceRecord.scan_id == scan_id).first()
+        if evidence_record:
+            print(f"  -> evidence_id={evidence_record.evidence_id}")
+            print(f"  -> fabric_status={evidence_record.fabric_status}")
+            print(f"  -> fabric_tx_id={evidence_record.fabric_tx_id}")
+            assert evidence_record.fabric_status in ("ANCHORED", "FABRIC_UNAVAILABLE", "NOT_ANCHORED"), (
+                f"Unexpected fabric_status: {evidence_record.fabric_status}"
+            )
+            assert evidence_record.fabric_status == "ANCHORED", (
+                f"Blockchain anchoring failed — expected ANCHORED, got {evidence_record.fabric_status}. "
+                f"Is fabric-gateway running with FABRIC_MOCK=true?"
+            )
+            assert evidence_record.fabric_tx_id, (
+                "Blockchain tx_id is empty — anchor did not return a transaction ID"
+            )
+            print(f"  -> ✅ Blockchain anchored: tx_id={evidence_record.fabric_tx_id}, block={evidence_record.fabric_block_number}")
+        else:
+            print("  -> WARNING: No evidence record found for this scan")
+    finally:
+        _db.close()
+
     # Try downloading an existing report first
     r = client.get(f"/api/reports/artifact/{scan_id}/download")
     if r.status_code == 404:
@@ -319,6 +353,7 @@ def test_super_e2e_full_pipeline(db):
     else:
         assert r.status_code == 200, f"Report download failed: {r.text}"
         print(f"  -> Report artifact downloaded: {len(r.content)} bytes")
+
 
     # -----------------------------------------------------------------------
     # Final Summary

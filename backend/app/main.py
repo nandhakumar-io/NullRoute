@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -32,6 +33,67 @@ from app.routers import (
 )
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("app.main")
+
+# RUN_EMBEDDED_WORKERS -- every background worker (scheduled audits, HITL
+# training jobs, metrics polling, vuln sync, evidence verification, network
+# scans) is designed to run as its own long-lived process (see the docstrings
+# in app/workers/*.py and the dedicated services in docker-compose.yml).
+# That's correct for docker-compose, but local/dev runs of
+# `uvicorn app.main:app --reload` (backend/run.sh) never start those
+# containers, so nothing ever executed: schedules and training jobs sat
+# QUEUED forever even though the API said everything worked. Default this ON
+# so a single `uvicorn`/`run.sh` process is fully functional out of the box;
+# docker-compose.yml sets RUN_EMBEDDED_WORKERS=false on the `backend` service
+# so the dedicated worker containers there are the only ones running each
+# loop (never both at once).
+RUN_EMBEDDED_WORKERS = os.getenv("RUN_EMBEDDED_WORKERS", "true").lower() == "true"
+
+_embedded_worker_tasks: list[asyncio.Task] = []
+
+
+def _start_embedded_workers() -> None:
+    if not RUN_EMBEDDED_WORKERS:
+        logger.info("RUN_EMBEDDED_WORKERS=false -- expecting dedicated worker containers/processes.")
+        return
+
+    from app.workers import (
+        scheduler_worker, training_worker, metrics_poller_worker,
+        vuln_sync_worker, evidence_verification_worker, network_scan_worker,
+    )
+
+    # Each of these is the exact same loop function the standalone
+    # `python -m app.workers.X` entrypoint runs -- no second implementation.
+    targets = [
+        ("scheduler", scheduler_worker._loop),
+        ("training", training_worker.main),
+        ("metrics-poller", metrics_poller_worker._loop),
+        ("vuln-sync", vuln_sync_worker._loop),
+        ("evidence-verification", evidence_verification_worker._loop),
+        ("network-scan", network_scan_worker._loop),
+    ]
+    for name, coro_fn in targets:
+        async def _guarded(fn=coro_fn, label=name) -> None:
+            try:
+                await fn()
+            except Exception:  # noqa: BLE001 - one worker crashing must never take down the API
+                logger.exception("Embedded worker %s crashed", label)
+
+        task = asyncio.create_task(_guarded(), name=f"embedded-worker-{name}")
+        _embedded_worker_tasks.append(task)
+    logger.info("Started %d embedded background workers in-process: %s",
+                len(_embedded_worker_tasks), ", ".join(t.get_name() for t in _embedded_worker_tasks))
+
+
+async def _stop_embedded_workers() -> None:
+    for task in _embedded_worker_tasks:
+        task.cancel()
+    for task in _embedded_worker_tasks:
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+    _embedded_worker_tasks.clear()
 
 
 @asynccontextmanager
@@ -40,7 +102,11 @@ async def lifespan(app: FastAPI):
     # Load the trained-AI models (DistilBERT classifier + MiniLM embedder)
     # exactly once here — never per-request. See app/ai/model_registry.py.
     init_ai_registry()
-    yield
+    _start_embedded_workers()
+    try:
+        yield
+    finally:
+        await _stop_embedded_workers()
 
 
 app = FastAPI(

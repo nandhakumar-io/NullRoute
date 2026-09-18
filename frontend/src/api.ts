@@ -251,6 +251,11 @@ export interface Finding {
   evidence_line: string | null;
   remediation: string | null;
   presentation_result?: string | null;
+  // Trust-boundary provenance (see models.Finding): 'parser' | 'ai' | null,
+  // with a 0-1 confidence when an AI/RAG interpretation produced this
+  // finding's normalized parameter.
+  source?: "parser" | "ai" | null;
+  confidence?: number | null;
   created_at?: string | null;
 }
 
@@ -518,6 +523,33 @@ export interface AIHealth {
   reference_examples: number;
 }
 
+export interface ConfidenceTrendPoint {
+  date: string;
+  analysis_count: number;
+  avg_classifier_confidence: number;
+  avg_semantic_similarity: number;
+  requires_review_rate: number;
+  below_threshold_rate: number;
+}
+
+export interface ModelHistoryPoint {
+  model_id: string;
+  model_version: string | null;
+  status: string;
+  accuracy: number | null;
+  dataset_version: string;
+  training_timestamp: string | null;
+}
+
+export interface ConfidenceTrendOut {
+  current_model_version: string;
+  confidence_threshold: number;
+  drift_detected: boolean;
+  drift_alert_delta: number;
+  points: ConfidenceTrendPoint[];
+  model_history: ModelHistoryPoint[];
+}
+
 export interface ServiceHealthEntry {
   name: string;
   category: "core" | "optional";
@@ -533,6 +565,24 @@ export interface SystemHealth {
   core_services: ServiceHealthEntry[];
   optional_integrations: ServiceHealthEntry[];
   checked_at: number;
+}
+
+export interface ComplianceSummary {
+  framework_compliance: Record<string, number>;
+  severity_heatmap: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
+  top_noncompliant_devices: {
+    device_id: string;
+    hostname: string;
+    vendor: string | null;
+    compliance_score: number;
+  }[];
+  ai_health: {
+    ollama_reachable: boolean;
+    ollama_host: string;
+    production_model: string | null;
+    production_model_macro_f1: number | null;
+    pending_hitl_reviews: number;
+  };
 }
 
 export interface AIModelInfo {
@@ -686,6 +736,18 @@ export interface TopologyGroup {
   created_at: string;
 }
 
+export interface BatfishFlowDiff {
+  control_id: string;
+  title: string;
+  source_zone: string;
+  destination_zone: string;
+  severity: string;
+  before: "REACHABLE" | "BLOCKED" | "UNKNOWN";
+  after: "REACHABLE" | "BLOCKED" | "UNKNOWN";
+  changed: boolean;
+  result: "CRITICAL NETWORK IMPACT" | "NETWORK IMPACT" | "NO IMPACT";
+}
+
 export interface SnapshotDiff {
   status: string;
   network_name?: string | null;
@@ -693,7 +755,8 @@ export interface SnapshotDiff {
   proposed_snapshot?: string | null;
   node_delta?: { added: string[]; removed: string[] };
   route_delta?: { current_count: number; proposed_count: number; count_delta: number };
-  differential_reachability?: { status: string; changed_flow_count?: number; detail?: string };
+  differential_reachability?: { status: string; changed_flow_count?: number; sample?: string[]; method?: string; detail?: string };
+  flow_diffs?: BatfishFlowDiff[];
   included_device_ids?: string[];
   device_had_prior_config?: boolean;
   detail?: string;
@@ -944,13 +1007,7 @@ export interface ChangeRequest {
   // CURRENT-vs-PROPOSED Batfish snapshot diff (node/route delta,
   // differential reachability), or null when no prior known config
   // existed to diff against / Batfish is disabled / vendor unsupported.
-  snapshot_diff: {
-    status: string;
-    detail?: string;
-    node_delta?: { added: string[]; removed: string[] };
-    route_delta?: { current_count: number; proposed_count: number; count_delta: number };
-    differential_reachability?: { status: string; changed_flow_count?: number; detail?: string };
-  } | null;
+  snapshot_diff: SnapshotDiff | null;
   approval_required: boolean;
   approved_by: string | null;
   approved_at: string | null;
@@ -1069,6 +1126,20 @@ export interface DatasetVersion {
   is_immutable: boolean;
 }
 
+export interface TrainingExample {
+  id: string;
+  vendor: string | null;
+  intent: string | null;
+  raw_config_redacted: string;
+  normalized_facts: Record<string, any>;
+  human_action: "APPROVED" | "CORRECTED" | "REJECTED";
+  correction_reason: string | null;
+  created_by: string;
+  created_at: string | null;
+  dataset_version: string | null;
+  validation_status: "PENDING" | "VALIDATED" | "EXCLUDED";
+}
+
 export interface TrainingJob {
   id: string;
   tenant_id: string | null;
@@ -1177,8 +1248,10 @@ export const endpoints = {
   aiAnalysis: (scanId: string) => api.get<ScanAIAnalysis>(`/api/scans/${scanId}/ai`),
   aiRemediation: (scanId: string) => api.get<any>(`/api/scans/${scanId}/remediation/generate-cli`),
   aiHealth: () => api.get<AIHealth>("/api/ai/health"),
+  confidenceTrend: (days = 30) => api.get<ConfidenceTrendOut>("/api/ai/confidence-trend", { params: { days } }),
   reviewQueue: (limit = 100) => api.get<ReviewQueueResponse>("/api/ai/review-queue", { params: { limit } }),
   systemHealth: () => api.get<SystemHealth>("/api/system/health"),
+  complianceSummary: () => api.get<ComplianceSummary>("/api/metrics/compliance-summary"),
   findings: (params?: { scan_id?: string; severity?: string; result?: string; vendor?: string }) =>
     api.get<Finding[]>("/api/findings", { params }),
   finding: (findingId: string) => api.get<Finding>(`/api/findings/${findingId}`),
@@ -1210,6 +1283,11 @@ export const endpoints = {
   approvedMappings: () => api.get<CommandMapping[]>("/api/training/approved"),
   reviewMapping: (id: string, payload: { action: "approve" | "correct" | "reject", normalized_parameter?: string, normalized_facts?: Record<string, any>, correction_reason?: string }) =>
     api.post(`/api/training/${id}/review`, payload),
+  trainingExamples: (status: "PENDING" | "VALIDATED" | "EXCLUDED" = "PENDING", humanAction?: string) =>
+    api.get<TrainingExample[]>(`/api/training/examples?status=${status}${humanAction ? `&human_action=${humanAction}` : ""}`),
+  validateTrainingExample: (id: string) => api.post<TrainingExample>(`/api/training/examples/${id}/validate`),
+  excludeTrainingExample: (id: string) => api.post<TrainingExample>(`/api/training/examples/${id}/exclude`),
+  bulkValidateTrainingExamples: (ids: string[]) => api.post<{ validated_count: number; validated_ids: string[] }>("/api/training/examples/bulk-validate", ids),
   datasets: () => api.get<DatasetVersion[]>("/api/ai/datasets"),
   createDataset: (versionLabel: string) => api.post<DatasetVersion>(`/api/ai/datasets?version_label=${encodeURIComponent(versionLabel)}`),
   trainingJobs: () => api.get<TrainingJob[]>("/api/ai/training/jobs"),
@@ -1372,6 +1450,10 @@ export const endpoints = {
   changeRequests: (params?: { status?: string; device_id?: string }) =>
     api.get<{ count: number; change_requests: ChangeRequest[] }>("/api/change-requests", { params }),
   changeRequest: (id: string) => api.get<ChangeRequest>(`/api/change-requests/${id}`),
+  changeRequestConfigs: (id: string) =>
+    api.get<{ current_config: string | null; proposed_config: string | null; current_config_hash: string | null; proposed_config_hash: string | null }>(
+      `/api/change-requests/${id}/configs`,
+    ),
   createChangeRequest: (deviceId: string, proposedConfig: string) =>
     api.post<ChangeRequest>("/api/change-requests", { device_id: deviceId, proposed_config: proposedConfig }),
   approveChangeRequest: (id: string) => api.post<ChangeRequest>(`/api/change-requests/${id}/approve`),

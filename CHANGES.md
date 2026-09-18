@@ -78,6 +78,43 @@ Postgres, in-process cosine/token-overlap fallback on SQLite), scoped by
 tenant. `backend/app/services/pipeline.py` now passes `scan.tenant_id`
 through to it.
 
+## 6. `/api/metrics/compliance-summary` 500, and the dataset/training gate was silently a no-op
+Two separate bugs found from a crash log:
+
+- **The crash**: `backend/app/routers/metrics.py::get_compliance_summary` ordered
+  the most-recent-production-model query by `ModelRegistryEntry.created_at`,
+  which doesn't exist on that model (`AttributeError`). Fixed to order by
+  `approved_at` — the timestamp that actually reflects when a model was
+  promoted to `PRODUCTION`.
+- **The real gap this session was asked to close**: "human corrections become
+  reusable training data" already worked for the embedding half (see §5) —
+  every approved/corrected mapping gets embedded via
+  `vector_search.store_embedding()`. But `dataset_service.create_dataset_version()`
+  only ever snapshots `TrainingExample` rows with `validation_status ==
+  "VALIDATED"`, and **nothing anywhere set that status** — it defaults to
+  `PENDING` and stayed there forever. So every dataset ever compiled would
+  be empty, and no training job built from one would have any data.
+  Added the missing second HITL gate:
+  - `backend/app/routers/training.py` — `GET /api/training/examples`
+    (queue, filterable by `validation_status` and `human_action`),
+    `POST /api/training/examples/{id}/validate`,
+    `POST /api/training/examples/{id}/exclude`,
+    `POST /api/training/examples/bulk-validate`. Same `admin`/
+    `security_analyst` role gate as mapping review, same
+    `audit_service.record_from_user()` logging.
+  - `backend/app/schemas.py` — `TrainingExampleOut`.
+  - `frontend/src/pages/TrainingCenter.tsx` — new "Training Examples" tab
+    between Human Review and Datasets: filter by action (e.g. just
+    `CORRECTED` to see the unknown-command fixes), checkbox multi-select +
+    bulk validate, per-row validate/exclude. Tab bar redone with icons and
+    a live pending-count badge.
+  - `frontend/src/api.ts` — `TrainingExample` type,
+    `trainingExamples()`/`validateTrainingExample()`/
+    `excludeTrainingExample()`/`bulkValidateTrainingExamples()`.
+
+No schema/migration change — `TrainingExample.validation_status` already
+existed, it was simply never written to.
+
 ## Not done / suggested next steps
 - No `npm install`/`vite build` or `pytest` run was possible in this
   sandbox (no network access) — the Python files were verified with
@@ -89,4 +126,11 @@ through to it.
   pass beyond that — worth a visual check.
 - Neighbor discovery currently only works over SNMP (LLDP-MIB). CDP over
   SSH `show cdp neighbors detail` would be a good follow-up for
-  Cisco-heavy fleets that don't run LLDP.
+  Cisco-heavy fleets that disable LLDP.
+- `dataset_service.create_dataset_version()` still requires the caller to
+  pass a `version_label` by hand (`POST /api/ai/datasets?version_label=...`)
+  — worth auto-generating a default label (e.g. date + example count) in
+  the frontend so a reviewer isn't stuck typing one.
+- Consider a lighter-weight approval path for `human_action == "APPROVED"`
+  examples (no correction, so lower review burden) vs. `CORRECTED` ones —
+  right now both go through the same one-by-one/bulk validate UI.

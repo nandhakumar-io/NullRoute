@@ -563,7 +563,7 @@ export default function DeviceDetail() {
               </div>
             </div>
           )}
-          {snmpHealth?.interface_health?.length > 0 && (
+          {snmpHealth && (snmpHealth.interface_health || []).length > 0 && (
             <div className="mb-4">
               <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">
                 Interface Traffic &amp; Errors (SNMP IF-MIB)

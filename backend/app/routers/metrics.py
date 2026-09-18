@@ -190,7 +190,7 @@ def get_compliance_summary(
     prod_model = (
         db.query(ModelRegistryEntry)
         .filter(ModelRegistryEntry.status == "PRODUCTION")
-        .order_by(ModelRegistryEntry.created_at.desc())
+        .order_by(ModelRegistryEntry.approved_at.desc())
         .first()
     )
 

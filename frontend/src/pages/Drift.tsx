@@ -19,6 +19,7 @@ import type {
 import { useAuth } from "../context/AuthContext";
 import { useToast, errorMessage } from "../lib/toast";
 import { useConfirm } from "../lib/confirm";
+import { PageHeader, Loading } from "../components/ui";
 
 // ─── style maps ──────────────────────────────────────────────────────────────
 
@@ -361,30 +362,15 @@ export default function DriftPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-slate-400 text-sm">Loading drift data…</p>
-        </div>
-      </div>
-    );
+    return <Loading />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      {/* ── PAGE HEADER ── */}
-      <div className="px-8 pt-8 pb-6 border-b border-slate-800/60 bg-slate-900">
-        <div className="flex items-start justify-between flex-wrap gap-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-100 tracking-tight flex items-center gap-3">
-              <span className="text-2xl">📡</span> Configuration Drift
-            </h1>
-            <p className="text-slate-400 text-sm mt-1 max-w-2xl">
-              Detect when live device configs diverge from their golden baseline — scanned continuously and on-demand.
-              Unauthorised changes surface immediately, with AI-scored risk and one-click remediation.
-            </p>
-          </div>
+    <div>
+      <PageHeader
+        title="Configuration Drift"
+        subtitle="Detect when live device configs diverge from their golden baseline — scanned continuously and on-demand. Unauthorised changes surface immediately, with AI-scored risk and one-click remediation."
+        action={
           <div className="flex gap-2 shrink-0">
             <button onClick={loadWeekly} className="text-xs font-bold uppercase tracking-wider px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors">
               📋 This Week's Drift
@@ -395,8 +381,8 @@ export default function DriftPage() {
               </button>
             )}
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="px-8 py-6 space-y-6">
         {/* ── STAT CARDS ── */}

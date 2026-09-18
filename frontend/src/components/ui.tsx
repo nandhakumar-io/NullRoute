@@ -209,24 +209,48 @@ export function decisionTone(v?: string | null): PipelineTone {
  * Compact, connected step indicator: a row of labeled dots joined by a
  * line, each colored by outcome. Used both inline in a list row (dense)
  * and as the header strip of a result page (roomier, via `size="lg"`).
+ *
+ * `revealedCount`, when provided, makes this step through its real,
+ * backend-confirmed values one at a time instead of rendering every step's
+ * final tone/value the instant the surrounding data arrives — the same
+ * "never snap straight to all done" treatment the Pipeline Flow stage
+ * tracker uses. Steps at index >= revealedCount are shown as a neutral
+ * "pending" placeholder (dimmed dot, no value) until their turn comes up.
+ * Omit it (or pass a number >= steps.length) to render everything as-is,
+ * which keeps every existing caller working unchanged.
  */
-export function DecisionPipeline({ steps, size = "md" }: { steps: PipelineStepData[]; size?: "sm" | "md" | "lg" }) {
+export function DecisionPipeline({
+  steps,
+  size = "md",
+  revealedCount,
+}: {
+  steps: PipelineStepData[];
+  size?: "sm" | "md" | "lg";
+  revealedCount?: number;
+}) {
   const dotSize = size === "lg" ? "w-3.5 h-3.5" : size === "sm" ? "w-2 h-2" : "w-2.5 h-2.5";
   const gap = size === "lg" ? "gap-1.5" : "gap-1";
   const labelSize = size === "lg" ? "text-xs" : "text-[10px]";
+  const reveal = revealedCount === undefined ? steps.length : revealedCount;
   return (
     <div className="flex items-center w-full">
       {steps.map((step, i) => {
-        const style = PIPELINE_TONE_STYLES[step.tone];
+        const isRevealed = i < reveal;
+        const isNext = i === reveal;
+        const effective: PipelineStepData = isRevealed ? step : { label: step.label, value: "—", tone: "pending" };
+        const style = PIPELINE_TONE_STYLES[effective.tone];
         return (
           <div key={step.label} className={`flex items-center ${i < steps.length - 1 ? "flex-1" : ""}`}>
-            <div className={`flex flex-col items-center ${gap} shrink-0`} title={step.sublabel ? `${step.value} — ${step.sublabel}` : step.value}>
-              <span className={`rounded-full ${dotSize} ${style.dot} ring-4 ${style.ring}`} />
+            <div
+              className={`flex flex-col items-center ${gap} shrink-0 transition-all duration-500 ${isRevealed ? "opacity-100 scale-100" : "opacity-50 scale-95"}`}
+              title={isRevealed && step.sublabel ? `${step.value} — ${step.sublabel}` : effective.value}
+            >
+              <span className={`rounded-full ${dotSize} ${style.dot} ring-4 ${style.ring} ${isNext ? "animate-pulse" : ""} transition-colors duration-500`} />
               <span className={`${labelSize} font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap`}>{step.label}</span>
-              <span className={`${labelSize} font-medium ${style.text} whitespace-nowrap`}>{step.value}</span>
+              <span className={`${labelSize} font-medium ${style.text} whitespace-nowrap transition-colors duration-500`}>{effective.value}</span>
             </div>
             {i < steps.length - 1 && (
-              <div className={`flex-1 h-px mx-2 ${step.tone === "pending" ? "bg-slate-800" : "bg-slate-700"}`} style={{ marginBottom: size === "lg" ? 20 : 14 }} />
+              <div className={`flex-1 h-px mx-2 transition-colors duration-500 ${i < reveal - 1 ? "bg-cyan-700" : "bg-slate-800"}`} style={{ marginBottom: size === "lg" ? 20 : 14 }} />
             )}
           </div>
         );

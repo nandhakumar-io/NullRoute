@@ -200,6 +200,26 @@ class ReportVerifyResultOut(BaseModel):
     message: str
 
 
+class TrainingExampleOut(BaseModel):
+    """A single HITL-reviewed example awaiting the second, dataset-level
+    human approval gate (validation_status PENDING -> VALIDATED/EXCLUDED)
+    before dataset_service.create_dataset_version() will include it."""
+    id: str
+    vendor: Optional[str]
+    intent: Optional[str]
+    raw_config_redacted: str
+    normalized_facts: dict
+    human_action: str  # APPROVED / CORRECTED / REJECTED
+    correction_reason: Optional[str]
+    created_by: str
+    created_at: Optional[datetime] = None
+    dataset_version: Optional[str] = None
+    validation_status: str
+
+    class Config:
+        from_attributes = True
+
+
 class MappingReviewIn(BaseModel):
     action: str  # "approve", "correct", or "reject"
     normalized_parameter: Optional[str] = None  # allow admin correction
@@ -254,17 +274,6 @@ class DashboardStats(BaseModel):
     # need a second round-trip just to show the headline number.
     total_findings: int = 0
     configuration_drift_count: int = 0
-    # Unified-dashboard KPIs (Task 4). NOTE: `dashboard()` in
-    # routers/compliance.py already computed these three values before this
-    # fix -- they were just silently dropped on the way out, because
-    # pydantic BaseModel.__init__ ignores unrecognized kwargs by default
-    # rather than raising. So /api/dashboard never 500'd; the "devices out
-    # of baseline" and MTTR posture chips just always rendered as if no
-    # data existed. Declaring the fields here is the entire fix -- the
-    # computation itself was already correct.
-    devices_out_of_baseline: int = 0
-    mttr_hours: Optional[float] = None
-    mttr_improvement_pct: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -384,3 +393,121 @@ class AuditLogOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 trained-AI classification/decision pipeline contracts. This is a
+# SEPARATE concern from app/ai/normalize.py (the Ollama/RAG LLM normalizer
+# used for unknown config lines during parsing); this section wraps the
+# trained DistilBERT intent classifier and all-MiniLM-L6-v2 semantic
+# embedding model behind a hybrid decision engine.
+#
+# Hard rule (see decision_engine.py): this section NEVER produces a
+# compliance PASS/FAIL. It only identifies/interprets configuration intent
+# and flags UNKNOWN/disagreement for human review.
+#
+# NOTE: nothing in this codebase currently imports these from app.schemas
+# (app.ai.schemas is the module routers actually use for AI contracts) --
+# kept here only because an earlier edit accidentally overwrote this whole
+# file with just this section, wiping the ~20 classes above. Restored those
+# and kept this section too rather than deleting content that might be
+# relied on elsewhere.
+# ---------------------------------------------------------------------------
+from pydantic import ConfigDict, Field
+
+UNKNOWN_INTENT = "UNKNOWN"
+
+
+class ClassifierResult(BaseModel):
+    intent: str
+    confidence: float
+    model_version: str
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class EmbeddingMatch(BaseModel):
+    nearest_intent: str
+    nearest_vendor: Optional[str] = None
+    similarity: float
+
+
+class AIAnalysisResult(BaseModel):
+    """Full hybrid decision output for one raw configuration line/command."""
+
+    raw_command: str
+    intent: str
+    classifier_confidence: float
+    semantic_similarity: float
+    nearest_intent: str
+    nearest_vendor: Optional[str] = None
+    models_agree: bool
+    decision: str  # KNOWN_CANDIDATE | UNKNOWN | REQUIRES_REVIEW
+    requires_review: bool
+    model_version: str
+    inference_latency_ms: float
+    reason: str
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class AIHealth(BaseModel):
+    ai_enabled: bool
+    classifier_loaded: bool
+    embedder_loaded: bool
+    classifier_backend: str
+    embedder_backend: str
+    model_version: str
+    reference_dataset: Optional[str] = None
+    reference_examples: int = 0
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class AIModelInfo(BaseModel):
+    component: str
+    path: Optional[str] = None
+    backend: str
+    loaded: bool
+    version: str
+
+
+class AIModelsOut(BaseModel):
+    models: List[AIModelInfo]
+    thresholds: dict = Field(default_factory=dict)
+
+
+class ConfidenceTrendPoint(BaseModel):
+    """One day's aggregate classifier behavior, for the reviewer-facing
+    'is the model drifting' chart. Computed purely from AIAnalysis rows
+    already recorded during scans — never a synthetic/estimated value."""
+
+    date: str  # YYYY-MM-DD
+    analysis_count: int
+    avg_classifier_confidence: float
+    avg_semantic_similarity: float
+    requires_review_rate: float  # 0-1, share of that day's analyses flagged for review
+    below_threshold_rate: float  # 0-1, share below the configured confidence threshold
+
+
+class ModelHistoryPoint(BaseModel):
+    """One model-registry lifecycle event, for correlating a confidence dip
+    on the trend chart with an actual retrain/promotion."""
+
+    model_id: str
+    model_version: Optional[str] = None
+    status: str
+    accuracy: Optional[float] = None
+    dataset_version: str
+    training_timestamp: Optional[str] = None
+    model_config = ConfigDict(protected_namespaces=())
+
+
+class ConfidenceTrendOut(BaseModel):
+    current_model_version: str
+    confidence_threshold: float
+    # True once the most recent window's average confidence has dropped
+    # more than `drift_alert_delta` below the earliest window in range —
+    # a plain-language drift signal, not just a chart the reviewer has to
+    # eyeball.
+    drift_detected: bool
+    drift_alert_delta: float = 0.10
+    points: List[ConfidenceTrendPoint]
+    model_history: List[ModelHistoryPoint]

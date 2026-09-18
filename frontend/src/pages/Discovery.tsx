@@ -341,7 +341,7 @@ export default function Discovery() {
                 </tr>
               </thead>
               <tbody>
-                {result.hosts.map((host) => {
+                {job.hosts.map((host) => {
                   const isKnown = existingAddresses.current.has(host.ip);
                   return (
                     <tr

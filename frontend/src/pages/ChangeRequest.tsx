@@ -4,6 +4,7 @@ import { endpoints, ChangeRequest, DeploymentRecord } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import SideBySideDiff from "../components/SideBySideDiff";
+import BatfishDeltaView from "../components/BatfishDeltaView";
 
 const STATUS_TONE: Record<string, string> = {
   APPROVED: "badge-pass",
@@ -50,87 +51,13 @@ const TRANSPORTS = [
 ];
 
 
-const SNAPSHOT_DIFF_TONE: Record<string, string> = {
-  BATFISH_PASS: "badge-pass",
-  BATFISH_FAIL: "badge-fail",
-  BATFISH_UNSUPPORTED: "badge-na",
-  BATFISH_UNAVAILABLE: "badge-na",
-  BATFISH_ERROR: "badge-fail",
-};
-
-// Network Impact panel: CURRENT-vs-PROPOSED Batfish snapshot diff. Shown
-// whenever a diff was actually attempted (status !== NOT_CHECKED) so a
-// reviewer sees behavioral deltas -- e.g. a newly-reachable path -- before
-// approving, not just OPA's single-snapshot verdict.
+// Network Impact panel: CURRENT-vs-PROPOSED Batfish snapshot diff, shown
+// whenever a diff was actually attempted, so a reviewer sees behavioral
+// deltas -- e.g. a newly-reachable path -- before approving, not just
+// OPA's single-snapshot verdict. Rendered as a visual topology/route/
+// reachability delta (see BatfishDeltaView) rather than raw key/value text.
 function SnapshotDiffPanel({ diff }: { diff: NonNullable<ChangeRequest["snapshot_diff"]> }) {
-  const nodesChanged = (diff.node_delta?.added?.length || 0) + (diff.node_delta?.removed?.length || 0) > 0;
-  const flowsChanged = (diff.differential_reachability?.changed_flow_count || 0) > 0;
-  return (
-    <div className="mt-2 rounded-lg border border-soc-border bg-soc-bg/40 p-3 text-xs space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="font-semibold text-slate-300">Network Impact (CURRENT vs PROPOSED)</span>
-        <span className={`badge ${SNAPSHOT_DIFF_TONE[diff.status] || "badge-na"}`}>{diff.status}</span>
-      </div>
-      {diff.detail && <div className="text-slate-500">{diff.detail}</div>}
-      {diff.node_delta && (
-        <div className={nodesChanged ? "text-amber-400" : "text-slate-500"}>
-          Nodes — added: {diff.node_delta.added.length ? diff.node_delta.added.join(", ") : "none"}; removed:{" "}
-          {diff.node_delta.removed.length ? diff.node_delta.removed.join(", ") : "none"}
-        </div>
-      )}
-      {diff.route_delta && (
-        <div className="text-slate-500">
-          Routes — current: {diff.route_delta.current_count}, proposed: {diff.route_delta.proposed_count}
-          {diff.route_delta.count_delta !== 0 && (
-            <span className="text-amber-400"> ({diff.route_delta.count_delta > 0 ? "+" : ""}{diff.route_delta.count_delta})</span>
-          )}
-        </div>
-      )}
-      {diff.differential_reachability && (
-        <div className={flowsChanged ? "text-red-400 font-medium" : "text-slate-500"}>
-          Differential reachability: {diff.differential_reachability.status}
-          {flowsChanged &&
-            ` — ${diff.differential_reachability.changed_flow_count} flow(s) changed reachability (review before approving)`}
-          {diff.differential_reachability.method === "TEXT_DIFF_FALLBACK" && (
-            <span className="ml-1 text-slate-500">(text-diff fallback — Batfish was unavailable; not a verified reachability result)</span>
-          )}
-        </div>
-      )}
-      {diff.flow_diffs && diff.flow_diffs.length > 0 && (
-        <div className="mt-1 space-y-1">
-          {diff.flow_diffs.map((f) => (
-            <div
-              key={f.control_id}
-              className={`rounded border px-2 py-1 ${
-                f.result === "CRITICAL NETWORK IMPACT"
-                  ? "border-red-500/50 bg-red-500/10"
-                  : f.result === "NETWORK IMPACT"
-                  ? "border-amber-500/50 bg-amber-500/10"
-                  : "border-soc-border/60 bg-transparent"
-              }`}
-            >
-              <div className="font-medium text-slate-300">
-                {f.source_zone} &rarr; {f.destination_zone}
-              </div>
-              <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-400">
-                <span>BEFORE: <span className={f.before === "REACHABLE" ? "text-red-400" : ""}>{f.before}</span></span>
-                <span>AFTER: <span className={f.after === "REACHABLE" ? "text-red-400" : ""}>{f.after}</span></span>
-                <span
-                  className={
-                    f.result === "CRITICAL NETWORK IMPACT" ? "font-semibold text-red-400"
-                      : f.result === "NETWORK IMPACT" ? "font-semibold text-amber-400"
-                      : "text-slate-500"
-                  }
-                >
-                  RESULT: {f.result}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  return <BatfishDeltaView diff={diff} />;
 }
 
 // Before/After config diff, fetched lazily from GET /{id}/configs (MinIO

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch } from "../api";
+import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch, ChangeRequest, DeploymentRecord } from "../api";
 import {
   PageHeader, Loading, ScoreRing, SeverityBadge, ResultBadge, StatusBadge, EmptyState,
   DecisionPipeline, opaTone, batfishTone, riskTone, decisionTone, PipelineStepData,
@@ -49,6 +49,17 @@ export default function ScanDetail() {
   const [vulnMatches, setVulnMatches] = useState<DeviceVulnerabilityMatch[] | null>(null);
   const [correlating, setCorrelating] = useState(false);
 
+  // Approval & Deployment / Post-Validation state -- a scan's own findings
+  // can lead to a remediation Change Request for the same device (see
+  // "Create Change Request" below). There's no scan_id FK on ChangeRequest
+  // (it's device-scoped, same as everywhere else this platform correlates
+  // scan -> device -> change), so "the deployment this scan's findings led
+  // to" is approximated as the most recent change request for this scan's
+  // device -- same join the Change Requests page's own `?device=` deep link
+  // already relies on.
+  const [latestChangeRequest, setLatestChangeRequest] = useState<ChangeRequest | null | undefined>(undefined);
+  const [latestDeployment, setLatestDeployment] = useState<DeploymentRecord | null>(null);
+
   useEffect(() => {
     let isActive = true;
     let timeoutId: number;
@@ -73,6 +84,29 @@ export default function ScanDetail() {
 
         const ai = await endpoints.aiAnalysis(scanId);
         if (isActive) setAiAnalysis(ai.data);
+
+        // Latest change request for this device (see state comment above) --
+        // fetched every tick (not gated on pipelineDone) since approval/
+        // deployment can progress well after the scan pipeline itself is done.
+        try {
+          const crRes = await endpoints.changeRequests({ device_id: scanRes.data.device_id });
+          const latest = (crRes.data.change_requests || [])
+            .slice()
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+          if (isActive) setLatestChangeRequest(latest || null);
+          if (isActive && latest && (latest.status === "APPROVED" || latest.status === "DEPLOYED" || latest.status === "FAILED")) {
+            const depRes = await endpoints.changeRequestDeployments(latest.id);
+            const deployments = depRes.data.deployments || [];
+            const mostRecent = deployments
+              .slice()
+              .sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime())[0];
+            if (isActive) setLatestDeployment(mostRecent || null);
+          } else if (isActive) {
+            setLatestDeployment(null);
+          }
+        } catch {
+          if (isActive) setLatestChangeRequest(null);
+        }
 
         if (pipelineDone) {
           try {
@@ -117,16 +151,83 @@ export default function ScanDetail() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [scan, remediations]);
 
-  if (!scan) return <Loading />;
-
-  const pipelineCompleted = ["completed", "review", "blocked"].includes(scan.status);
+  const pipelineCompleted = !!scan && ["completed", "review", "blocked"].includes(scan.status);
   const aiReady = aiAnalysis !== null && aiAnalysis.count >= 0 && pipelineCompleted;
   // If pipeline is done, wait for AI analysis before fully lighting up 'completed'
   let currentStageIdx = -1;
-  if (scan.status !== "failed") {
+  if (scan && scan.status !== "failed") {
     const pIdx = STAGES.indexOf(pipelineCompleted ? "completed" : scan.status);
     currentStageIdx = aiReady ? pIdx + 1 : pIdx;
   }
+
+  // --- Animated, step-by-step reveal -----------------------------------
+  // Without this, a fast/small scan finishes all 8 processing stages and
+  // all 6 decision-pipeline steps between one poll and the next, so the
+  // UI would jump straight from "just started" to "everything done" in a
+  // single re-render. These two trackers chase the real, backend-confirmed
+  // progress (stageRevealRef never runs ahead of currentStageIdx, and the
+  // decision pipeline never reveals before the pipeline has actually
+  // completed) but always step through it visibly, one stage/step at a
+  // time, instead of snapping.
+  const stageRevealRef = useRef(0);
+  const [stageReveal, setStageReveal] = useState(0);
+  useEffect(() => {
+    const target = currentStageIdx + 1;
+    if (stageRevealRef.current >= target) return;
+    const id = window.setInterval(() => {
+      stageRevealRef.current += 1;
+      setStageReveal(stageRevealRef.current);
+      if (stageRevealRef.current >= target) window.clearInterval(id);
+    }, 280);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStageIdx]);
+
+  const DECISION_STEP_COUNT = 6; // Normalized, OPA, Batfish, Risk, Decision, Evidence
+  const [decisionReveal, setDecisionReveal] = useState(0);
+  useEffect(() => {
+    if (!pipelineCompleted) {
+      setDecisionReveal(0);
+      return;
+    }
+    let i = 0;
+    const id = window.setInterval(() => {
+      i += 1;
+      setDecisionReveal(i);
+      if (i >= DECISION_STEP_COUNT) window.clearInterval(id);
+    }, 320);
+    return () => window.clearInterval(id);
+  }, [pipelineCompleted]);
+
+  // --- Post-decision lifecycle reveal ------------------------------------
+  // Everything after the Decision Pipeline (Pre-Deployment Risk, Approval,
+  // Deployment, Post-Deployment Validation, Report Generation, Blockchain
+  // Integrity) used to render the instant its underlying data showed up --
+  // which, on a scan that already has an approved/deployed change request,
+  // meant every one of those cards popped in at once. This walks through
+  // them one card at a time (same "chase real progress, never snap" idea as
+  // stageReveal/decisionReveal above), only starting once the Decision
+  // Pipeline has finished its own reveal.
+  const SECTION_COUNT = 6; // Risk, Approval, Deployment, Post-Validation, Report, Blockchain
+  const [sectionReveal, setSectionReveal] = useState(0);
+  useEffect(() => {
+    if (decisionReveal < DECISION_STEP_COUNT) {
+      setSectionReveal(0);
+      return;
+    }
+    let i = 0;
+    const id = window.setInterval(() => {
+      i += 1;
+      setSectionReveal(i);
+      if (i >= SECTION_COUNT) window.clearInterval(id);
+    }, 360);
+    return () => window.clearInterval(id);
+  }, [decisionReveal]);
+
+  const sectionCls = (idx: number) =>
+    `transition-all duration-500 ${sectionReveal > idx ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3 pointer-events-none"}`;
+
+  if (!scan) return <Loading />;
 
   async function handleCreateChangeRequest() {
     if (!scan || !remediations?.remediations?.length) return;
@@ -322,44 +423,37 @@ export default function ScanDetail() {
 
       {activeTab === "overview" && (
         <>
-          <div className="px-8 grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
-            <div className="card lg:col-span-5">
-              <div className="font-semibold text-slate-200 mb-1">Decision Pipeline</div>
-              <div className="text-base text-slate-500 mb-5">How this scan's outcome was derived — deterministic, evidence-backed, never LLM-decided.</div>
-              <DecisionPipeline
-                size="lg"
-                steps={[
-                  { label: "Normalized", value: scan.baseline_json ? "Modeled" : "Pending", tone: scan.baseline_json ? "pass" : "pending", sublabel: "Vendor config -> common security model" },
-                  { label: "OPA", value: (scan.opa_decision || "PENDING").replace(/_/g, " "), tone: opaTone(scan.opa_decision), sublabel: scan.opa_policy_version ? `policy v${scan.opa_policy_version}` : undefined },
-                  { label: "Batfish", value: (scan.batfish_status || "N/A").replace(/_/g, " "), tone: batfishTone(scan.batfish_status), sublabel: "Network behavior verification" },
-                  { label: "Risk", value: scan.risk_level || "N/A", tone: riskTone(scan.risk_level), sublabel: scan.risk_score != null ? `score ${scan.risk_score}` : undefined },
-                  { label: "Decision", value: scan.final_decision || "PENDING", tone: decisionTone(scan.final_decision), sublabel: scan.final_reason || undefined },
-                  { label: "Evidence", value: evidence ? (evidence.fabric_status || "RECORDED").replace(/_/g, " ") : "PENDING", tone: evidence ? (evidence.fabric_status === "ANCHORED" ? "pass" : "warn") : "pending", sublabel: evidence?.evidence_hash ? `hash ${evidence.evidence_hash.slice(0, 12)}…` : undefined },
-                ] as PipelineStepData[]}
-              />
-            </div>
-          </div>
-
+          {/* 1. Pipeline Flow — animated, step-by-step (never snaps straight to
+              "all done"): the numbered stage tracker only lights up one stage
+              at a time, chasing real backend progress via stageReveal. */}
           <div className="px-8 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
             <div className="card lg:col-span-2">
-              <div className="font-semibold text-slate-200 mb-4">Processing Pipeline</div>
+              <div className="font-semibold text-slate-200 mb-1">1 · Pipeline Flow</div>
+              <div className="text-base text-slate-500 mb-4">Ingestion → parsing → normalization → policy evaluation, one stage at a time.</div>
               <div className="flex items-center">
-                {STAGES.map((stage, i) => (
-                  <div key={stage} className="flex items-center flex-1">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-base font-bold shrink-0 ${i <= currentStageIdx ? "bg-cyan-600 text-white" : "bg-slate-800 text-slate-500"
-                        }`}
-                    >
-                      {i + 1}
+                {STAGES.map((stage, i) => {
+                  const isDone = i < stageReveal;
+                  const isCurrent = i === stageReveal - 1 && !pipelineCompleted;
+                  return (
+                    <div key={stage} className="flex items-center flex-1">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-base font-bold shrink-0 transition-all duration-500 ${
+                          isDone ? "bg-cyan-600 text-white scale-100" : "bg-slate-800 text-slate-500 scale-95"
+                        } ${isCurrent ? "ring-4 ring-cyan-500/30 animate-pulse" : ""}`}
+                      >
+                        {i + 1}
+                      </div>
+                      {i < STAGES.length - 1 && (
+                        <div className={`flex-1 h-0.5 transition-colors duration-500 ${i < stageReveal - 1 ? "bg-cyan-600" : "bg-slate-800"}`} />
+                      )}
                     </div>
-                    {i < STAGES.length - 1 && (
-                      <div className={`flex-1 h-0.5 ${i < currentStageIdx ? "bg-cyan-600" : "bg-slate-800"}`} />
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="flex justify-between text-base text-slate-500 mt-2">
-                {STAGES.map((s) => <span key={s} className="capitalize">{s}</span>)}
+                {STAGES.map((s, i) => (
+                  <span key={s} className={`capitalize transition-colors duration-500 ${i < stageReveal ? "text-slate-300" : "text-slate-600"}`}>{s}</span>
+                ))}
               </div>
               <div className="mt-4">
                 <StatusBadge status={scan.status} />
@@ -372,7 +466,30 @@ export default function ScanDetail() {
             </div>
           </div>
 
-          <div className="px-8 grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+          {/* 2. Decision Pipeline — same progressive reveal, gated on the
+              processing pipeline having actually finished (never reveals a
+              step before the backend has a real value for it). */}
+          <div className="px-8 grid grid-cols-1 gap-4 mb-6">
+            <div className="card">
+              <div className="font-semibold text-slate-200 mb-1">2 · Decision Pipeline</div>
+              <div className="text-base text-slate-500 mb-5">How this scan's outcome was derived — deterministic, evidence-backed, never LLM-decided.</div>
+              <DecisionPipeline
+                size="lg"
+                revealedCount={decisionReveal}
+                steps={[
+                  { label: "Normalized", value: scan.baseline_json ? "Modeled" : "Pending", tone: scan.baseline_json ? "pass" : "pending", sublabel: "Vendor config -> common security model" },
+                  { label: "OPA", value: (scan.opa_decision || "PENDING").replace(/_/g, " "), tone: opaTone(scan.opa_decision), sublabel: scan.opa_policy_version ? `policy v${scan.opa_policy_version}` : undefined },
+                  { label: "Batfish", value: (scan.batfish_status || "N/A").replace(/_/g, " "), tone: batfishTone(scan.batfish_status), sublabel: "Network behavior verification" },
+                  { label: "Risk", value: scan.risk_level || "N/A", tone: riskTone(scan.risk_level), sublabel: scan.risk_score != null ? `score ${scan.risk_score}` : undefined },
+                  { label: "Decision", value: scan.final_decision || "PENDING", tone: decisionTone(scan.final_decision), sublabel: scan.final_reason || undefined },
+                  { label: "Evidence", value: evidence ? (evidence.fabric_status || "RECORDED").replace(/_/g, " ") : "PENDING", tone: evidence ? (evidence.fabric_status === "ANCHORED" ? "pass" : "warn") : "pending", sublabel: evidence?.evidence_hash ? `hash ${evidence.evidence_hash.slice(0, 12)}…` : undefined },
+                ] as PipelineStepData[]}
+              />
+            </div>
+          </div>
+
+          {/* Pipeline detail: what fed the Decision Pipeline above. */}
+          <div className="px-8 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
             <div className="card">
               <div className="text-base uppercase tracking-wide text-slate-500 font-semibold">OPA Policy Decision</div>
               <div className="text-xl font-bold text-slate-100 mt-2">{scan.opa_decision || "—"}</div>
@@ -407,33 +524,258 @@ export default function ScanDetail() {
                 <div className="text-base text-slate-500 mt-2">No AI interpretations for this scan.</div>
               )}
             </div>
-            <div className="card">
-              <div className="text-base uppercase tracking-wide text-slate-500 font-semibold">Risk</div>
-              <div className="text-xl font-bold text-slate-100 mt-2">
-                {scan.risk_level || "—"} {scan.risk_score != null ? `(${scan.risk_score})` : ""}
+          </div>
+
+          {/* 3. Pre-Deployment Risk — the risk verdict this scan produced,
+              called out cleanly before anything about approving or deploying
+              a fix for it. */}
+          <div className={`px-8 mb-6 ${sectionCls(0)}`}>
+            <div className={`card border ${
+              riskTone(scan.risk_level) === "fail" ? "border-red-900/60 bg-red-950/10"
+              : riskTone(scan.risk_level) === "warn" ? "border-amber-900/60 bg-amber-950/10"
+              : "border-soc-border"
+            }`}>
+              <div className="font-semibold text-slate-200 mb-1">3 · Pre-Deployment Risk</div>
+              <div className="text-base text-slate-500 mb-4">
+                The risk verdict this scan produced — computed before any remediation is proposed, approved, or deployed.
               </div>
-              <div className="text-base text-slate-500 mt-1">Final decision: {scan.final_decision || "—"}</div>
+              <div className="flex flex-wrap items-center gap-6">
+                <div>
+                  <div className="text-3xl font-bold text-slate-100">
+                    {scan.risk_level || "—"} {scan.risk_score != null && <span className="text-lg text-slate-500">({scan.risk_score})</span>}
+                  </div>
+                  <div className="text-base text-slate-500 mt-1">Risk level</div>
+                </div>
+                <div className="h-10 w-px bg-soc-border hidden sm:block" />
+                <div>
+                  <div className="text-3xl font-bold text-slate-100">{scan.final_decision || "PENDING"}</div>
+                  <div className="text-base text-slate-500 mt-1">Correlated decision</div>
+                </div>
+                <div className="h-10 w-px bg-soc-border hidden sm:block" />
+                <div>
+                  <div className="text-3xl font-bold text-slate-100">
+                    {scan.findings.filter((f) => f.result === "FAIL").length}
+                    <span className="text-lg text-slate-500"> / {scan.findings.length}</span>
+                  </div>
+                  <div className="text-base text-slate-500 mt-1">Findings failing</div>
+                </div>
+              </div>
+              {scan.final_reason && (
+                <div className="text-base text-slate-400 mt-4 pt-3 border-t border-soc-border">{scan.final_reason}</div>
+              )}
             </div>
+          </div>
+
+          {/* 4. Approval — has a human signed off on the proposed fix yet?
+              Kept as its own clean stage, separate from whether it has
+              actually been pushed to the device (see 5, below). Change
+              requests are device-scoped, not scan-scoped, so this is the
+              same device join the Change Requests page's own deep link
+              already uses. */}
+          <div className={`px-8 mb-6 ${sectionCls(1)}`}>
             <div className="card">
-              <div className="text-base uppercase tracking-wide text-slate-500 font-semibold">Evidence / Fabric Anchor</div>
-              {evidence ? (
-                <>
-                  <div className="mt-2">
-                    <span className={`badge ${FABRIC_TONE[evidence.fabric_status || ""] || "badge-na"}`}>
-                      {(evidence.fabric_status || "NOT_ANCHORED").replace(/_/g, " ")}
+              <div className="font-semibold text-slate-200 mb-1">4 · Approval</div>
+              <div className="text-base text-slate-500 mb-4">
+                A human must approve before anything deploys — the AI only ever synthesizes syntax.
+              </div>
+              {latestChangeRequest === undefined ? (
+                <Loading />
+              ) : latestChangeRequest === null ? (
+                <div className="text-base text-slate-500 border border-dashed border-soc-border rounded-lg py-6 text-center">
+                  No change request has been created for this device yet.
+                  {scan.findings.some((f) => f.result === "FAIL") && (
+                    <> Use <span className="text-slate-300">Create Change Request</span> below to propose a fix.</>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`badge ${
+                        latestChangeRequest.status === "APPROVED" || latestChangeRequest.status === "DEPLOYED" ? "badge-pass"
+                        : latestChangeRequest.status === "REJECTED" || latestChangeRequest.status === "FAILED" ? "badge-fail"
+                        : "badge-medium"
+                      }`}>
+                        {latestChangeRequest.status.replace(/_/g, " ")}
+                      </span>
+                      {latestChangeRequest.source === "ai_suggestion" && <span className="badge badge-medium">AI-suggested</span>}
+                      <span className="text-base text-slate-500">Risk: {latestChangeRequest.risk_level || "—"}</span>
+                    </div>
+                    <div className="text-base text-slate-500 mt-1.5">
+                      Created {new Date(latestChangeRequest.created_at).toLocaleString()}
+                      {latestChangeRequest.created_by && ` by ${latestChangeRequest.created_by}`}
+                      {latestChangeRequest.approved_by && (
+                        <> · approved by {latestChangeRequest.approved_by}
+                          {latestChangeRequest.approved_at && ` at ${new Date(latestChangeRequest.approved_at).toLocaleString()}`}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <Link to={`/review-queue?device=${scan.device_id}`} className="btn-secondary text-base whitespace-nowrap">
+                    {latestChangeRequest.status === "PENDING_APPROVAL" ? "Review & Approve →" : "Open in Review Queue →"}
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. Deployment — whether the approved change has actually been
+              pushed to the device yet. Separate from Approval (4) above:
+              an approved change request can sit for a while before a
+              deployment attempt runs against it. */}
+          <div className={`px-8 mb-6 ${sectionCls(2)}`}>
+            <div className="card">
+              <div className="font-semibold text-slate-200 mb-1">5 · Deployment</div>
+              <div className="text-base text-slate-500 mb-4">
+                Pushes the approved configuration change to the device over its management transport.
+              </div>
+              {!latestDeployment ? (
+                <div className="text-base text-slate-500 border border-dashed border-soc-border rounded-lg py-6 text-center">
+                  {latestChangeRequest?.status === "APPROVED"
+                    ? "Approved and ready — no deployment attempt has run yet."
+                    : "Nothing to deploy for this device yet."}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-6">
+                  <div>
+                    <span className={`badge ${
+                      latestDeployment.status === "DEPLOYED" || latestDeployment.status === "VERIFIED" ? "badge-pass"
+                      : latestDeployment.status === "DRIFTED" || latestDeployment.status === "FAILED" ? "badge-fail"
+                      : "badge-medium"
+                    }`}>
+                      {latestDeployment.status}
+                    </span>
+                    <div className="text-base text-slate-500 mt-1">via {latestDeployment.transport || "—"}</div>
+                  </div>
+                  <div className="text-base text-slate-400">
+                    started: <span className="text-slate-300">{latestDeployment.started_at ? new Date(latestDeployment.started_at).toLocaleString() : "—"}</span>
+                  </div>
+                  {latestChangeRequest && (
+                    <Link to={`/review-queue?device=${scan.device_id}`} className="text-base text-cyan-400 hover:underline ml-auto">
+                      Full deployment history →
+                    </Link>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 6. Post-Deployment Validation — what happened after deploy:
+              config actually landed, and (when available) supplemental
+              pyATS/Genie verification. Never authoritative for compliance
+              on its own — OPA/Batfish/risk already decided that above. */}
+          <div className={`px-8 mb-6 ${sectionCls(3)}`}>
+            <div className="card">
+              <div className="font-semibold text-slate-200 mb-1">6 · Post-Deployment Validation</div>
+              <div className="text-base text-slate-500 mb-4">
+                Confirms the deployed configuration matches what was approved, and that the device still verifies afterward.
+              </div>
+              {!latestDeployment ? (
+                <div className="text-base text-slate-500 border border-dashed border-soc-border rounded-lg py-6 text-center">
+                  {latestChangeRequest?.status === "APPROVED"
+                    ? "Approved and ready — no deployment attempt has run yet."
+                    : "Nothing deployed for this device yet."}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-6">
+                  <div>
+                    <span className={`badge ${
+                      latestDeployment.status === "DEPLOYED" || latestDeployment.status === "VERIFIED" ? "badge-pass"
+                      : latestDeployment.status === "DRIFTED" || latestDeployment.status === "FAILED" ? "badge-fail"
+                      : "badge-medium"
+                    }`}>
+                      {latestDeployment.status}
+                    </span>
+                    <div className="text-base text-slate-500 mt-1">via {latestDeployment.transport || "—"}</div>
+                  </div>
+                  <div className="text-base text-slate-400">
+                    post-hash: <span className="font-mono text-slate-300">{(latestDeployment.post_config_hash || "—").slice(0, 12)}</span>
+                    <br />
+                    post-verification:{" "}
+                    <span className={latestDeployment.post_verification_passed ? "text-emerald-400" : latestDeployment.post_verification_passed === false ? "text-red-400" : "text-slate-500"}>
+                      {latestDeployment.post_verification_passed === null ? "—" : latestDeployment.post_verification_passed ? "passed" : "FAILED"}
                     </span>
                   </div>
-                  <div className="text-base font-mono text-slate-500 mt-1 truncate">
-                    hash: {evidence.evidence_hash}
-                    {evidence.fabric_tx_id ? ` · tx: ${evidence.fabric_tx_id}` : ""}
-                  </div>
-                </>
-              ) : (
-                <div className="text-base text-slate-500 mt-2">No evidence generated yet.</div>
+                  {latestDeployment.verification_engine && (
+                    <div className="text-base text-slate-400">
+                      supplemental ({latestDeployment.verification_engine}):{" "}
+                      <span className={latestDeployment.verification_result === "PYATS_OK" ? "text-emerald-400" : "text-amber-400"}>
+                        {latestDeployment.verification_result || "—"}
+                      </span>
+                    </div>
+                  )}
+                  {latestChangeRequest && (
+                    <Link to={`/review-queue?device=${scan.device_id}`} className="text-base text-cyan-400 hover:underline ml-auto">
+                      Full deployment history →
+                    </Link>
+                  )}
+                </div>
               )}
-              <Link to="/evidence" className="text-base text-cyan-400 hover:underline mt-2 inline-block">
-                View in Evidence Ledger →
-              </Link>
+            </div>
+          </div>
+
+          {/* 7. Report Generation — the compliance report artifacts for this
+              scan are ready as soon as the pipeline itself finished; called
+              out as its own stage rather than only appearing as unlabeled
+              download links at the bottom of the page. */}
+          <div className={`px-8 mb-6 ${sectionCls(4)}`}>
+            <div className="card">
+              <div className="font-semibold text-slate-200 mb-1">7 · Report Generation</div>
+              <div className="text-base text-slate-500 mb-4">
+                Compliance report rendered from this scan's findings, decision, and evidence — available once the pipeline completes.
+              </div>
+              {!pipelineCompleted ? (
+                <div className="text-base text-slate-500 border border-dashed border-soc-border rounded-lg py-6 text-center">
+                  Waiting on pipeline completion before the report can be rendered.
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="badge badge-pass">Generated</span>
+                  <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "pdf")}>Download PDF</a>
+                  <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "json")}>Download JSON</a>
+                  <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "csv")}>Download CSV</a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 8. Blockchain Integrity — the tamper-evident anchor for this
+              scan's evidence record. Distinct, dedicated stage rather than
+              only a terse "Evidence" dot buried inside the Decision
+              Pipeline strip above. */}
+          <div className={`px-8 mb-6 ${sectionCls(5)}`}>
+            <div className="card">
+              <div className="font-semibold text-slate-200 mb-1">8 · Blockchain Integrity</div>
+              <div className="text-base text-slate-500 mb-4">
+                This scan's evidence record, hashed and anchored to the Hyperledger Fabric ledger for tamper-evident audit.
+              </div>
+              {!evidence ? (
+                <div className="text-base text-slate-500 border border-dashed border-soc-border rounded-lg py-6 text-center">
+                  No evidence record has been anchored for this scan yet.
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-6">
+                  <span className={`badge ${evidence.fabric_status === "ANCHORED" ? "badge-pass" : evidence.fabric_status === "FABRIC_UNAVAILABLE" ? "badge-fail" : "badge-medium"}`}>
+                    {(evidence.fabric_status || "RECORDED").replace(/_/g, " ")}
+                  </span>
+                  <div className="text-base text-slate-400">
+                    evidence hash: <span className="font-mono text-slate-300">{evidence.evidence_hash ? `${evidence.evidence_hash.slice(0, 16)}…` : "—"}</span>
+                  </div>
+                  {evidence.fabric_tx_id && (
+                    <div className="text-base text-slate-400">
+                      tx: <span className="font-mono text-slate-300">{evidence.fabric_tx_id.slice(0, 16)}…</span>
+                    </div>
+                  )}
+                  {evidence.fabric_block_number != null && (
+                    <div className="text-base text-slate-400">
+                      block: <span className="font-mono text-slate-300">{evidence.fabric_block_number}</span>
+                    </div>
+                  )}
+                  <Link to="/evidence" className="text-base text-cyan-400 hover:underline ml-auto">
+                    Open Evidence Ledger →
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
 
@@ -674,10 +1016,8 @@ export default function ScanDetail() {
             </div>
           </div>
 
-          <div className="px-8 mt-4 pb-8 flex gap-2">
-            <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "pdf")}>Download PDF</a>
-            <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "json")}>Download JSON</a>
-            <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "csv")}>Download CSV</a>
+          <div className="px-8 mt-4 pb-8 text-base text-slate-500">
+            Report downloads are available above in <span className="text-slate-300">7 · Report Generation</span> once the pipeline completes.
           </div>
         </>
       )}

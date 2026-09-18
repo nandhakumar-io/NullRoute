@@ -38,6 +38,10 @@ BATFISH_PORT = int(os.getenv("BATFISH_PORT", "9996"))
 BATFISH_WORK_PORT = int(os.getenv("BATFISH_WORK_PORT", "9997"))
 BATFISH_TIMEOUT = float(os.getenv("BATFISH_TIMEOUT", "120"))
 BATFISH_SNAPSHOT_ROOT = os.getenv("BATFISH_SNAPSHOT_ROOT", "/tmp/batfish/snapshots")
+# Ensure the snapshot directory exists at import time so create_snapshot()
+# never fails silently due to a missing parent directory (which manifests as
+# BATFISH_UNAVAILABLE even when the coordinator is reachable).
+os.makedirs(BATFISH_SNAPSHOT_ROOT, exist_ok=True)
 
 # Vendors PyBatfish/Batfish can meaningfully parse configuration and compute
 # a dataplane/forwarding graph for. Fortinet and Palo Alto are explicitly

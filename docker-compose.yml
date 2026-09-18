@@ -170,6 +170,12 @@ services:
     container_name: compliance-backend
     environment:
       <<: *common-env
+      # Dedicated worker containers (scheduler, training-worker,
+      # metrics-poller, vuln-sync-worker, evidence-verification-worker,
+      # network-scan-worker) already run every background loop below. Keep
+      # the API process from also starting them in-process, or each due
+      # schedule / queued job would be picked up and executed twice.
+      RUN_EMBEDDED_WORKERS: "false"
     depends_on:
       postgres: { condition: service_healthy }
       nats: { condition: service_healthy }

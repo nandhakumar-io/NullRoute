@@ -9,10 +9,19 @@ import {
   getEvidence,
   verifyEvidence,
   getEvidenceHistory,
+  FABRIC_MOCK,
   AnchorEvidenceInput,
 } from "./evidenceContract";
-import { closeConnection } from "./fabricClient";
 import { config } from "./config";
+
+// Lazy-load closeConnection so the ESM-incompatible @hyperledger/fabric-gateway
+// module is never require()'d when FABRIC_MOCK=true (Node 18 CJS limitation).
+function closeConnection(): void {
+  if (!FABRIC_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    (require("./fabricClient") as typeof import("./fabricClient")).closeConnection();
+  }
+}
 
 const app = express();
 app.use(express.json({ limit: "256kb" })); // evidence anchors are small; bound the body defensively

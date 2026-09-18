@@ -28,12 +28,30 @@ POLL_INTERVAL = int(os.getenv("TRAINING_WORKER_POLL_INTERVAL_SECONDS", "30"))
 MAX_CONCURRENT_JOBS = int(os.getenv("TRAINING_WORKER_MAX_CONCURRENT_JOBS", "1"))
 
 _shutdown = False
+_sigint_count = 0
+_wakeup_event: asyncio.Event | None = None
 
 
 def _handle_signal(signum, _frame):
-    global _shutdown
-    logger.info("Training worker received signal %s — finishing current job then exiting", signum)
+    global _shutdown, _sigint_count
+    _sigint_count += 1
+    if _sigint_count >= 2:
+        # Second signal: force-exit immediately so the user is never blocked.
+        logger.warning("Training worker force-killed (received signal %s twice)", signum)
+        os._exit(1)
+    logger.info(
+        "Training worker received signal %s — shutting down cleanly after current job. "
+        "Press Ctrl+C again to force-quit.",
+        signum,
+    )
     _shutdown = True
+    # Wake up the sleep loop immediately so the process exits without waiting
+    # for the full POLL_INTERVAL to elapse.
+    if _wakeup_event is not None:
+        try:
+            _wakeup_event.set()
+        except RuntimeError:
+            pass  # event loop may already be closed
 
 
 signal.signal(signal.SIGTERM, _handle_signal)
@@ -85,6 +103,8 @@ async def _poll_once() -> None:
 
 
 async def main() -> None:
+    global _wakeup_event
+    _wakeup_event = asyncio.Event()
     logger.info(
         "Training worker started — poll_interval=%ds, max_concurrent=%d",
         POLL_INTERVAL, MAX_CONCURRENT_JOBS,
@@ -123,7 +143,15 @@ async def main() -> None:
         except Exception:  # noqa: BLE001
             logger.exception("Training worker: unexpected error in _poll_once, continuing")
         if not _shutdown:
-            await asyncio.sleep(POLL_INTERVAL)
+            # Sleep but wake up immediately if a shutdown signal arrives.
+            _wakeup_event.clear()
+            try:
+                await asyncio.wait_for(
+                    asyncio.shield(asyncio.ensure_future(_wakeup_event.wait())),
+                    timeout=POLL_INTERVAL,
+                )
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                pass  # normal: either poll interval elapsed or task cancelled
 
     logger.info("Training worker exiting cleanly")
 

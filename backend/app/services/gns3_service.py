@@ -158,12 +158,21 @@ class Gns3Service:
             if existing:
                 imported_ids.append(existing.id)
                 continue
+                
+            def _guess_vendor(name: str) -> str:
+                name_lower = name.lower()
+                if 'cisco' in name_lower: return 'cisco'
+                if 'arista' in name_lower or 'veos' in name_lower: return 'arista'
+                if 'forti' in name_lower: return 'fortigate'
+                if 'palo' in name_lower or 'panos' in name_lower: return 'palo_alto'
+                if 'juniper' in name_lower or 'vsrx' in name_lower: return 'juniper'
+                return 'GNS3'
 
             dev = Device(
                 tenant_id=tenant_id,
                 hostname=hostname,
                 name=hostname,
-                vendor="GNS3",
+                vendor=_guess_vendor(hostname),
                 model=node_type,
                 environment="lab",
                 site=f"GNS3 / {project_name}",

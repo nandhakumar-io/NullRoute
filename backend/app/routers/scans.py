@@ -44,15 +44,37 @@ async def upload_config(
     # first would silently defeat that gate (device.vendor would already be
     # populated by the time pipeline.py's `device.vendor or guess.vendor`
     # check runs).
-    device = Device(
-        tenant_id=tenant.id,
-        hostname=hostname or (f"{guess.vendor}-DEVICE" if not guess.review_required else "UNVERIFIED-DEVICE"),
-        vendor=None if guess.review_required else guess.vendor,
-        os=None if guess.review_required else guess.os,
-    )
-    db.add(device)
-    db.commit()
-    db.refresh(device)
+    guest_hostname = hostname or "Ad-Hoc Config Uploads"
+    
+    # Try to reuse the Ad-Hoc Config Uploads device to avoid cluttering the inventory
+    if not hostname:
+        device = db.query(Device).filter(
+            Device.tenant_id == tenant.id, 
+            Device.hostname == guest_hostname,
+            Device.vendor == "Ad-Hoc"
+        ).first()
+        if not device:
+            device = Device(
+                tenant_id=tenant.id,
+                hostname=guest_hostname,
+                vendor="Ad-Hoc",
+                os=None,
+                description="Sandbox device for config uploads",
+                enabled=False,
+            )
+            db.add(device)
+            db.commit()
+            db.refresh(device)
+    else:
+        device = Device(
+            tenant_id=tenant.id,
+            hostname=hostname,
+            vendor=None if guess.review_required else guess.vendor,
+            os=None if guess.review_required else guess.os,
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
 
     scan = Scan(tenant_id=tenant.id, device_id=device.id, framework=framework, status="uploaded")
     db.add(scan)
@@ -100,14 +122,28 @@ async def bulk_upload(
             continue
         raw_text = raw_bytes.decode("utf-8", errors="replace")
         guess = detect_vendor(raw_text)
-        # See upload_config() above -- same review_required gate applies.
-        device = Device(
-            tenant_id=tenant.id,
-            hostname=file.filename,
-            vendor=None if guess.review_required else guess.vendor,
-            os=None if guess.review_required else guess.os,
-        )
-        db.add(device)
+        guest_hostname = "Ad-Hoc Config Uploads"
+        
+        # See upload_config() above -- reuse ad-hoc device.
+        device = db.query(Device).filter(
+            Device.tenant_id == tenant.id, 
+            Device.hostname == guest_hostname,
+            Device.vendor == "Ad-Hoc"
+        ).first()
+        if not device:
+            device = Device(
+                tenant_id=tenant.id,
+                hostname=guest_hostname,
+                vendor="Ad-Hoc",
+                os=None,
+                description="Sandbox device for config uploads",
+                enabled=False,
+            )
+            db.add(device)
+            db.commit()
+            db.refresh(device)
+            
+        # Since it's a bulk upload without assigned hostnames per file, we link them all here.
         db.commit()
         db.refresh(device)
         scan = Scan(tenant_id=tenant.id, device_id=device.id, framework=framework, status="uploaded")

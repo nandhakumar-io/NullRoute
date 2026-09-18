@@ -103,6 +103,11 @@ class ScanOut(BaseModel):
     final_decision: Optional[str] = None
     final_reason: Optional[str] = None
     evidence_id: Optional[str] = None
+    control_state: Optional[str] = None
+    pipeline_stage: Optional[str] = None
+    paused_at: Optional[datetime] = None
+    resumed_at: Optional[datetime] = None
+    stopped_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

@@ -277,6 +277,25 @@ export interface Scan {
   final_decision?: string | null;
   final_reason?: string | null;
   evidence_id?: string | null;
+  control_state?: string | null;
+  pipeline_stage?: string | null;
+  paused_at?: string | null;
+  resumed_at?: string | null;
+  stopped_at?: string | null;
+}
+
+export interface PipelineStatus {
+  scan_id: string;
+  status: string;
+  control_state: string;
+  pipeline_stage: string | null;
+  pipeline_stage_label: string | null;
+  paused_at: string | null;
+  resumed_at: string | null;
+  stopped_at: string | null;
+  can_pause: boolean;
+  can_stop: boolean;
+  can_resume: boolean;
 }
 
 export interface ScanDetail extends Scan {
@@ -1242,6 +1261,10 @@ export const endpoints = {
   scans: () => api.get<Scan[]>("/api/scans"),
   scan: (id: string) => api.get<ScanDetail>(`/api/scans/${id}`),
   rerunScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/rerun`),
+  pauseScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/pause`),
+  stopScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/stop`),
+  resumeScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/resume`),
+  pipelineStatus: (id: string) => api.get<PipelineStatus>(`/api/scans/${id}/pipeline-status`),
   batfishAnalysis: (scanId: string) => api.get<BatfishAnalysis>(`/api/scans/${scanId}/batfish`),
   snapshotDiff: (scanId: string) => api.get<SnapshotDiff>(`/api/scans/${scanId}/snapshot-diff`),
   opaAnalysis: (scanId: string) => api.get<OpaAnalysis>(`/api/scans/${scanId}/opa`),

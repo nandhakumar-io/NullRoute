@@ -40,19 +40,10 @@ def db():
 # ---------------------------------------------------------------------------
 # Dirty Cisco IOS config with a deliberate telnet vulnerability
 # ---------------------------------------------------------------------------
-DIRTY_CONFIG = b"""\
-!
-version 15.2
-hostname CoreRouter
-!
-interface GigabitEthernet0/0
- ip address 10.0.0.1 255.255.255.0
-!
-telnet server enable
-no login block-for 120 attempts 3
-!
-end
-"""
+import os
+config_path = os.path.join(os.path.dirname(__file__), "../../sample_configs/test_payload.cfg")
+with open(config_path, "rb") as f:
+    DIRTY_CONFIG = f.read()
 
 # ---------------------------------------------------------------------------
 # Full pipeline test

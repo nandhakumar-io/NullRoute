@@ -39,6 +39,7 @@ export default function ScanDetail() {
   const [aiAnalysis, setAiAnalysis] = useState<ScanAIAnalysis | null>(null);
   const [remediations, setRemediations] = useState<any>(undefined);
   const [rerunning, setRerunning] = useState(false);
+  const [pipelineActionPending, setPipelineActionPending] = useState<"pause" | "stop" | "resume" | null>(null);
 
   const [currentSnapshot, setCurrentSnapshot] = useState<any>(null);
   const [deviceHasBaseline, setDeviceHasBaseline] = useState(false);
@@ -264,6 +265,20 @@ export default function ScanDetail() {
     }
   }
 
+  async function handlePipelineAction(action: "pause" | "stop" | "resume") {
+    if (!scanId) return;
+    setPipelineActionPending(action);
+    try {
+      const call = action === "pause" ? endpoints.pauseScan : action === "stop" ? endpoints.stopScan : endpoints.resumeScan;
+      await call(scanId);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e?.response?.data?.detail || `Failed to ${action} the pipeline`);
+    } finally {
+      setPipelineActionPending(null);
+    }
+  }
+
 
 
   async function runVulnCorrelation() {
@@ -296,11 +311,52 @@ export default function ScanDetail() {
         title="Scan Detail"
         subtitle={`Scan ${scan.id}`}
         action={
-          <button onClick={handleRerun} disabled={rerunning} className="btn-secondary text-base">
-            {rerunning ? "Re-running…" : "Re-run evaluation"}
-          </button>
+          <div className="flex items-center gap-2">
+            {(!scan.control_state || scan.control_state === "RUNNING") && !pipelineCompleted && scan.status !== "failed" && (
+              <button
+                onClick={() => handlePipelineAction("pause")}
+                disabled={pipelineActionPending !== null}
+                className="btn-secondary text-base"
+                title="Pause at the next stage checkpoint (normalize/opa/batfish/finalize)"
+              >
+                {pipelineActionPending === "pause" ? "Pausing…" : "Pause pipeline"}
+              </button>
+            )}
+            {["RUNNING", "PAUSE_REQUESTED", "PAUSED"].includes(scan.control_state || "") && !pipelineCompleted && scan.status !== "failed" && (
+              <button
+                onClick={() => handlePipelineAction("stop")}
+                disabled={pipelineActionPending !== null}
+                className="btn-secondary text-base"
+                title="Stop at the next stage checkpoint — resumable later, not discarded"
+              >
+                {pipelineActionPending === "stop" ? "Stopping…" : "Stop pipeline"}
+              </button>
+            )}
+            {["PAUSED", "STOPPED"].includes(scan.control_state || "") && (
+              <button
+                onClick={() => handlePipelineAction("resume")}
+                disabled={pipelineActionPending !== null}
+                className="btn-primary text-base"
+                title={`Resume from: ${scan.pipeline_stage || "start"}`}
+              >
+                {pipelineActionPending === "resume" ? "Resuming…" : `Resume from ${scan.pipeline_stage || "start"}`}
+              </button>
+            )}
+            <button onClick={handleRerun} disabled={rerunning} className="btn-secondary text-base">
+              {rerunning ? "Re-running…" : "Re-run evaluation"}
+            </button>
+          </div>
         }
       />
+
+      {["PAUSE_REQUESTED", "PAUSED", "STOP_REQUESTED", "STOPPED"].includes(scan.control_state || "") && (
+        <div className="card mb-3 border-amber-800/60 bg-amber-950/20 text-base text-amber-300">
+          {scan.control_state === "PAUSE_REQUESTED" && "Pause requested — will pause at the next stage checkpoint."}
+          {scan.control_state === "PAUSED" && `Paused at stage: ${scan.pipeline_stage || "unknown"}. Resume to continue from here, or Stop to end it instead.`}
+          {scan.control_state === "STOP_REQUESTED" && "Stop requested — will stop at the next stage checkpoint."}
+          {scan.control_state === "STOPPED" && `Stopped at stage: ${scan.pipeline_stage || "unknown"}. Resume to pick up from here.`}
+        </div>
+      )}
 
       {currentSnapshot && !deviceHasBaseline && !currentSnapshot.is_approved_baseline && scan.status === "completed" && (
         <div className="mx-8 mb-6 bg-cyan-950/40 border border-cyan-800 rounded-xl px-5 py-4 flex items-center justify-between">

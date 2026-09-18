@@ -73,7 +73,7 @@ class Scan(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     device_id = Column(String, ForeignKey("devices.id"), nullable=False)
-    status = Column(String, default="uploaded")  # uploaded/parsed/normalized/evaluated/completed/failed
+    status = Column(String, default="uploaded")  # uploaded/parsed/normalized/evaluated/completed/failed/paused/stopped
     framework = Column(String, default="CIS")
     raw_config_path = Column(String)  # MinIO object key
     raw_config_hash = Column(String)
@@ -81,6 +81,17 @@ class Scan(Base):
     baseline_json = Column(JSON, nullable=True)
     compliance_score = Column(Float, nullable=True)
     error = Column(Text, nullable=True)
+
+    # Pipeline pause/stop/resume control (see services/pipeline.py). An
+    # operator can request a pause or stop via the API at any time;
+    # run_pipeline() checks control_state at each stage boundary and, on
+    # the next checkpoint it reaches, persists enough state to resume and
+    # unwinds cleanly rather than continuing or being killed mid-write.
+    control_state = Column(String, default="RUNNING")  # RUNNING/PAUSE_REQUESTED/PAUSED/STOP_REQUESTED/STOPPED
+    pipeline_stage = Column(String, nullable=True)  # last-completed/current stage name -- see pipeline.STAGE_ORDER
+    paused_at = Column(DateTime, nullable=True)
+    resumed_at = Column(DateTime, nullable=True)
+    stopped_at = Column(DateTime, nullable=True)
 
     # OPA / risk / correlation outputs (see services/opa_service.py,
     # risk_engine.py, change_validation_service.py). final_decision is the

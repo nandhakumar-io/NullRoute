@@ -146,7 +146,7 @@ services:
       FABRIC_PEER_HOST_ALIAS: peer0.org1.example.com
       FABRIC_CRYPTO_PATH: /crypto/org1
     ports:
-      - "8080:8080"
+      - "127.0.0.1:3002:8080"
     volumes:
       - ./fabric/network/crypto/org1:/crypto/org1:ro
     # Reaches the Fabric peer container started by fabric/scripts/up.sh

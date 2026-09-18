@@ -27,6 +27,16 @@ from app.services.openbao_service import DeviceCredentials, redact_secret_values
 
 try:
     from ncclient import manager as ncclient_manager
+    import paramiko
+    # ncclient inherently ignores algorithms inherited from ssh_config; re-enable legacy algorithms explicitly
+    if not getattr(paramiko.Transport, "_nulled_algorithms_patched", False):
+        _orig_transport_init = paramiko.Transport.__init__
+        def _patched_transport_init(self, *args, **kwargs):
+            if "disabled_algorithms" not in kwargs:
+                kwargs["disabled_algorithms"] = dict(pubkeys=[], kex=[])
+            _orig_transport_init(self, *args, **kwargs)
+        paramiko.Transport.__init__ = _patched_transport_init
+        paramiko.Transport._nulled_algorithms_patched = True
     NCCLIENT_AVAILABLE = True
 except ImportError:  # pragma: no cover
     NCCLIENT_AVAILABLE = False

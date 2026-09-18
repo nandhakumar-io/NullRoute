@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from app.db import get_db
 from app.models.db import BatfishAnalysis, Device, Finding, Scan
 from app.routers.devices import get_or_create_demo_tenant
 from app.schemas import ScanDetailOut, ScanOut
-from app.services.pipeline import run_pipeline
+from app.services.pipeline import STAGE_LABELS, resume_pipeline, run_pipeline
 from app.services.vendor_detect import detect_vendor
 
 from app.auth.dependencies import get_current_user, require_role
@@ -265,6 +266,108 @@ async def rerun_scan(
     db.refresh(scan)
     findings_out = db.query(Finding).filter(Finding.scan_id == scan_id).all()
     return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings_out)
+
+
+@router.post("/{scan_id}/pause", response_model=ScanDetailOut)
+async def pause_scan(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(require_role("admin", "operator", "security_analyst")),
+):
+    """Request that a running scan's pipeline pause at its next stage
+    checkpoint (services/pipeline.py::_checkpoint). This only *requests*
+    the pause -- the pipeline coroutine itself (which may be another
+    in-flight request, e.g. the original /upload call) is what actually
+    stops and persists control_state=PAUSED once it reaches a safe point;
+    that's usually near-instant, but isn't guaranteed synchronous with
+    this call returning."""
+    scan = db.query(Scan).get(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    if scan.control_state not in ("RUNNING", "PAUSE_REQUESTED"):
+        raise HTTPException(409, f"Scan is not running (control_state={scan.control_state}); nothing to pause")
+    scan.control_state = "PAUSE_REQUESTED"
+    db.commit()
+    db.refresh(scan)
+    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
+    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+
+
+@router.post("/{scan_id}/stop", response_model=ScanDetailOut)
+async def stop_scan(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(require_role("admin", "operator", "security_analyst")),
+):
+    """Request that a running scan's pipeline stop at its next stage
+    checkpoint. A stopped scan is not discarded -- its checkpoint (raw
+    config in MinIO, baseline once normalization has completed, findings
+    already persisted) is kept, and it can be restarted later via
+    /{scan_id}/resume from wherever it stopped."""
+    scan = db.query(Scan).get(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    if scan.control_state not in ("RUNNING", "PAUSE_REQUESTED", "PAUSED"):
+        raise HTTPException(409, f"Scan is not running or paused (control_state={scan.control_state}); nothing to stop")
+    was_paused = scan.control_state == "PAUSED"
+    scan.control_state = "STOP_REQUESTED"
+    db.commit()
+    if was_paused:
+        # A PAUSED scan has no in-flight coroutine left to reach a
+        # checkpoint and flip this to STOPPED for us -- do it directly.
+        scan.status = "stopped"
+        scan.control_state = "STOPPED"
+        scan.stopped_at = datetime.utcnow()
+        db.commit()
+    db.refresh(scan)
+    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
+    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+
+
+@router.post("/{scan_id}/resume", response_model=ScanDetailOut)
+async def resume_scan(
+    scan_id: str,
+    db: Session = Depends(get_db),
+    _user=Depends(require_role("admin", "operator", "security_analyst")),
+):
+    """Resume a PAUSED or STOPPED scan's pipeline from its last checkpointed
+    stage (services/pipeline.py::resume_pipeline). Runs synchronously, same
+    as the original /upload call -- the response only comes back once the
+    pipeline completes or hits another pause/stop."""
+    scan = db.query(Scan).get(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    if scan.control_state not in ("PAUSED", "STOPPED"):
+        raise HTTPException(409, f"Scan is not paused or stopped (control_state={scan.control_state}); nothing to resume")
+    try:
+        scan = await resume_pipeline(db, scan)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
+    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+
+
+@router.get("/{scan_id}/pipeline-status")
+def get_pipeline_status(scan_id: str, db: Session = Depends(get_db)):
+    """Lightweight polling endpoint for a pause/resume UI: current stage,
+    control_state, and a human label, without the full scan/findings
+    payload get_scan() returns."""
+    scan = db.query(Scan).get(scan_id)
+    if not scan:
+        raise HTTPException(404, "Scan not found")
+    return {
+        "scan_id": scan.id,
+        "status": scan.status,
+        "control_state": scan.control_state,
+        "pipeline_stage": scan.pipeline_stage,
+        "pipeline_stage_label": STAGE_LABELS.get(scan.pipeline_stage or "", scan.pipeline_stage),
+        "paused_at": scan.paused_at.isoformat() if scan.paused_at else None,
+        "resumed_at": scan.resumed_at.isoformat() if scan.resumed_at else None,
+        "stopped_at": scan.stopped_at.isoformat() if scan.stopped_at else None,
+        "can_pause": scan.control_state == "RUNNING",
+        "can_stop": scan.control_state in ("RUNNING", "PAUSE_REQUESTED", "PAUSED"),
+        "can_resume": scan.control_state in ("PAUSED", "STOPPED"),
+    }
 
 
 @router.get("/{scan_id}/batfish")

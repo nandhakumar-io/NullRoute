@@ -47,7 +47,7 @@ os.makedirs(BATFISH_SNAPSHOT_ROOT, exist_ok=True)
 # a dataplane/forwarding graph for. Fortinet and Palo Alto are explicitly
 # excluded here (per problem statement section 6) — those still get full
 # deterministic-parser + OPA coverage, just not Batfish behavioral analysis.
-SUPPORTED_VENDORS = {"cisco", "cisco_ios", "cisco_iosxe", "arista", "arista_eos", "juniper", "juniper_junos"}
+SUPPORTED_VENDORS = {"cisco", "cisco_ios", "cisco_iosxe", "arista", "arista_eos", "juniper", "juniper_junos", "ad_hoc", "unknown"}
 
 _VENDOR_UNSUPPORTED = {"fortinet", "fortios", "paloalto", "panos", "palo alto"}
 

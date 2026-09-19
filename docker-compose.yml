@@ -2,6 +2,7 @@ version: "3.9"
 
 x-common-env: &common-env
   DATABASE_URL: postgresql+psycopg2://compliance:compliance@postgres:5432/compliance
+  JOB_SIGNING_SECRET: "netsecauditor-dev-secret-key-12345"
   NATS_URL: nats://nats:4222
   OPA_URL: http://opa:8181
   OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}

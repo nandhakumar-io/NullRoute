@@ -124,6 +124,19 @@ def init_db():
         # Always ensure missing tables are created gracefully
         Base.metadata.create_all(bind=engine)
 
+        if engine.url.get_backend_name() == "postgresql":
+            try:
+                from sqlalchemy import text
+                with engine.begin() as conn:
+                    # Convert the fallback JSON column created by create_all into an actual pgvector column
+                    conn.execute(text(
+                        "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
+                        "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END);"
+                    ))
+            except Exception as e:
+                import logging
+                logging.warning(f"Could not convert embedding column to pgvector: {e}")
+
 
 def get_db():
     SessionLocal.refresh()

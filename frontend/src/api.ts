@@ -234,6 +234,13 @@ export interface BulkDeviceResult {
   device_ids: string[];
 }
 
+export interface CredentialRef {
+  credential_type: string;
+  credential_ref: string;
+  updated_at: string | null;
+  rotated_at: string | null;
+}
+
 export interface Finding {
   id: string;
   scan_id?: string;
@@ -1265,6 +1272,8 @@ export const endpoints = {
   // Credentials
   storeCredentials: (deviceId: string, credentialType: string, secret: Record<string, any>) =>
     api.post(`/api/devices/${deviceId}/credentials`, { credential_type: credentialType, secret }),
+  listCredentials: (deviceId: string) =>
+    api.get<CredentialRef[]>(`/api/devices/${deviceId}/credentials`),
 
   bulkEnableDevices: (deviceIds: string[]) => api.post<BulkDeviceResult>("/api/devices/bulk/enable", { device_ids: deviceIds }),
   bulkDisableDevices: (deviceIds: string[]) => api.post<BulkDeviceResult>("/api/devices/bulk/disable", { device_ids: deviceIds }),

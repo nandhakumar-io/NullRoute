@@ -46,9 +46,14 @@ try:
             try:
                 _orig_auth(self, *args, **kwargs)
             except AuthenticationError as e:
+                import logging
+                logger = logging.getLogger("ncclient.transport.ssh")
+                logger.error(f"Fallback caught AuthenticationError: {repr(e)}")
+                
                 # Extract username and password from args/kwargs for fallback
                 username = kwargs.get("username") if "username" in kwargs else (args[0] if len(args) > 0 else None)
                 password = kwargs.get("password") if "password" in kwargs else (args[1] if len(args) > 1 else None)
+                logger.error(f"Fallback extracted user: {username}, pw len: {len(password) if password else 0}")
                 
                 if password and username:
                     import logging

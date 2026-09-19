@@ -138,6 +138,11 @@ def init_db():
                         pass
                         
                     # Inject Phase 10 / UI Preview merge missing columns gracefully
+                    try:
+                        conn.execute(text("ALTER TABLE device_credential_refs ADD COLUMN secret_data JSON;"))
+                    except Exception:
+                        pass
+                        
                     columns_to_add = [
                         "ADD COLUMN snippet TEXT",
                         "ADD COLUMN merge_style VARCHAR",

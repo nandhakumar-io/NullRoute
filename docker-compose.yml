@@ -43,7 +43,7 @@ x-common-env: &common-env
   # Phase 4: Keycloak JWT/RBAC. AUTH_ENABLED=false is the explicit
   # local/offline demo mode only — never the default for a real deployment.
   AUTH_ENABLED: "false"
-  GATEWAY_MOCK_CONNECTOR: "true"
+  GATEWAY_MOCK_CONNECTOR: "false"
   KEYCLOAK_ISSUER: http://keycloak:8080/realms/netsecauditor
   KEYCLOAK_AUDIENCE: netsecauditor-backend
   KEYCLOAK_JWKS_CACHE_TTL: "3600"

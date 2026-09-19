@@ -23,6 +23,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/backups", label: "Config Backups" },
       { to: "/network-scans", label: "Network Scans & Discovery", roles: ["admin", "security_analyst", "operator"] },
       { to: "/schedules", label: "Schedules" },
+      { to: "/event-triggers", label: "Event-Driven Scanning" },
       { to: "/gns3-integration", label: "GNS3 Virtual Sandbox", roles: ["admin", "security_analyst"] },
     ],
   },

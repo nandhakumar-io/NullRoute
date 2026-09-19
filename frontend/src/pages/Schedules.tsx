@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { endpoints, AuditSchedule } from "../api";
-import { PageHeader, Loading, EmptyState } from "../components/ui";
+import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
 
 const FREQUENCIES = ["manual", "hourly", "daily", "weekly"];
 
@@ -31,6 +32,12 @@ export default function Schedules() {
   }
 
   useEffect(load, []);
+
+  const stats = useMemo(() => {
+    const enabled = schedules.filter((s) => s.enabled).length;
+    const failed = schedules.filter((s) => s.last_run_status === "FAILED").length;
+    return { total: schedules.length, enabled, failed };
+  }, [schedules]);
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -86,8 +93,23 @@ export default function Schedules() {
       <PageHeader
         title="Scheduled Audits"
         subtitle="Recurring scans executed by the background scheduler worker — never run inline on a request"
+        action={
+          <Link to="/event-triggers" className="btn-secondary">
+            Event-driven scanning →
+          </Link>
+        }
       />
       <div className="px-8 pb-8 space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <StatCard label="Schedules" value={stats.total} />
+          <StatCard label="Enabled" value={stats.enabled} tone="good" />
+          <StatCard label="Last run failed" value={stats.failed} tone={stats.failed > 0 ? "critical" : "default"} />
+        </div>
+        <div className="text-xs text-slate-500 -mt-2">
+          Need to react to an event instead of the clock (a scan finishing, drift being detected)? Use{" "}
+          <Link className="underline decoration-dotted" to="/event-triggers">Event-Driven Scanning</Link>.
+        </div>
+
         <div className="card space-y-3">
           <div className="text-sm font-semibold text-slate-200">New schedule</div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">

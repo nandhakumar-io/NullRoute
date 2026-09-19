@@ -43,7 +43,7 @@ import anyio
 from sqlalchemy.orm import Session
 
 from app.models.db import ChangeRequest, Device, DeploymentRecord, RollbackRecord, Scan
-from app.services import alert_service, minio_service, openbao_service
+from app.services import alert_service, evidence_service, minio_service, openbao_service
 from app.services.collectors.registry import get_collector
 from app.services.deployment.registry import get_deployer
 from app.services.deployment_service import _resolve_credentials
@@ -127,6 +127,7 @@ async def rollback_deployment(
         rb.completed_at = datetime.utcnow()
         db.commit()
         await _alert_failure(db, rb, device)
+        await _anchor_rollback_event(db, rb, device, "rollback.no_archived_config")
         return rb
 
     try:
@@ -137,6 +138,7 @@ async def rollback_deployment(
         rb.completed_at = datetime.utcnow()
         db.commit()
         await _alert_failure(db, rb, device)
+        await _anchor_rollback_event(db, rb, device, "rollback.archive_read_failed")
         return rb
 
     try:
@@ -147,6 +149,7 @@ async def rollback_deployment(
         rb.completed_at = datetime.utcnow()
         db.commit()
         await _alert_failure(db, rb, device)
+        await _anchor_rollback_event(db, rb, device, "rollback.credentials_unavailable")
         return rb
 
     # 1. Push the archived pre-change config back, via the SAME transport
@@ -162,6 +165,7 @@ async def rollback_deployment(
         rb.completed_at = datetime.utcnow()
         db.commit()
         await _alert_failure(db, rb, device)
+        await _anchor_rollback_event(db, rb, device, "rollback.push_failed")
         return rb
 
     rb.status = "ROLLED_BACK"
@@ -233,6 +237,12 @@ async def rollback_deployment(
     if rb.status == "CRITICAL_MANUAL_INTERVENTION_REQUIRED":
         await _alert_failure(db, rb, device)
 
+    await _anchor_rollback_event(
+        db, rb, device,
+        "rollback.verified" if rb.status == "VERIFIED" else "rollback.unverified",
+        scan_id=rb.post_rollback_scan_id,
+    )
+
     return rb
 
 
@@ -241,3 +251,21 @@ async def _alert_failure(db: Session, rb: RollbackRecord, device: Device) -> Non
         await alert_service.alert_rollback_failed(db, rb.tenant_id, device.id, rb.id, rb.error or "Rollback failed")
     except Exception:  # noqa: BLE001 -- alerting must never mask the underlying failure
         logger.warning("Failed to dispatch rollback-failure alert", exc_info=True)
+
+
+async def _anchor_rollback_event(
+    db: Session, rb: RollbackRecord, device: Device, event_type: str, scan_id: Optional[str] = None,
+) -> None:
+    """Same Fabric-anchoring pattern as deployment_service.py's
+    `_anchor_deployment_event` -- the chaincode's `eventType` is free-form,
+    so `rollback.*` event kinds need no chaincode change. Best-effort,
+    never blocks the rollback result."""
+    try:
+        await evidence_service.anchor_event(
+            db, event_type=event_type, actor=rb.initiated_by or "system:rollback",
+            device_id=device.id, tenant_id=rb.tenant_id, final_decision=rb.status,
+            scan_id=scan_id, vendor=device.vendor or "Unknown",
+            config_hash=rb.post_rollback_hash or rb.target_config_hash,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to anchor %s event for rollback %s", event_type, rb.id, exc_info=True)

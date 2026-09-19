@@ -18,6 +18,7 @@ passlib[bcrypt]==1.7.4
 tenacity==9.0.0
 python-dotenv==1.0.1
 pybatfish==2024.7.22.1569
+setuptools==75.1.0
 pandas==2.2.3
 pytest==8.3.3
 pytest-asyncio==0.24.0

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.db import (AuditSchedule, Base, Device, EventTrigger,
-                            EventTriggerLog, Scan, Tenant)
+                            EventTriggerLog, NetworkScanJob, Scan, Tenant)
 from app.services import event_trigger_service
 
 
@@ -248,3 +248,100 @@ async def test_events_publish_dispatch_depth_guard():
         await events_mod.publish("some.event", {})
 
     assert calls["n"] == events_mod.MAX_TRIGGER_DISPATCH_DEPTH + 1
+
+# --------------------------------------------------------------------- #
+# run_scan action (event-driven scanning)
+# --------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_dispatch_run_scan_uses_device_from_event_payload(db_session, tenant):
+    device = Device(tenant_id=tenant.id, hostname="edge-r1", vendor="cisco")
+    db_session.add(device)
+    db_session.commit()
+
+    trigger = EventTrigger(
+        tenant_id=tenant.id, name="scan on config commit", event_type="device.config_changed",
+        action_type="run_scan", action_config={}, enabled=True,
+    )
+    db_session.add(trigger)
+    db_session.commit()
+
+    with patch("app.db.SessionLocal", return_value=db_session):
+        await event_trigger_service.dispatch(
+            "device.config_changed", {"tenant_id": tenant.id, "device_id": device.id}
+        )
+
+    logs = event_trigger_service.trigger_logs(db_session, trigger.id, tenant.id)
+    assert logs[0].outcome == "fired"
+    job_id = logs[0].action_result["network_scan_job_id"]
+    job = db_session.query(NetworkScanJob).filter(NetworkScanJob.id == job_id).first()
+    assert job is not None
+    assert job.status == "PENDING"
+    assert job.requested_device_ids == [device.id]
+    assert job.tenant_id == tenant.id
+
+
+@pytest.mark.asyncio
+async def test_dispatch_run_scan_uses_configured_device_ids_over_event_device(db_session, tenant):
+    pinned = Device(tenant_id=tenant.id, hostname="core-sw1", vendor="arista")
+    from_event = Device(tenant_id=tenant.id, hostname="edge-r2", vendor="juniper")
+    db_session.add_all([pinned, from_event])
+    db_session.commit()
+
+    trigger = EventTrigger(
+        tenant_id=tenant.id, name="scan core switch on any drift", event_type="drift.detected",
+        action_type="run_scan", action_config={"device_ids": [pinned.id]}, enabled=True,
+    )
+    db_session.add(trigger)
+    db_session.commit()
+
+    with patch("app.db.SessionLocal", return_value=db_session):
+        await event_trigger_service.dispatch(
+            "drift.detected", {"tenant_id": tenant.id, "device_id": from_event.id}
+        )
+
+    logs = event_trigger_service.trigger_logs(db_session, trigger.id, tenant.id)
+    assert logs[0].outcome == "fired"
+    assert logs[0].action_result["device_ids"] == [pinned.id]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_run_scan_no_device_available_logs_failure(db_session, tenant):
+    trigger = EventTrigger(
+        tenant_id=tenant.id, name="scan without a target", event_type="device.syslog_received",
+        action_type="run_scan", action_config={}, enabled=True,
+    )
+    db_session.add(trigger)
+    db_session.commit()
+
+    with patch("app.db.SessionLocal", return_value=db_session):
+        await event_trigger_service.dispatch("device.syslog_received", {"tenant_id": tenant.id})
+
+    logs = event_trigger_service.trigger_logs(db_session, trigger.id, tenant.id)
+    assert logs[0].outcome == "failed"
+    assert "device_ids" in logs[0].error
+
+
+@pytest.mark.asyncio
+async def test_dispatch_run_scan_ignores_device_from_other_tenant(db_session, tenant):
+    other = Tenant(name="other-co")
+    db_session.add(other)
+    db_session.commit()
+    foreign_device = Device(tenant_id=other.id, hostname="not-mine", vendor="cisco")
+    db_session.add(foreign_device)
+    db_session.commit()
+
+    trigger = EventTrigger(
+        tenant_id=tenant.id, name="scan on commit", event_type="device.config_changed",
+        action_type="run_scan", action_config={}, enabled=True,
+    )
+    db_session.add(trigger)
+    db_session.commit()
+
+    with patch("app.db.SessionLocal", return_value=db_session):
+        await event_trigger_service.dispatch(
+            "device.config_changed", {"tenant_id": tenant.id, "device_id": foreign_device.id}
+        )
+
+    logs = event_trigger_service.trigger_logs(db_session, trigger.id, tenant.id)
+    assert logs[0].outcome == "failed"

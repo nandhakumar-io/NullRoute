@@ -40,10 +40,32 @@ def _get_owned(db: Session, tenant_id: str, cr_id: str) -> ChangeRequest:
     return cr
 
 
+@router.post("/preview")
+def preview_change_request(
+    device_id: str = Body(...),
+    snippet: str = Body(..., description="CLI remediation delta to merge onto the device's current config"),
+    current_config: Optional[str] = Body(None, description="Override the device's last-known config as the merge base"),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    _user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Read-only preview of the merge engine's output for a CLI
+    remediation delta -- shows the merged config, per-line applied-commands
+    breakdown, and confidence/warnings, without creating anything. A
+    reviewer previews, then POSTs the same device_id/snippet to `` (create)
+    once satisfied."""
+    device = db.query(Device).filter(Device.id == device_id, Device.tenant_id == tenant_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    return change_request_service.preview_merge(db, device=device, snippet=snippet, current_config=current_config)
+
+
 @router.post("")
 async def create_change_request(
     device_id: str = Body(...),
-    proposed_config: str = Body(...),
+    proposed_config: Optional[str] = Body(None, description="A complete proposed configuration"),
+    snippet: Optional[str] = Body(None, description="A CLI remediation delta, merged via the merge engine instead"),
+    current_config: Optional[str] = Body(None, description="Override the device's last-known config as the merge base"),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
     user: CurrentUser = Depends(require_role("admin", "operator")),
@@ -51,9 +73,12 @@ async def create_change_request(
     device = db.query(Device).filter(Device.id == device_id, Device.tenant_id == tenant_id).first()
     if not device:
         raise HTTPException(404, "Device not found")
+    if (proposed_config is None) == (snippet is None):
+        raise HTTPException(400, "Provide exactly one of proposed_config or snippet")
     cr = await change_request_service.create_and_validate(
         db, tenant_id=tenant_id, device=device,
-        proposed_config=proposed_config, created_by=user.username, source="manual",
+        proposed_config=proposed_config, snippet=snippet, current_config=current_config,
+        created_by=user.username, source="manual",
     )
     return change_request_service.to_dict(cr)
 
@@ -201,6 +226,10 @@ async def deploy(
     credential_ref_id: Optional[str] = Body(default=None),
     transport: Optional[str] = Body(default=None),
     framework: str = Body(default="ALL"),
+    target_control_ids: Optional[list] = Body(
+        default=None,
+        description="Control IDs this deployment targets; post-deploy verification checks these specifically flipped to PASS.",
+    ),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
     user: CurrentUser = Depends(require_role("admin", "operator")),
@@ -213,6 +242,7 @@ async def deploy(
         dr = await deployment_service.deploy_change_request(
             db, cr, initiated_by=user.username,
             credential_ref_id=credential_ref_id, transport=transport, framework=framework,
+            target_control_ids=target_control_ids,
         )
         return deployment_service.to_dict(dr)
     except ValueError as e:

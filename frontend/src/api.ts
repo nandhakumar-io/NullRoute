@@ -1201,6 +1201,49 @@ export interface ComplianceMatrix {
   rows: ComplianceMatrixRow[];
 }
 
+// --- Event-driven scanning (Phase 16 event triggers) -----------------------
+export interface EventTrigger {
+  id: string;
+  name: string;
+  description: string | null;
+  enabled: boolean;
+  event_type: string;
+  filter: Record<string, any> | Record<string, any>[] | null;
+  action_type: string; // create_alert | run_schedule | run_scan
+  action_config: Record<string, any>;
+  cooldown_seconds: number;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string;
+}
+
+export interface EventTriggerCreate {
+  name: string;
+  description?: string | null;
+  enabled?: boolean;
+  event_type: string;
+  filter?: Record<string, any> | Record<string, any>[] | null;
+  action_type: string;
+  action_config?: Record<string, any>;
+  cooldown_seconds?: number;
+}
+
+export interface EventTriggerLog {
+  id: string;
+  trigger_id: string;
+  event_type: string;
+  event_payload: Record<string, any> | null;
+  outcome: string; // fired | skipped_cooldown | skipped_filter | error ...
+  action_result: Record<string, any> | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface EventTriggerMetadata {
+  event_types: string[];
+  action_types: string[];
+}
+
 export const endpoints = {
   dashboard: () => api.get<DashboardStats>("/api/dashboard"),
   complianceMatrix: () => api.get<ComplianceMatrix>("/api/dashboard/compliance-matrix"),
@@ -1429,6 +1472,23 @@ export const endpoints = {
   configSearch: (q: string, deep = true) =>
     api.get<ConfigSearchResult>("/api/config-search", { params: { q, deep } }),
   runScheduleNow: (id: string) => api.post(`/api/schedules/${id}/run`),
+
+  // Event-driven scanning: user-defined triggers that fire on internal
+  // events (compliance.scan.completed, drift.detected, ...) or an inbound
+  // webhook, and either raise an alert or kick off a schedule immediately --
+  // i.e. scanning driven by events rather than only by the clock.
+  eventTriggerMetadata: () => api.get<EventTriggerMetadata>("/api/event-triggers/metadata"),
+  eventTriggers: () => api.get<EventTrigger[]>("/api/event-triggers"),
+  eventTrigger: (id: string) => api.get<EventTrigger>(`/api/event-triggers/${id}`),
+  createEventTrigger: (payload: EventTriggerCreate) => api.post<EventTrigger>("/api/event-triggers", payload),
+  updateEventTrigger: (id: string, payload: EventTriggerCreate) =>
+    api.put<EventTrigger>(`/api/event-triggers/${id}`, payload),
+  deleteEventTrigger: (id: string) => api.delete(`/api/event-triggers/${id}`),
+  eventTriggerLogs: (id: string) => api.get<EventTriggerLog[]>(`/api/event-triggers/${id}/logs`),
+  testEventTrigger: (id: string, samplePayload?: Record<string, any>) =>
+    api.post<{ dispatched: boolean; latest_log: EventTriggerLog | null }>(
+      `/api/event-triggers/${id}/test`, samplePayload || {},
+    ),
 
   alerts: (params?: { status?: string; severity?: string; category?: string }) =>
     api.get<{ count: number; alerts: Alert[] }>("/api/alerts", { params }),

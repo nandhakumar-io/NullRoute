@@ -27,8 +27,23 @@ from app.services import custom_control_service, opa_service
 from app.services.opa_service import OPADecision, OPAMalformedResponseError, OPAUnavailableError
 
 
-def _remediation_for(remediation: Optional[str], vendor: str) -> Optional[str]:
+def _remediation_for(remediation: Optional[str], vendor: str, result: str = "FAIL") -> Optional[str]:
+    """policies/common/evaluate.rego's remediation_for() already returns
+    non-null remediation text for FAIL (an actionable CLI change is
+    needed), NOT_APPLICABLE (null -- nothing to do) and UNVERIFIED (a
+    fixed "go approve this in the Training Center" instruction, not a CLI
+    change at all). This function used to append the vendor CLI hint
+    (`(Cisco IOS-XE CLI: enter 'configure terminal' first.)` etc.) to
+    *any* non-null remediation regardless of `result` -- so an UNVERIFIED
+    finding's human-review instruction got a misleading vendor CLI hint
+    tacked onto it, as if there were a command to type. The hint is now
+    only appended for FAIL, where the remediation text really is a CLI
+    change; NOT_APPLICABLE (already null) and UNVERIFIED both pass through
+    unchanged.
+    """
     if not remediation:
+        return remediation
+    if result != "FAIL":
         return remediation
     vendor_hint = {
         "Cisco": "(Cisco IOS-XE CLI: enter `configure terminal` first.)",
@@ -103,6 +118,7 @@ def opa_decision_to_findings(decision: OPADecision, baseline: SecurityBaselineMo
     vendor = baseline.device.vendor or ""
     for f in decision.findings:
         prov = _find_provenance(baseline, f.get("parameter"))
+        result = f["result"]
         findings.append({
             "framework": f.get("framework", "SYSTEM"),
             "control_id": f["control_id"],
@@ -111,11 +127,27 @@ def opa_decision_to_findings(decision: OPADecision, baseline: SecurityBaselineMo
             "expected_value": str(f.get("expected")),
             "actual_value": str(f.get("actual")),
             "parameter": f.get("parameter") or "",
-            "result": f["result"],
+            "result": result,
             "evidence_line": _find_evidence(baseline, f.get("parameter")),
-            "remediation": _remediation_for(f.get("remediation"), vendor),
+            # reason_for() in policies/common/evaluate.rego returns a
+            # human-readable sentence for every result branch (PASS/FAIL/
+            # NOT_APPLICABLE/UNVERIFIED) -- it was already in OPA's response
+            # but this adapter dropped it on the floor, so the Finding rows'
+            # `reason` column (which exists on the model) was always NULL.
+            "reason": f.get("reason"),
+            # Same decision-level policy_version stamped onto every finding
+            # from this evaluation, so a Finding row is self-describing (the
+            # exact policy revision that produced it) without a join back to
+            # OPAAnalysis.
+            "policy_version": decision.policy_version,
+            "remediation": _remediation_for(f.get("remediation"), vendor, result),
             "source": prov.source if prov else None,
             "confidence": prov.confidence if prov else None,
+            # The exact config line the evidence came from (when the parser
+            # or AI normalization recorded one), so the Evidence Trace view
+            # can jump straight to it instead of only showing the raw
+            # command text.
+            "line_number": prov.line_number if prov else None,
             # Denormalized so vendor_scores / the cross-vendor compliance
             # matrix (routers/compliance.py) can filter/group without a
             # join -- previously computed above but never attached to the

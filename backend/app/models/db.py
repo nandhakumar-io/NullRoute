@@ -65,7 +65,7 @@ class Device(Base):
     datacenter_id = Column(String, ForeignKey("datacenters.id"), nullable=True, index=True)
     rack_id = Column(String, ForeignKey("racks.id"), nullable=True, index=True)
 
-    scans = relationship("Scan", back_populates="device")
+    scans = relationship("Scan", back_populates="device", cascade="all, delete-orphan")
 
 
 class Scan(Base):
@@ -240,7 +240,7 @@ class DeviceCredentialRef(Base):
     id = Column(String, primary_key=True, default=gen_uuid)
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
     device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
-    credential_ref = Column(String, nullable=False, unique=True)  # OpenBao secret path/key, not the secret
+    secret_data = Column(JSON, nullable=True)
     credential_type = Column(String, nullable=False)  # ssh_password/ssh_key/netconf/restconf_token/snmp_community
     created_by = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

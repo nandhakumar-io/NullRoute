@@ -54,6 +54,12 @@ def _cascade_delete_device_rows(db: Session, device_id: str) -> None:
     # Deepest children first (grandchildren of devices)
     queries = [
         # Children of Scans
+        "DELETE FROM alerts WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        "DELETE FROM ai_analyses WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        "DELETE FROM opa_analyses WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        "DELETE FROM batfish_analyses WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        "DELETE FROM evidence_records WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
+        "DELETE FROM report_artifacts WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
         "DELETE FROM findings WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
         "DELETE FROM scan_audits WHERE scan_id IN (SELECT id FROM scans WHERE device_id = :d)",
         
@@ -66,8 +72,8 @@ def _cascade_delete_device_rows(db: Session, device_id: str) -> None:
         # Direct children of Devices (mostly)
         "DELETE FROM deployment_records WHERE device_id = :d",
         "DELETE FROM change_requests WHERE device_id = :d",
-        "DELETE FROM config_drifts WHERE device_id = :d",
-        "DELETE FROM golden_configs WHERE device_id = :d",
+        "DELETE FROM security_drift_findings WHERE device_id = :d",
+        "DELETE FROM baseline_approvals WHERE device_id = :d",
         "DELETE FROM drift_events WHERE device_id = :d",
         "DELETE FROM backup_jobs WHERE device_id = :d",
         "DELETE FROM backup_destinations WHERE device_id = :d",
@@ -77,6 +83,10 @@ def _cascade_delete_device_rows(db: Session, device_id: str) -> None:
         "DELETE FROM ai_analyses WHERE device_id = :d",
         "DELETE FROM alerts WHERE device_id = :d",
         "DELETE FROM device_credential_refs WHERE device_id = :d",
+        "DELETE FROM device_metric_snapshots WHERE device_id = :d",
+        "DELETE FROM device_vulnerability_matches WHERE device_id = :d",
+        "DELETE FROM training_examples WHERE source_device_id = :d",
+        "DELETE FROM network_group_members WHERE device_id = :d",
         
         # Scans (must be deleted after findings/audits)
         "DELETE FROM scans WHERE device_id = :d",
@@ -98,7 +108,8 @@ def _cascade_delete_device_rows(db: Session, device_id: str) -> None:
     
     for q in queries:
         try:
-            db.execute(text(q), {"d": device_id})
+            with db.begin_nested():
+                db.execute(text(q), {"d": device_id})
         except Exception:
             pass # Ignore if table doesn't exist
 

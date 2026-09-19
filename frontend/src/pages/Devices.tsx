@@ -1,7 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { endpoints, Device, DeviceCreatePayload } from "../api";
+import { endpoints, Device, DeviceCreatePayload, CredentialRef } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
+
+function CredentialStatusBadge({ ref, loading }: { ref: CredentialRef | null; loading: boolean }) {
+  if (loading) return <span className="text-[10px] text-slate-500 ml-2">checking…</span>;
+  if (!ref) return <span className="text-[10px] text-slate-500 ml-2">not configured</span>;
+  const rotated = ref.rotated_at || ref.updated_at;
+  return (
+    <span className="text-[10px] text-emerald-400 ml-2" title={`credential_ref ${ref.credential_ref}`}>
+      ● configured{rotated ? ` · last set ${new Date(rotated).toLocaleDateString()}` : ""}
+    </span>
+  );
+}
 
 function SnmpIndicator({ deviceId, protocol }: { deviceId: string; protocol: string | null | undefined }) {
   const [status, setStatus] = useState<"loading" | "up" | "down" | "none">("loading");
@@ -50,12 +61,38 @@ function DeviceFormModal({
     initialData || { name: "", management_address: "", vendor: "", model: "", site: "", environment: "", protocol: "" }
   );
   
-  // Credentials state
+  // Credentials state. The backend intentionally never returns secret
+  // material (see routers/credentials.py), so these fields always start
+  // empty even when editing a device that already has credentials stored --
+  // typing here always creates/overwrites a fresh credential_ref rather than
+  // "revealing" anything. `existingCredentials` is separate, status-only
+  // state (which types are configured + when last rotated) fetched below,
+  // so the modal can show that something is set instead of implying nothing
+  // was ever saved.
   const [sshUsername, setSshUsername] = useState("");
   const [sshPassword, setSshPassword] = useState("");
   const [snmpCommunity, setSnmpCommunity] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [existingCredentials, setExistingCredentials] = useState<CredentialRef[]>([]);
+  const [credsLoading, setCredsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!initialData?.id) {
+      setExistingCredentials([]);
+      return;
+    }
+    let cancelled = false;
+    setCredsLoading(true);
+    endpoints.listCredentials(initialData.id)
+      .then(res => { if (!cancelled) setExistingCredentials(res.data || []); })
+      .catch(() => { if (!cancelled) setExistingCredentials([]); })
+      .finally(() => { if (!cancelled) setCredsLoading(false); });
+    return () => { cancelled = true; };
+  }, [initialData?.id]);
+
+  const credentialStatus = (type: CredentialRef["credential_type"]) =>
+    existingCredentials.find(c => c.credential_type === type) || null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,19 +167,31 @@ function DeviceFormModal({
             <h3 className="text-sm font-semibold text-slate-200 mb-3">Authentication (Optional)</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">SSH Username</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center">
+                  SSH Username
+                  <CredentialStatusBadge ref={credentialStatus("ssh_password")} loading={credsLoading} />
+                </label>
                 <input className="input w-full" value={sshUsername} onChange={e => setSshUsername(e.target.value)} placeholder="admin" autoComplete="off" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">SSH Password</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center">
+                  SSH Password
+                  <CredentialStatusBadge ref={credentialStatus("ssh_password")} loading={credsLoading} />
+                </label>
                 <input type="password" className="input w-full" value={sshPassword} onChange={e => setSshPassword(e.target.value)} placeholder="••••••••" autoComplete="off" />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-semibold text-slate-400 mb-1">SNMP Community (v2c)</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center">
+                  SNMP Community (v2c)
+                  <CredentialStatusBadge ref={credentialStatus("snmp_community")} loading={credsLoading} />
+                </label>
                 <input type="password" className="input w-full" value={snmpCommunity} onChange={e => setSnmpCommunity(e.target.value)} placeholder="public" autoComplete="off" />
               </div>
             </div>
-            <p className="text-xs text-slate-500 mt-2">Credentials are piped securely into OpenBao Vault.</p>
+            <p className="text-xs text-slate-500 mt-2">
+              Credentials are piped securely into OpenBao Vault. Fields above are always blank on open (secrets are
+              never returned) — leave a field blank to keep the existing credential, or fill it in to replace it.
+            </p>
           </div>
 
           {saveError && (

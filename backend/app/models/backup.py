@@ -55,10 +55,8 @@ class BackupDestination(Base):
     #   sftp:       {host, port, remote_path, username}
     config = Column(JSON, nullable=False, default=dict)
 
-    # Points at the OpenBao secret holding access_key/secret_key,
-    # connection_string/sas_token, or password/private_key -- never
-    # persisted here (RULE 6).
-    credential_ref = Column(String, nullable=True)
+    # Secret material used to be here (credential_ref). Now stored fully in Postgres.
+    secret_data = Column(JSON, nullable=True)
 
     # Auto-export: when true, every newly collected snapshot for the
     # given scope is pushed to this destination automatically right

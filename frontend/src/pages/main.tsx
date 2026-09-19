@@ -34,7 +34,6 @@ import Observability from "./pages/Observability";
 import EvidenceLedger from "./pages/EvidenceLedger";
 import Drift from "./pages/Drift";
 import Schedules from "./pages/Schedules";
-import EventTriggers from "./pages/EventTriggers";
 import Alerts from "./pages/Alerts";
 import AIAnalysisOverview from "./pages/AIAnalysisOverview";
 import AuditLog from "./pages/AuditLog";
@@ -86,7 +85,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="evidence" element={<EvidenceLedger />} />
           <Route path="drift" element={<Drift />} />
           <Route path="schedules" element={<Schedules />} />
-          <Route path="event-triggers" element={<EventTriggers />} />
           <Route path="alerts" element={<Alerts />} />
           <Route path="review-queue" element={<ReviewQueue />} />
           <Route path="ai-analysis" element={<AIAnalysisOverview />} />

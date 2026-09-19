@@ -169,18 +169,24 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
     )
     try:
         async with httpx.AsyncClient(timeout=300.0) as client:
-            resp = await client.post(
-                f"{OLLAMA_HOST}/generate",
-                json={
-                    "model": LLM_MODEL,
-                    "system": SYSTEM_PROMPT,
-                    "prompt": user_prompt,
-                    "stream": False,
-                    "format": "json",
-                    "options": {"temperature": 0.1},
-                },
-            )
-            resp.raise_for_status()
+            import asyncio
+            for attempt in range(4):
+                resp = await client.post(
+                    f"{OLLAMA_HOST}/generate",
+                    json={
+                        "model": LLM_MODEL,
+                        "system": SYSTEM_PROMPT,
+                        "prompt": user_prompt,
+                        "stream": False,
+                        "format": "json",
+                        "options": {"temperature": 0.1},
+                    },
+                )
+                if resp.status_code == 500 and attempt < 3:
+                    await asyncio.sleep(1.5 ** attempt)
+                    continue
+                resp.raise_for_status()
+                break
             text = resp.json().get("response", "{}")
             parsed = json.loads(text)
             
@@ -218,20 +224,27 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
 
 
 async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Optional[List[dict]] = None) -> BlockInterpretationResult:
-    """Interpret a block of unknown config lines while preserving provenance.
-    Unknown or low-confidence items stay in `unknown_lines` and are also represented
-    as explicit `extra_parameters.unknown_evidence` facts so the pipeline never silently drops a line."""
+    """Interpret a block of unknown config lines concurrently while preserving provenance."""
+    import asyncio
     block_text = (block_text or "").strip()
     if not block_text:
         return BlockInterpretationResult(vendor=vendor, block_text=block_text, facts=[], unknown_lines=[])
 
     retrieved_knowledge = retrieved_knowledge or []
+    lines = [l.strip() for l in block_text.splitlines() if l.strip()]
+    sem = asyncio.Semaphore(10)
+    
+    async def process_line(line):
+        async with sem:
+            return line, await interpret_line(vendor, line, retrieved_knowledge)
+            
+    results_ordered = await asyncio.gather(*(process_line(line) for line in lines))
+    
     facts: List[AIInterpretation] = []
     unknown_lines: List[str] = []
-    for line in [l.strip() for l in block_text.splitlines() if l.strip()]:
-        interps = await interpret_line(vendor, line, retrieved_knowledge)
+    
+    for line, interps in results_ordered:
         has_confident_match = False
-        
         for interp in interps:
             if interp.normalized_parameter != "extra_parameters.unknown_evidence" and interp.confidence >= CONFIDENCE_THRESHOLD:
                 has_confident_match = True
@@ -248,9 +261,11 @@ async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Opt
                 retrieved_knowledge=getattr(first, 'retrieved_knowledge', []),
                 model_version=getattr(first, 'model_version', "offline-heuristic-v1"),
                 needs_human_review=True,
-                reasoning=(getattr(first, 'reasoning', None) or "unknown command retained for review"),
+                reasoning=getattr(first, 'reasoning', "Fallback categorization")
             )
             facts.append(unknown_fact)
+
+    return BlockInterpretationResult(vendor=vendor, block_text=block_text, facts=facts, unknown_lines=unknown_lines)
 
     if not facts:
         if block_text:

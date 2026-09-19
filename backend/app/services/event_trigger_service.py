@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy.orm import Session
 
 from app.models.db import (AuditSchedule, Device, EventTrigger,
-                            EventTriggerLog, Scan)
+                            EventTriggerLog, NetworkScanJob, Scan)
 
 logger = logging.getLogger("event_trigger_service")
 
@@ -143,6 +143,50 @@ async def _run_action(db: Session, trigger: EventTrigger, payload: Dict[str, Any
             extra={"trigger_id": trigger.id, "event_payload": payload},
         )
         return {"alert_id": alert.id}
+
+    if trigger.action_type == "run_scan":
+        # Event-driven scanning: e.g. a device just committed a config
+        # change (syslog/webhook) or drift was detected -- kick off a
+        # PENDING NetworkScanJob rather than scanning inline (same
+        # no-long-work-in-a-request/dispatch rule as everywhere else in
+        # this app). The scheduler-independent network_scan_worker picks
+        # it up on its normal poll loop.
+        from app.services.network_scan_service import init_stages
+
+        device_ids = list(config.get("device_ids") or [])
+        # If the trigger didn't pin specific devices, scan whichever
+        # device the firing event itself was about (e.g. the device that
+        # just sent the config-commit syslog message).
+        if not device_ids and payload.get("device_id"):
+            device_ids = [payload["device_id"]]
+
+        if not device_ids:
+            raise ValueError("run_scan action requires action_config.device_ids or an event with device_id")
+
+        known = {
+            d.id for d in db.query(Device.id).filter(
+                Device.tenant_id == trigger.tenant_id, Device.id.in_(device_ids)
+            ).all()
+        }
+        device_ids = [d for d in device_ids if d in known]
+        if not device_ids:
+            raise ValueError("None of the target device_ids belong to this tenant")
+
+        job = NetworkScanJob(
+            tenant_id=trigger.tenant_id,
+            name=config.get("name") or f"Event-driven scan ({trigger.name})",
+            run_discovery=False,
+            requested_device_ids=device_ids,
+            framework=config.get("framework", "cis"),
+            include_batfish=bool(config.get("include_batfish", False)),
+            status="PENDING",
+            stages=init_stages(),
+            created_by=f"event_trigger:{trigger.id}",
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        return {"network_scan_job_id": job.id, "device_ids": device_ids}
 
     if trigger.action_type == "run_schedule":
         from app.services import scheduling_service

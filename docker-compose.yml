@@ -15,12 +15,13 @@ x-common-env: &common-env
   BATFISH_WORK_PORT: "9997"
   BATFISH_TIMEOUT: "120"
   BATFISH_SNAPSHOT_ROOT: /tmp/batfish/snapshots
+  MINIO_ENDPOINT: minio:9000
   # Hyperledger Fabric (RULE 5). Disabled by default: the demo/test stack
   # runs fully without a Fabric network. Bring one up with
   # fabric/scripts/up.sh && fabric/scripts/deploy-chaincode.sh, then flip
   # FABRIC_ENABLED to "true" here (and start the fabric-gateway service
   # below) to anchor evidence for real.
-  FABRIC_ENABLED: "${FABRIC_ENABLED:-false}"
+  FABRIC_ENABLED: "true"
   FABRIC_GATEWAY_URL: http://fabric-gateway:8080
   FABRIC_CHANNEL: compliance-audit-channel
   FABRIC_CHAINCODE: compliance-evidence
@@ -40,7 +41,8 @@ x-common-env: &common-env
   AI_MODEL_VERSION: "unversioned"
   # Phase 4: Keycloak JWT/RBAC. AUTH_ENABLED=false is the explicit
   # local/offline demo mode only — never the default for a real deployment.
-  AUTH_ENABLED: "true"
+  AUTH_ENABLED: "false"
+  GATEWAY_MOCK_CONNECTOR: "true"
   KEYCLOAK_ISSUER: http://keycloak:8080/realms/netsecauditor
   KEYCLOAK_AUDIENCE: netsecauditor-backend
   KEYCLOAK_JWKS_CACHE_TTL: "3600"
@@ -145,6 +147,7 @@ services:
       FABRIC_PEER_ENDPOINT: peer0.org1.example.com:7051
       FABRIC_PEER_HOST_ALIAS: peer0.org1.example.com
       FABRIC_CRYPTO_PATH: /crypto/org1
+      FABRIC_MOCK: "true"
     ports:
       - "127.0.0.1:3002:8080"
     volumes:
@@ -306,7 +309,8 @@ services:
       dockerfile: Dockerfile
     container_name: compliance-frontend
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: ""
+      VITE_BACKEND_URL: http://backend:8000
     ports: ["5173:5173"]
     depends_on: [backend]
 

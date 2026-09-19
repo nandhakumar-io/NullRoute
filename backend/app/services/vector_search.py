@@ -124,7 +124,7 @@ def find_similar_mappings(
     query_vector = embed_text(query_text)
     bind = db.get_bind()
 
-    if query_vector is not None and bind.dialect.name == "postgresql":
+    if query_vector and bind.dialect.name == "postgresql":
         where = ["status = :status", "(tenant_id = :tenant_id OR tenant_id IS NULL)", "embedding IS NOT NULL"]
         params: Dict[str, Any] = {
             "status": status, "tenant_id": tenant_id, "top_k": top_k,

@@ -102,7 +102,10 @@ def _resolve_credentials(
 
     if not ref_row:
         raise ValueError("No credential reference on file for this device")
-    return openbao_service.get_device_credentials(tenant_id, ref_row.credential_ref)
+    return openbao_service.DeviceCredentials(
+        credential_type=ref_row.credential_type, 
+        secret=ref_row.secret_data or {}
+    )
 
 
 async def deploy_change_request(

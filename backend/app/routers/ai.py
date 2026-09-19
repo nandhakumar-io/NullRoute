@@ -265,6 +265,10 @@ def submit_training_feedback(
         AIAnalysis.id == analysis_id,
         AIAnalysis.scan_id == scan_id,
     ).first()
+    
+    if not analysis:
+        raise HTTPException(404, f"No AI analysis found with id {analysis_id}")
+
     import hashlib
     all_mappings = db.query(CommandMapping).all()
     mapping = None
@@ -359,7 +363,10 @@ def get_device_snmp_telemetry(
             DeviceCredentialRef.tenant_id == tenant_id,
         ).order_by(DeviceCredentialRef.created_at.desc()).first()
         if ref_row:
-            creds = openbao_service.get_device_credentials(tenant_id, ref_row.credential_ref)
+            creds = openbao_service.DeviceCredentials(
+                credential_type=ref_row.credential_type, 
+                secret=ref_row.secret_data or {}
+            )
             if creds.secret.get("snmp_community"):
                 community = creds.secret["snmp_community"]
             if creds.secret.get("snmp_port"):

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints, ChangeRequest, DeploymentRecord } from "../api";
-import { PageHeader, Loading, EmptyState } from "../components/ui";
+import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import SideBySideDiff from "../components/SideBySideDiff";
 import BatfishDeltaView from "../components/BatfishDeltaView";
@@ -211,6 +211,24 @@ function DeploymentCard({
           </span>
           {" "}
           <span className="text-slate-600">(never authoritative — OPA/Batfish/risk decide compliance)</span>
+        </div>
+      )}
+      {d.post_scan_id && (
+        <div className="pt-1 flex items-center gap-3 flex-wrap">
+          <Link
+            className="text-cyan-400 hover:text-cyan-300 underline decoration-dotted"
+            to={`/scans/${d.post_scan_id}`}
+            title="Post-deployment verification re-runs the full OPA/Batfish/risk pipeline as a real scan — open it for the full decision trail."
+          >
+            View post-validation scan →
+          </Link>
+          <Link
+            className="text-slate-500 hover:text-slate-300 underline decoration-dotted"
+            to={`/evidence?scan_id=${d.post_scan_id}`}
+            title="The post-validation scan's evidence package (hashed, and anchored to Hyperledger Fabric when enabled)"
+          >
+            View anchored evidence →
+          </Link>
         </div>
       )}
     </div>

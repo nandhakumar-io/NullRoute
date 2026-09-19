@@ -20,7 +20,6 @@ generation are Phase 15/18, not here):
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -29,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.models.baseline import SecurityBaselineModel
 from app.models.db import ChangeRequest, Device, Scan
-from app.services import batfish_service, minio_service, risk_engine
+from app.services import batfish_service, config_merge, minio_service, risk_engine
 from app.services.change_validation_service import correlate
 from app.services.compliance import evaluate_baseline_via_opa
 from app.services.parsers import parse_config
@@ -82,6 +81,39 @@ def to_dict(cr: ChangeRequest) -> Dict[str, Any]:
         "rejected_by": cr.rejected_by, "rejected_at": cr.rejected_at,
         "rejection_reason": cr.rejection_reason,
         "created_at": cr.created_at, "updated_at": cr.updated_at,
+        # Only non-null when this CR was created from a CLI remediation
+        # delta rather than a full proposed config -- see preview_merge()/
+        # create_and_validate()'s `snippet` argument.
+        "snippet": cr.snippet,
+        "merge_style": cr.merge_style,
+        "merge_confidence": cr.merge_confidence,
+        "merge_applied": cr.merge_applied,
+        "merge_warnings": cr.merge_warnings,
+        "merge_commands": cr.merge_commands,
+    }
+
+
+def preview_merge(
+    db: Session, device: Device, snippet: str, current_config: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Read-only preview of what applying `snippet` (a CLI remediation
+    delta) to `device`'s current configuration would produce. Persists
+    nothing -- used by POST /api/change-requests/preview so a reviewer can
+    see the merged config, the applied-commands breakdown, and the
+    confidence/warnings the merge engine reports *before* deciding whether
+    to actually create a change request from it. Mirrors exactly the merge
+    step create_and_validate() runs when it's given a `snippet` instead of
+    a full `proposed_config`, so what was previewed is what gets created.
+    """
+    if current_config is None:
+        current_config = latest_known_config(db, device.id)
+    result = config_merge.apply_commands(current_config, snippet, vendor=device.vendor)
+    return {
+        "device_id": device.id,
+        "current_config": current_config,
+        "proposed_config": result.merged_text,
+        "diff_stats": config_merge.diff_stats(current_config, result.merged_text),
+        **result.to_dict(),
     }
 
 
@@ -89,22 +121,58 @@ async def create_and_validate(
     db: Session,
     tenant_id: str,
     device: Device,
-    proposed_config: str,
-    created_by: str,
+    proposed_config: Optional[str] = None,
+    created_by: str = None,
     source: str = "manual",
     current_config: Optional[str] = None,
+    snippet: Optional[str] = None,
 ) -> ChangeRequest:
+    """Create a ChangeRequest and run it through the full validation
+    pipeline. Exactly one of `proposed_config` (a complete configuration)
+    or `snippet` (a CLI remediation delta, e.g. straight from a Finding's
+    `remediation` text) must be given.
+
+    When `snippet` is given, services/config_merge.py::apply_commands()
+    (the merge engine -- previously implemented but never called from any
+    endpoint) is run against the device's current configuration first, and
+    its merged_text becomes `proposed_config` for every step below
+    (validation, hashing, archival). This is the same merge preview_merge()
+    runs, so a CR created from a snippet a reviewer already previewed
+    produces exactly the config they saw.
+    """
+    if (proposed_config is None) == (snippet is None):
+        raise ValueError("create_and_validate requires exactly one of proposed_config or snippet")
+
     if current_config is None:
         current_config = latest_known_config(db, device.id)
 
+    merge_result = None
+    if snippet is not None:
+        merge_result = config_merge.apply_commands(current_config, snippet, vendor=device.vendor)
+        proposed_config = merge_result.merged_text
+
     cr = ChangeRequest(
         tenant_id=tenant_id, device_id=device.id, created_by=created_by, source=source,
-        proposed_config_hash=hashlib.sha256(proposed_config.encode("utf-8")).hexdigest(),
-        current_config_hash=(
-            hashlib.sha256(current_config.encode("utf-8")).hexdigest() if current_config else None
-        ),
+        # Canonical (volatile-line-stripped) hashes -- see
+        # services/config_merge.py::config_hash and
+        # services/collectors/base.py::CollectionResult.__post_init__ for
+        # why: deployment_service.py compares these against freshly
+        # collected devices' CollectionResult.config_hash (now also
+        # canonical), and a raw byte hash would false-positive on
+        # vendor-inserted volatile lines (timestamps, NVRAM metadata) that
+        # differ on every collection regardless of whether anything
+        # meaningful changed.
+        proposed_config_hash=config_merge.config_hash(proposed_config),
+        current_config_hash=(config_merge.config_hash(current_config) if current_config else None),
         status="DRAFT",
     )
+    if merge_result is not None:
+        cr.snippet = snippet
+        cr.merge_style = merge_result.style
+        cr.merge_confidence = merge_result.confidence
+        cr.merge_applied = [a.to_dict() for a in merge_result.applied]
+        cr.merge_warnings = list(merge_result.warnings)
+        cr.merge_commands = list(merge_result.commands)
     db.add(cr)
     db.commit()
     db.refresh(cr)

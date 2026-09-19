@@ -53,8 +53,8 @@ class AlertChannel(Base):
     enabled = Column(Boolean, nullable=False, default=True)
     config = Column(JSON, nullable=False, default=dict)
 
-    # OpenBao ref for SMTP password / ntfy auth token / webhook secret header.
-    credential_ref = Column(String, nullable=True)
+    # Secret material (e.g. SMTP config) used to be an OpenBao ref.
+    secret_data = Column(JSON, nullable=True)
 
     last_test_status = Column(String, nullable=True)  # SUCCESS | FAILED | NEVER_TESTED
     last_test_at = Column(DateTime, nullable=True)

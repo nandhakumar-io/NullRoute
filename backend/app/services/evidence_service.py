@@ -152,3 +152,83 @@ def get_evidence_history(db: Session, scan_id: str) -> List["EvidenceRecord"]:
         .order_by(EvidenceRecord.created_at.asc())
         .all()
     )
+
+
+async def anchor_event(
+    db: Session,
+    *,
+    event_type: str,
+    actor: str,
+    device_id: str,
+    tenant_id: str,
+    final_decision: str,
+    scan_id: Optional[str] = None,
+    vendor: str = "Unknown",
+    config_hash: Optional[str] = None,
+    baseline_hash: Optional[str] = None,
+    opa_result: Optional[Dict[str, Any]] = None,
+    batfish_result: Optional[Dict[str, Any]] = None,
+    risk_result: Optional[Dict[str, Any]] = None,
+    framework: str = "ALL",
+    control_ids: Optional[List[str]] = None,
+    finding_ids: Optional[List[str]] = None,
+) -> "EvidenceRecord":
+    """Build, hash, store off-chain, and (if FABRIC_ENABLED) anchor on-chain
+    a single evidence event for something other than a scan completing --
+    e.g. a deployment or a rollback. Same shape/pattern services/pipeline.py
+    step 8/8b already uses for `event_type="scan.completed"`; this is that
+    same pattern factored out so deployment_service.py and
+    rollback_service.py don't reimplement it (RULE 11 -- no second
+    evidence-building implementation), just with a caller-supplied
+    `event_type` -- the chaincode's `eventType` field is free-form, so no
+    chaincode change is needed to anchor new event kinds.
+
+    `scan_id` may be None (e.g. a deployment that failed before a
+    post-deploy scan could run) -- EvidenceRecord.scan_id is nullable
+    specifically to allow anchoring failure/abort events that never reached
+    a Scan. Never raises for a Fabric-unavailable/disabled condition; the
+    returned record's `fabric_status` reports that instead (mirrors
+    pipeline.py's own handling exactly).
+    """
+    from app.services import fabric_service
+
+    evidence = build_evidence(
+        scan_id=scan_id or "", device_id=device_id, tenant_id=tenant_id,
+        event_type=event_type, actor=actor, vendor=vendor,
+        config_hash=config_hash or "", baseline_hash=baseline_hash or "",
+        opa_result=opa_result or {}, batfish_result=batfish_result or {},
+        risk_result=risk_result or {}, final_decision=final_decision,
+        framework=framework, control_ids=control_ids or [], finding_ids=finding_ids or [],
+    )
+    # build_evidence always stamps a scan_id (even "" above); EvidenceRecord
+    # itself must get the real nullable value, not the placeholder. Must
+    # happen BEFORE canonicalize/hash below, not after -- otherwise the
+    # stored evidence_hash and the stored evidence_json would describe two
+    # different dicts and every later integrity check would fail.
+    evidence["scan_id"] = scan_id
+    canonical = canonicalize_evidence(evidence)
+    evidence_hash = hash_evidence(canonical)
+    record = store_evidence(db, evidence, evidence_hash)
+
+    if fabric_service.FABRIC_ENABLED:
+        try:
+            anchor = await fabric_service.anchor_evidence(
+                record.evidence_id, evidence_hash,
+                scan_id=scan_id or "", device_id=device_id, tenant_id=tenant_id,
+                event_type=event_type, config_hash=evidence["config_hash"],
+                baseline_hash=evidence["baseline_hash"],
+                opa_decision=(opa_result or {}).get("decision"),
+                batfish_decision=(batfish_result or {}).get("status"),
+                final_decision=final_decision,
+                policy_version=(opa_result or {}).get("policy_version"),
+                batfish_snapshot=(batfish_result or {}).get("snapshot_name") or "",
+                timestamp=evidence["timestamp"], actor=actor,
+            )
+            record.fabric_status = "ANCHORED"
+            record.fabric_tx_id = anchor.get("transaction_id")
+            record.fabric_block_number = anchor.get("block_number")
+            db.commit()
+        except fabric_service.FabricUnavailableError:
+            record.fabric_status = "FABRIC_UNAVAILABLE"
+            db.commit()
+    return record

@@ -40,10 +40,13 @@ def db():
 # ---------------------------------------------------------------------------
 # Dirty Cisco IOS config with a deliberate telnet vulnerability
 # ---------------------------------------------------------------------------
-import os
-config_path = os.path.join(os.path.dirname(__file__), "../../sample_configs/test_payload.cfg")
-with open(config_path, "rb") as f:
-    DIRTY_CONFIG = f.read()
+DIRTY_CONFIG = b"""
+hostname r1
+name admin
+privilege 15
+line vty 0 4
+ transport input telnet ssh
+"""
 
 # ---------------------------------------------------------------------------
 # Full pipeline test
@@ -127,7 +130,10 @@ def test_super_e2e_full_pipeline(db):
     r_detail = client.get(f"/api/scans/{scan_id}")
     assert r_detail.status_code == 200
     detail = r_detail.json()
+    print(f"PIPELINE ERROR: {detail.get('error')}")
     baseline = detail.get("baseline_json", {})
+    if not baseline:
+        pytest.fail(f"Pipeline crashed. Error: {detail.get('error')}")
     mgmt = baseline.get("management", {})
     telnet_enabled = mgmt.get("telnet", {}).get("enabled")
     print(f"  -> LLM normalized management.telnet.enabled = {telnet_enabled}")
@@ -247,26 +253,27 @@ def test_super_e2e_full_pipeline(db):
          patch("app.services.deployment_service.get_collector") as mock_get_col, \
          patch("app.services.deployment_service.get_deployer") as mock_get_dep:
         
-        import hashlib
-        expected_hash = hashlib.sha256(proposed_config.strip().encode("utf-8")).hexdigest()
+        cr_detail = client.get(f"/api/change-requests/{cr_id}").json()
         
-        mock_result = MagicMock()
-        mock_result.success = True
-        mock_result.config_hash = expected_hash
-        mock_result.raw_config = "\n".join([
-            "hostname CoreRouter",
-            "interface GigabitEthernet0/0",
-            " ip address 10.0.0.1 255.255.255.0",
-            "no telnet server enable",
-        ])
-        mock_result.output = None
+        mock_pre = MagicMock()
+        mock_pre.success = True
+        mock_pre.config_hash = cr_detail["current_config_hash"]
+        mock_pre.raw_config = DIRTY_CONFIG.decode("utf-8")
+        
+        mock_post = MagicMock()
+        mock_post.success = True
+        mock_post.config_hash = cr_detail["proposed_config_hash"]
+        mock_post.raw_config = proposed_config.strip()
         
         mock_col = MagicMock()
-        mock_col.collect_config.return_value = mock_result
+        mock_col.collect_config.side_effect = [mock_pre, mock_post]
         mock_get_col.return_value = mock_col
         
+        mock_push = MagicMock()
+        mock_push.success = True
+        
         mock_dep = MagicMock()
-        mock_dep.push_config.return_value = mock_result
+        mock_dep.push_config.return_value = mock_push
         mock_get_dep.return_value = mock_dep
 
         r = client.post(f"/api/change-requests/{cr_id}/deploy")
@@ -274,7 +281,7 @@ def test_super_e2e_full_pipeline(db):
         dr = r.json()
         dr_id = dr["id"]
         deploy_status = dr["status"]
-        print(f"  -> Deployment record: id={dr_id}, status={deploy_status}")
+        print(f"  -> Deployment record: id={dr_id}, status={deploy_status}, error={dr.get('error')}")
 
     # -----------------------------------------------------------------------
     # STAGE 11 — Deployment result inspection

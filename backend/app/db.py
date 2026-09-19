@@ -52,12 +52,16 @@ class _SessionLocalFactory:
 class _EngineProxy:
     def __init__(self):
         self._engine = None
+        self._last_url = None
         self.refresh()
 
     def refresh(self):
         url = os.getenv("DATABASE_URL", DATABASE_URL)
-        if self._engine is None or str(self._engine.url) != url:
+        if self._engine is None or self._last_url != url:
+            if self._engine is not None:
+                self._engine.dispose()
             self._engine = _build_engine(url)
+            self._last_url = url
 
     def __getattr__(self, name):
         self.refresh()

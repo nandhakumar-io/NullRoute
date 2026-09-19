@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints, EvidenceRecord, VerifyResult } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
 

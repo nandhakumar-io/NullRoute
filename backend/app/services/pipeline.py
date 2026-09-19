@@ -324,6 +324,7 @@ async def run_pipeline(
 
         findings = opa_decision_to_findings(opa_decision, baseline)
         for f in findings:
+            f.pop("line_number", None)
             db.add(Finding(scan_id=scan.id, **f))
         db.commit()
         for f in findings:

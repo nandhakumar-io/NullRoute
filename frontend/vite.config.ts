@@ -11,6 +11,7 @@ export default defineConfig({
   server: {
     port: 5173,
     host: "0.0.0.0",
+    allowedHosts: true,
     proxy: {
       // Route all /api/* and /health requests through the Vite dev server
       // to the backend — this avoids CORS completely regardless of which

@@ -111,6 +111,16 @@ def init_db():
     except Exception:
         pass
     finally:
+        # Create pgvector since alembic is disabled
+        if engine.url.get_backend_name() == "postgresql":
+            try:
+                from sqlalchemy import text
+                with engine.begin() as conn:
+                    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            except Exception as e:
+                import logging
+                logging.warning(f"Could not create pgvector extension: {e}")
+
         # Always ensure missing tables are created gracefully
         Base.metadata.create_all(bind=engine)
 

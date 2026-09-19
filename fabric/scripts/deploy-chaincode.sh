@@ -24,7 +24,7 @@ export PATH="$WORK_DIR/bin:$PATH"
 cd "$WORK_DIR/test-network"
 
 echo "-- vendoring chaincode Go modules --"
-( cd "$CC_SRC_PATH" && GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor )
+( cd "$CC_SRC_PATH" && GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor && chmod -R u+w vendor )
 
 echo "-- ensuring ccenv and baseos images exist --"
 docker pull "hyperledger/fabric-ccenv:2.5" || true

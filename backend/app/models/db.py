@@ -691,6 +691,15 @@ class ChangeRequest(Base):
     rejected_by = Column(String, nullable=True)
     rejected_at = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
+    
+    # Merge metadata for remediation snippets (Phase 10 / UI Preview)
+    snippet = Column(Text, nullable=True)
+    merge_style = Column(String, nullable=True)
+    merge_confidence = Column(Float, nullable=True)
+    merge_applied = Column(JSON, nullable=True)
+    merge_warnings = Column(JSON, nullable=True)
+    merge_commands = Column(JSON, nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

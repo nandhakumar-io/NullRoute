@@ -129,10 +129,28 @@ def init_db():
                 from sqlalchemy import text
                 with engine.begin() as conn:
                     # Convert the fallback JSON column created by create_all into an actual pgvector column
-                    conn.execute(text(
-                        "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
-                        "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END);"
-                    ))
+                    try:
+                        conn.execute(text(
+                            "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
+                            "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END);"
+                        ))
+                    except Exception:
+                        pass
+                        
+                    # Inject Phase 10 / UI Preview merge missing columns gracefully
+                    columns_to_add = [
+                        "ADD COLUMN snippet TEXT",
+                        "ADD COLUMN merge_style VARCHAR",
+                        "ADD COLUMN merge_confidence FLOAT",
+                        "ADD COLUMN merge_applied JSON",
+                        "ADD COLUMN merge_warnings JSON",
+                        "ADD COLUMN merge_commands JSON",
+                    ]
+                    for col in columns_to_add:
+                        try:
+                            conn.execute(text(f"ALTER TABLE change_requests {col};"))
+                        except Exception:
+                            pass
             except Exception as e:
                 import logging
                 logging.warning(f"Could not convert embedding column to pgvector: {e}")

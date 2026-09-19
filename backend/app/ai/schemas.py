@@ -102,6 +102,7 @@ class ModelHistoryPoint(BaseModel):
 
 class ConfidenceTrendOut(BaseModel):
     current_model_version: str
+    model_config = ConfigDict(protected_namespaces=())
     confidence_threshold: float
     # True once the most recent window's average confidence has dropped
     # more than `drift_alert_delta` below the earliest window in range —

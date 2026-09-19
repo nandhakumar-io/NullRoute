@@ -290,18 +290,25 @@ class SSHCollector(BaseCollector):
             "secret": secret.get("enable_password", ""),
             "timeout": int(secret.get("timeout", 15)),
             "port": int(secret.get("port", 22)),
-            "global_delay_factor": 2,
+            "ssh_config_file": "/opt/NullRoute/backend/.ssh_config",
         }
-        raw_config="set system host-name ex33001\nset system root-authentication encrypted-password \"\\$1\\$kZ\"\nset system services ssh\nset system services netconf ssh\nset interfaces ge-0/0/0 unit 0 family ethernet-switching\n"
-        return CollectionResult(
-            success=True,
-            vendor=device.vendor,
-            hostname=device.hostname,
-            raw_config=raw_config,
-            config_hash="fake-hash-1234",
-            collected_at=None,
-            transport="ssh"
-        )
+        if credentials.credential_type == "ssh_key" and secret.get("private_key"):
+            conn_params["use_keys"] = True
+            conn_params["key_file"] = secret.get("private_key_path")
+
+        try:
+            with ConnectHandler(**conn_params) as conn:
+                raw_config = conn.send_command(mapping["command"], read_timeout=60)
+        except NetmikoAuthenticationException as e:
+            return CollectionResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"Authentication failed: {e}", secret),
+            )
+        except NetmikoTimeoutException as e:
+            return CollectionResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"Connection timed out: {e}", secret),
+            )
 
         return CollectionResult(
             success=True,
@@ -350,13 +357,8 @@ class SSHCollector(BaseCollector):
             "secret": secret.get("enable_password", ""),
             "timeout": int(secret.get("timeout", 15)),
             "port": int(secret.get("port", 22)),
-            "global_delay_factor": 2,
+            "ssh_config_file": "/opt/NullRoute/backend/.ssh_config",
         }
-                return CollectionResult(
-            success=True, vendor=device.vendor, hostname=device.hostname,
-            raw_config="set system host-name ex33001\nset system services telnet\nset system services netconf ssh\n",
-            config_hash="fake-hash-1234", collected_at=datetime.utcnow(), transport="ssh"
-        )
         if credentials.credential_type == "ssh_key" and secret.get("private_key"):
             conn_params["use_keys"] = True
             conn_params["key_file"] = secret.get("private_key_path")

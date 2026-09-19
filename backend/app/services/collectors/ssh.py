@@ -290,7 +290,6 @@ class SSHCollector(BaseCollector):
             "secret": secret.get("enable_password", ""),
             "timeout": int(secret.get("timeout", 15)),
             "port": int(secret.get("port", 22)),
-            "ssh_config_file": "/opt/NullRoute/backend/.ssh_config",
         }
         if credentials.credential_type == "ssh_key" and secret.get("private_key"):
             conn_params["use_keys"] = True
@@ -357,7 +356,6 @@ class SSHCollector(BaseCollector):
             "secret": secret.get("enable_password", ""),
             "timeout": int(secret.get("timeout", 15)),
             "port": int(secret.get("port", 22)),
-            "ssh_config_file": "/opt/NullRoute/backend/.ssh_config",
         }
         if credentials.credential_type == "ssh_key" and secret.get("private_key"):
             conn_params["use_keys"] = True

@@ -41,19 +41,24 @@ try:
         
         # Patch SSHSession to fallback to keyboard-interactive for IOS-XE / Junos
         _orig_auth = SSHSession._auth
-        def _patched_auth(self, username, password):
+        def _patched_auth(self, *args, **kwargs):
             try:
-                _orig_auth(self, username, password)
+                _orig_auth(self, *args, **kwargs)
             except paramiko.ssh_exception.AuthenticationException as e:
-                if password:
+                # Extract username and password from args/kwargs for fallback
+                username = kwargs.get("username") if "username" in kwargs else (args[0] if len(args) > 0 else None)
+                password = kwargs.get("password") if "password" in kwargs else (args[1] if len(args) > 1 else None)
+                
+                if password and username:
+                    import logging
+                    logging.getLogger("ncclient.transport.ssh").info(
+                        "falling back to auth_interactive for %s", username
+                    )
                     def _interactive_handler(title, instructions, prompt_list):
                         return [password for _ in prompt_list]
-                    try:
-                        self._transport.auth_interactive(username, _interactive_handler)
-                        return
-                    except Exception:
-                        pass
-                raise e
+                    self._transport.auth_interactive(username, _interactive_handler)
+                else:
+                    raise e
         SSHSession._auth = _patched_auth
         
         paramiko.Transport._nulled_algorithms_patched = True

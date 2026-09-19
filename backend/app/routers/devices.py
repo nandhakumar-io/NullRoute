@@ -499,7 +499,7 @@ def collect_configuration(
     )
 
     if not result.success:
-        raise HTTPException(502, f"Collection failed over {result.transport}: {result.error}")
+        raise HTTPException(400, f"Collection failed over {result.transport}: {result.error}")
 
     return {
         "success": True,
@@ -544,7 +544,7 @@ async def run_scan(device_id: str, request: Request, framework: str = "ALL", db:
             object_type="device", object_id=device_id,
             new_value={"error": result.error or "no config returned"},
         )
-        raise HTTPException(502, f"Collection failed: {result.error or 'no config returned'}")
+        raise HTTPException(400, f"Collection failed: {result.error or 'no config returned'}")
 
     raw_text = result.raw_config
     device.last_config_raw = raw_text

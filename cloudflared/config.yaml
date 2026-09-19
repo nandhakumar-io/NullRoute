@@ -1,0 +1,9 @@
+tunnel: 86c2be5a-444d-4870-9bfd-8427662be197
+credentials-file: /home/kenpachi/NullRoute/cloudflared/86c2be5a-444d-4870-9bfd-8427662be197.json
+
+ingress:
+  - hostname: nullroute.notoriousdev.in
+    service: http://traefik:80
+
+  - hostname: nullroute-api.notoriousdev.in
+    service: http://traefik:80

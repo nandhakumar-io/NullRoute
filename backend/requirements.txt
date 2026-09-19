@@ -39,6 +39,7 @@ azure-mgmt-network==25.0.0
 azure-identity==1.17.1
 azure-storage-blob==12.22.0
 paramiko==3.5.0
+netmiko==4.3.0
 google-cloud-compute==1.19.1
 google-auth==2.34.0
 pywebpush==2.0.1

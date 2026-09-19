@@ -29,8 +29,8 @@ echo "-- vendoring chaincode Go modules --"
 echo "-- ensuring ccenv and baseos images exist --"
 docker pull "hyperledger/fabric-ccenv:2.5" || true
 docker pull "hyperledger/fabric-baseos:2.5" || true
-docker pull "hyperledger/fabric-ccenv:2.5.9" || true
-docker pull "hyperledger/fabric-baseos:2.5.9" || true
+docker pull "hyperledger/fabric-ccenv:2.5.16" || true
+docker pull "hyperledger/fabric-baseos:2.5.16" || true
 
 echo "-- deploying $CC_NAME v$CC_VERSION (sequence $CC_SEQUENCE) on $CHANNEL_NAME --"
 ./network.sh deployCC \

@@ -27,7 +27,9 @@ from app.services.openbao_service import DeviceCredentials, redact_secret_values
 
 try:
     from ncclient import manager as ncclient_manager
+    from ncclient.transport.ssh import SSHSession
     import paramiko
+    
     # ncclient inherently ignores algorithms inherited from ssh_config; re-enable legacy algorithms explicitly
     if not getattr(paramiko.Transport, "_nulled_algorithms_patched", False):
         _orig_transport_init = paramiko.Transport.__init__
@@ -36,6 +38,24 @@ try:
                 kwargs["disabled_algorithms"] = dict(pubkeys=[], kex=[])
             _orig_transport_init(self, *args, **kwargs)
         paramiko.Transport.__init__ = _patched_transport_init
+        
+        # Patch SSHSession to fallback to keyboard-interactive for IOS-XE / Junos
+        _orig_auth = SSHSession._auth
+        def _patched_auth(self, username, password):
+            try:
+                _orig_auth(self, username, password)
+            except paramiko.ssh_exception.AuthenticationException as e:
+                if password:
+                    def _interactive_handler(title, instructions, prompt_list):
+                        return [password for _ in prompt_list]
+                    try:
+                        self._transport.auth_interactive(username, _interactive_handler)
+                        return
+                    except Exception:
+                        pass
+                raise e
+        SSHSession._auth = _patched_auth
+        
         paramiko.Transport._nulled_algorithms_patched = True
     NCCLIENT_AVAILABLE = True
 except ImportError:  # pragma: no cover

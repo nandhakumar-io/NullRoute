@@ -137,7 +137,7 @@ class CommandMappingOut(BaseModel):
 
 class EvidenceOut(BaseModel):
     evidence_id: str
-    scan_id: str
+    scan_id: Optional[str] = None
     device_id: Optional[str] = None
     tenant_id: Optional[str] = None
     event_type: Optional[str] = None

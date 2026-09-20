@@ -287,8 +287,30 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                         text = text.split("```json")[-1].split("```")[0].strip()
                     elif "```" in text:
                         text = text.split("```")[-1].split("```")[0].strip()
-                    generated = json.loads(text)
                     
+                    try:
+                        generated = json.loads(text)
+                    except json.decoder.JSONDecodeError as parse_error:
+                        if not text.rstrip().endswith("]"):
+                            try:
+                                generated = json.loads(text.strip() + "]")
+                            except json.decoder.JSONDecodeError:
+                                generated = None
+                        else:
+                            generated = None
+                        
+                        if generated is None:
+                            import re
+                            matches = re.findall(r'"((?:[^"\\]|\\.)*)"', text)
+                            if matches:
+                                repaired = "[" + ",".join('"' + m + '"' for m in matches) + "]"
+                                try:
+                                    generated = json.loads(repaired)
+                                except json.decoder.JSONDecodeError:
+                                    raise parse_error
+                            else:
+                                raise parse_error
+
                     if isinstance(generated, dict):
                         generated = [str(k) for k in generated.keys()]
                     elif not isinstance(generated, list):

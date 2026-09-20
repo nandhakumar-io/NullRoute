@@ -521,7 +521,7 @@ async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: 
     # Run in a brand new database session because the HTTP request's Depends(Session) will be closed.
     with SessionLocal() as db:
         device = _scoped_query(db, tenant_id).filter(Device.id == device_id).first()
-        scan = _scoped_query(db, tenant_id).filter(Scan.id == scan_id).first()
+        scan = db.query(Scan).filter(Scan.tenant_id == tenant_id, Scan.id == scan_id, Scan.device_id == device_id).first()
         if not device or not scan:
             return
             

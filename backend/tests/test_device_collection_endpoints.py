@@ -100,7 +100,7 @@ def test_collect_endpoint_no_credentials(client):
     assert resp.status_code == 400
 
 
-def test_scan_endpoint_feeds_pipeline(client, monkeypatch, respx_mock):
+def test_scan_endpoint_feeds_pipeline(client, monkeypatch):
     device_id = _create_device_with_creds(client)
 
     from app.routers import devices as devices_mod
@@ -120,19 +120,17 @@ def test_scan_endpoint_feeds_pipeline(client, monkeypatch, respx_mock):
 
     monkeypatch.setattr(devices_mod, "get_collector", lambda vendor, transport=None: _FakeCollector())
 
-    respx_mock.get(url__regex=re.compile(r".*/v1/secret/data/.*")).mock(
-        return_value=httpx.Response(
-            200,
-            json={"data": {"data": {"credential_type": "ssh_password", "username": "admin", "password": "x"}}},
+    with respx.mock:
+        respx.get(url__regex=r"http://openbao\.test/v1/secret/data/.*").mock(
+            return_value=httpx.Response(
+                200,
+                json={"data": {"data": {"credential_type": "ssh_password", "username": "admin", "password": "x"}}},
+            )
         )
-    )
-    respx_mock.post("http://opa:8181/v1/data/compliance/evaluate").mock(
-        return_value=httpx.Response(200, json={"result": {"decision": "PASS", "decision_id": "d1", "findings": []}})
-    )
-    respx_mock.post("http://100.95.230.65:8000/generate").mock(
-        return_value=httpx.Response(200, json={"response": "{}"})
-    )
-    resp = client.post(f"/api/devices/{device_id}/scan", json={})
+        respx.post("http://opa.test/v1/data/compliance/evaluate").mock(
+            return_value=httpx.Response(200, json={"result": {"decision": "PASS", "decision_id": "d1", "findings": []}})
+        )
+        resp = client.post(f"/api/devices/{device_id}/scan", json={})
 
     assert resp.status_code == 200
     body = resp.json()

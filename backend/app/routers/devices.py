@@ -593,12 +593,15 @@ async def run_scan(
     )
 
     # Return a pseudo-queued scan object so the UI doesn't crash expecting a ScanDetailOut
+    import datetime
     mock_scan = Scan(
         id="queued-background-task",
         tenant_id=tenant_id,
         device_id=device_id,
         status="uploaded",
         framework=framework,
+        created_at=datetime.datetime.utcnow(),
+        updated_at=datetime.datetime.utcnow(),
     )
     return ScanDetailOut(
         **ScanOut.model_validate(mock_scan).model_dump(),

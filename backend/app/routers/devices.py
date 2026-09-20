@@ -607,5 +607,4 @@ async def run_scan(
         **ScanOut.model_validate(mock_scan).model_dump(),
         baseline_json={},
         findings=[],
-        batfish_result=None,
     )

@@ -24,13 +24,7 @@ export PATH="$WORK_DIR/bin:$PATH"
 cd "$WORK_DIR/test-network"
 
 echo "-- vendoring chaincode Go modules --"
-( cd "$CC_SRC_PATH" && GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor && chmod -R u+w vendor )
-
-echo "-- ensuring ccenv and baseos images exist --"
-docker pull "hyperledger/fabric-ccenv:2.5" || true
-docker pull "hyperledger/fabric-baseos:2.5" || true
-docker pull "hyperledger/fabric-ccenv:2.5.16" || true
-docker pull "hyperledger/fabric-baseos:2.5.16" || true
+( cd "$CC_SRC_PATH" && GO111MODULE=on go mod tidy && GO111MODULE=on go mod vendor )
 
 echo "-- deploying $CC_NAME v$CC_VERSION (sequence $CC_SEQUENCE) on $CHANNEL_NAME --"
 ./network.sh deployCC \

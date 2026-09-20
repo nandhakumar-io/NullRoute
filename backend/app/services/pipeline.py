@@ -32,6 +32,7 @@ output since they're deterministic given the same baseline.
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -245,7 +246,15 @@ async def run_pipeline(
             # both normalization and downstream remediation on large configs --
             # a semaphore-limited gather keeps demo/production latency in check
             # without ever skipping lines.
-            _CONCURRENCY = 20
+            # 20 concurrent generate() calls against a single (usually
+            # single-GPU) Ollama instance is what was producing the "500
+            # internal server error" pile-up on the GPU server and the
+            # upstream "response time exceeded"/discarded requests on large
+            # config uploads: the requests queue up server-side and start
+            # failing/timing out faster than they complete. Match the
+            # concurrency used by ai/normalize.py's interpret_block (also
+            # lowered) and make both independently tunable per deployment.
+            _CONCURRENCY = int(os.getenv("AI_LLM_CONCURRENCY", "3"))
             semaphore = asyncio.Semaphore(_CONCURRENCY)
 
             async def _process_line(line: str):

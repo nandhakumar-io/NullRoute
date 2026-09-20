@@ -706,6 +706,7 @@ class ChangeRequest(Base):
     merge_commands = Column(JSON, nullable=True)
     edited_by = Column(String, nullable=True)
     edited_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
     
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

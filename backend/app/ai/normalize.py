@@ -168,9 +168,19 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
         f"Raw configuration line: {line}\n\nRespond with JSON only."
     )
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        # Previously timeout=300.0 with up to 4 attempts meant a single unknown
+        # line could block the whole normalize request for up to ~20 minutes
+        # against a local, often single-GPU, Ollama instance -- upstream
+        # (cloudflared/gateway) then hits its own timeout and drops the
+        # request client-side while Ollama keeps grinding through a queue it
+        # can't clear, throwing 500s under the pile-up. Fail fast per attempt
+        # instead and let the existing offline heuristic fallback below do
+        # its job; both are env-overridable for slower hardware.
+        llm_timeout = float(os.getenv("AI_LLM_TIMEOUT_SECONDS", "20.0"))
+        max_attempts = int(os.getenv("AI_LLM_MAX_ATTEMPTS", "2"))
+        async with httpx.AsyncClient(timeout=llm_timeout) as client:
             import asyncio
-            for attempt in range(4):
+            for attempt in range(max_attempts):
                 resp = await client.post(
                     f"{OLLAMA_HOST}/generate",
                     json={
@@ -182,8 +192,8 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
                         "options": {"temperature": 0.1},
                     },
                 )
-                if resp.status_code == 500 and attempt < 3:
-                    await asyncio.sleep(1.5 ** attempt)
+                if resp.status_code == 500 and attempt < max_attempts - 1:
+                    await asyncio.sleep(0.75 * (attempt + 1))
                     continue
                 resp.raise_for_status()
                 break
@@ -232,7 +242,11 @@ async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Opt
 
     retrieved_knowledge = retrieved_knowledge or []
     lines = [l.strip() for l in block_text.splitlines() if l.strip()]
-    sem = asyncio.Semaphore(10)
+    # A single local Ollama instance is usually one GPU worker: firing 10
+    # generate() calls at it concurrently was what produced the 500s under
+    # load (queued requests timing out server-side) rather than actually
+    # speeding anything up. Lower default concurrency, still overridable.
+    sem = asyncio.Semaphore(int(os.getenv("AI_LLM_CONCURRENCY", "3")))
     
     async def process_line(line):
         async with sem:

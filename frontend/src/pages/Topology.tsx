@@ -221,18 +221,25 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [groupName, setGroupName] = useState("Demo Network Block");
-  const [status, setStatus] = useState<"idle" | "uploading" | "grouping" | "scanning" | "done" | "error">("idle");
+  // "Build Network" (upload + group) and "Scan" (Batfish over the resulting
+  // group) are now separate steps/buttons instead of one combined action:
+  // building a large group of configs no longer has to sit through a
+  // Batfish run just to get the devices created and grouped, and a group
+  // can be re-scanned later without re-uploading anything.
+  const [status, setStatus] = useState<"idle" | "uploading" | "grouping" | "scanning" | "built" | "done" | "error">("idle");
   const [log, setLog] = useState<string[]>([]);
   const [result, setResult] = useState<any>(null);
+  const [builtGroup, setBuiltGroup] = useState<{ id: string; name: string } | null>(null);
 
   function addLog(line: string) {
     setLog((l) => [...l, line]);
   }
 
-  async function buildAndScan() {
+  async function buildNetwork() {
     if (files.length === 0) return;
     setLog([]);
     setResult(null);
+    setBuiltGroup(null);
     try {
       setStatus("uploading");
       addLog(`Uploading ${files.length} configuration file(s)…`);
@@ -248,18 +255,29 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
       });
       addLog(`Created network group "${groupRes.data.name}" with ${deviceIds.length} member device(s).`);
 
-      setStatus("scanning");
-      addLog("Running Batfish analysis over the group snapshot…");
-      const scanRes = await endpoints.scanTopologyGroup(groupRes.data.id);
-      setResult(scanRes.data);
-      addLog(`Batfish scan complete — status: ${scanRes.data.status}.`);
-
-      setStatus("done");
+      setBuiltGroup({ id: groupRes.data.id, name: groupRes.data.name });
+      setStatus("built");
       setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
       onBuilt();
     } catch (e: any) {
-      addLog(e?.response?.data?.detail || "Failed to build/scan the topology.");
+      addLog(e?.response?.data?.detail || "Failed to build the network.");
+      setStatus("error");
+    }
+  }
+
+  async function runScan() {
+    if (!builtGroup) return;
+    try {
+      setStatus("scanning");
+      addLog(`Running Batfish analysis over "${builtGroup.name}"…`);
+      const scanRes = await endpoints.scanTopologyGroup(builtGroup.id);
+      setResult(scanRes.data);
+      addLog(`Batfish scan complete — status: ${scanRes.data.status}.`);
+      setStatus("done");
+      onBuilt();
+    } catch (e: any) {
+      addLog(e?.response?.data?.detail || "Failed to scan the network.");
       setStatus("error");
     }
   }
@@ -271,8 +289,9 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
       <div className="font-semibold text-slate-200 mb-1">Build a Batfish Topology from Configs</div>
       <div className="text-xs text-slate-500 mb-3">
         Upload two or more vendor configs (see <code className="font-mono">sample_configs/</code> for
-        ready-made multi-vendor examples) to create devices, group them into one Batfish snapshot, and
-        run the built-in segmentation checks — no live device access required.
+        ready-made multi-vendor examples) to create devices and group them into one Batfish snapshot —
+        no live device access required. Scanning (the built-in segmentation checks) is a separate step
+        so building a large group doesn't have to wait on it.
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -290,12 +309,21 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
           onChange={(e) => setGroupName(e.target.value)}
         />
         <button
-          onClick={buildAndScan}
+          onClick={buildNetwork}
           disabled={files.length === 0 || busy}
           className="btn-primary text-sm disabled:opacity-40"
         >
-          {busy ? "Working…" : `Build + Scan (${files.length} file${files.length === 1 ? "" : "s"})`}
+          {status === "uploading" || status === "grouping" ? "Building…" : `Build Network (${files.length} file${files.length === 1 ? "" : "s"})`}
         </button>
+        {builtGroup && (
+          <button
+            onClick={runScan}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-lg text-sm font-medium bg-sky-900/40 text-sky-300 border border-sky-800/60 hover:bg-sky-900/60 disabled:opacity-40"
+          >
+            {status === "scanning" ? "Scanning…" : `Scan "${builtGroup.name}"`}
+          </button>
+        )}
       </div>
       {log.length > 0 && (
         <div className="mt-3 space-y-1 font-mono text-xs text-slate-400 border-t border-soc-border pt-2">

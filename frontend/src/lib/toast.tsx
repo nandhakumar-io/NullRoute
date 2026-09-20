@@ -24,9 +24,14 @@ const ICONS: Record<ToastKind, string> = {
   info: "ℹ",
 };
 
+// Solid (not translucent) backgrounds: a semi-transparent toast sitting
+// fixed bottom-right of the viewport reads as a dark smear/shadow over
+// whatever content happens to be underneath it on that page (e.g. it was
+// covering the error text and Save/Cancel buttons on the Change Request
+// edit panel), rather than as a clearly distinct notification.
 const STYLES: Record<ToastKind, string> = {
-  success: "border-emerald-800/60 bg-emerald-950/80 text-emerald-300",
-  error: "border-red-800/60 bg-red-950/80 text-red-300",
+  success: "border-emerald-800/60 bg-emerald-950 text-emerald-300",
+  error: "border-red-800/60 bg-red-950 text-red-300",
   info: "border-soc-borderlit bg-soc-panel2 text-slate-200",
 };
 

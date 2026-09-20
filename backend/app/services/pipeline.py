@@ -31,11 +31,13 @@ output since they're deterministic given the same baseline.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import Session
 
 from app import events
@@ -94,7 +96,18 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
     """Safe stage-boundary check. Re-reads control_state from the DB (a
     concurrent pause/stop request may have updated it) and, if a pause or
     stop was requested, persists the checkpoint and raises to unwind."""
-    db.refresh(scan)
+    try:
+        db.refresh(scan)
+    except InvalidRequestError:
+        # The scan row was deleted out from under us (force-delete). Nothing
+        # left to checkpoint -- unwind quietly instead of failing a scan
+        # that no longer exists.
+        raise PipelineStopped(stage)
+    if scan.control_state == "STOPPED":
+        # Force-stopped by another request (routers/scans.py -> scan_runner)
+        # while this coroutine was mid-stage; that request already persisted
+        # STOPPED, so don't touch the row again -- just unwind.
+        raise PipelineStopped(stage)
     if scan.control_state == "STOP_REQUESTED":
         scan.status = "stopped"
         scan.control_state = "STOPPED"
@@ -115,26 +128,52 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
     db.commit()
 
 
-async def resume_pipeline(db: Session, scan: Scan) -> Scan:
-    """Resume a PAUSED or STOPPED scan from its last checkpointed stage.
-    Reloads the archived raw config from MinIO (raw_config_path) -- the
-    pipeline never keeps the full config text in the DB row itself -- and
-    re-enters run_pipeline() at the right point."""
+def validate_resumable(scan: Scan) -> None:
+    """Raise ValueError unless `scan` can be resumed right now. Split out of
+    resume_pipeline() so the API can reject a bad resume *synchronously*
+    (HTTP 400) before handing the actual work to a background task."""
     if scan.control_state not in ("PAUSED", "STOPPED"):
         raise ValueError(f"Scan {scan.id} is not paused or stopped (control_state={scan.control_state})")
     if not scan.raw_config_path:
         raise ValueError(f"Scan {scan.id} has no archived raw configuration to resume from")
+    if (scan.pipeline_stage or "start") in _RESUMABLE_FROM_BASELINE and not scan.baseline_json:
+        raise ValueError(f"Scan {scan.id} has no persisted baseline to resume from (never completed normalization)")
 
-    raw_text = minio_service.get_object(scan.raw_config_path).decode("utf-8", errors="replace")
+
+def mark_resuming(db: Session, scan: Scan) -> str:
+    """Flip a validated PAUSED/STOPPED scan back to RUNNING and return the
+    stage to re-enter at. Committed immediately so the UI (and a second
+    concurrent resume click) sees it before any work starts."""
     resume_stage = scan.pipeline_stage or "start"
-
     scan.control_state = "RUNNING"
     scan.status = "resuming"
+    scan.error = None
     scan.resumed_at = datetime.utcnow()
     db.commit()
-    await events.publish("pipeline.resumed", {"scan_id": scan.id, "stage": resume_stage})
+    return resume_stage
 
+
+async def continue_resume(db: Session, scan: Scan) -> Scan:
+    """Second half of a resume: scan is already flagged RUNNING/"resuming"
+    (mark_resuming). Reloads the archived raw config from MinIO -- the
+    pipeline never keeps the full config text in the DB row itself -- and
+    re-enters run_pipeline() at the right point."""
+    resume_stage = scan.pipeline_stage or "start"
+    # MinIO client is synchronous; keep it off the event loop.
+    raw_bytes = await asyncio.to_thread(minio_service.get_object, scan.raw_config_path)
+    raw_text = raw_bytes.decode("utf-8", errors="replace")
+    await events.publish("pipeline.resumed", {"scan_id": scan.id, "stage": resume_stage})
     return await run_pipeline(db, scan, raw_text, framework=scan.framework or "ALL", resume_stage=resume_stage)
+
+
+async def resume_pipeline(db: Session, scan: Scan) -> Scan:
+    """Resume a PAUSED or STOPPED scan from its last checkpointed stage and
+    wait for it to finish. (The HTTP API instead splits this into
+    validate_resumable -> mark_resuming -> a background continue_resume so
+    the request doesn't block and the run stays stoppable.)"""
+    validate_resumable(scan)
+    mark_resuming(db, scan)
+    return await continue_resume(db, scan)
 
 
 async def run_pipeline(
@@ -146,7 +185,7 @@ async def run_pipeline(
 
         if not skip_normalize:
             # 1. Vendor/OS detection ------------------------------------------------
-            guess = detect_vendor(raw_text)
+            guess = await asyncio.to_thread(detect_vendor, raw_text)
             device: Device = db.query(Device).get(scan.device_id)
             # Only let a confident, in-scope guess set device identity. A
             # review_required guess (low confidence OR an unsupported vendor) must
@@ -176,8 +215,15 @@ async def run_pipeline(
             # itself, matching every other put_object call site in this app.
             try:
                 object_key = minio_service.object_key(scan.tenant_id, scan.device_id, scan.id, "raw_config.txt")
-                minio_service.put_object(object_key, raw_text.encode("utf-8"), content_type="text/plain")
-                scan.raw_config_path = object_key
+                stored = await asyncio.to_thread(
+                    minio_service.put_object, object_key, raw_text.encode("utf-8"), content_type="text/plain",
+                )
+                # put_object() returns None (never raises) on any storage
+                # failure; only record the key when the bytes really landed,
+                # otherwise resume/backup would point at an object that
+                # doesn't exist.
+                if stored is not None:
+                    scan.raw_config_path = object_key
             except Exception:  # noqa: BLE001
                 pass
 
@@ -191,7 +237,7 @@ async def run_pipeline(
             # + the AI/RAG unknown pipeline (step 3) instead of guessing which
             # vendor parser to (mis)apply.
             effective_vendor = "Unknown" if guess.review_required else (device.vendor or guess.vendor)
-            baseline: SecurityBaselineModel = parse_config(effective_vendor, raw_text)
+            baseline: SecurityBaselineModel = await asyncio.to_thread(parse_config, effective_vendor, raw_text)
             if guess.review_required:
                 baseline.unknown_evidence.append({
                     "reason": "vendor_detection_review_required",
@@ -214,17 +260,24 @@ async def run_pipeline(
             unknown_lines = baseline.extra_parameters.pop("_unknown_lines", [])
             if unknown_lines:
                 await events.publish("ai.mapping.required", {"scan_id": scan.id, "count": len(unknown_lines)})
-            import asyncio
-            import anyio
-            
+            # A resumed/restarted normalize stage re-does the whole stage, so
+            # clear any AIAnalysis rows an earlier interrupted attempt left
+            # behind instead of inserting a second copy of every one.
+            db.query(AIAnalysis).filter(AIAnalysis.scan_id == scan.id).delete()
+            db.commit()
+
+            # asyncio.to_thread (not anyio.to_thread.run_sync): anyio's
+            # default is a *shielded* wait, so a force-stop (task.cancel())
+            # landed only after every in-flight LLM call finished. This form
+            # is cancelled immediately (the worker thread just finishes in
+            # the background and its result is discarded).
             async def _analyze(curr_line: str):
-                res = await anyio.to_thread.run_sync(ai_service.analyze_command, curr_line)
+                res = await asyncio.to_thread(ai_service.analyze_command, curr_line)
                 return curr_line, res
 
-            _analysis_tasks = [_analyze(l) for l in unknown_lines]
-            for batch_start in range(0, len(_analysis_tasks), 20):
-                batch = _analysis_tasks[batch_start: batch_start + 20]
-                results = await asyncio.gather(*batch)
+            for batch_start in range(0, len(unknown_lines), 20):
+                batch = unknown_lines[batch_start: batch_start + 20]
+                results = await asyncio.gather(*[_analyze(l) for l in batch])
                 for line, ai_result in results:
                     db.add(AIAnalysis(
                         scan_id=scan.id,
@@ -243,7 +296,11 @@ async def run_pipeline(
                         model_version=ai_result.model_version,
                         inference_latency_ms=ai_result.inference_latency_ms,
                     ))
-                # Optional: checkpoint here? Let's just do it fast.
+                # Honour a pause/stop request between every batch of 20
+                # rather than only after the whole loop -- on a big config
+                # this loop used to be one un-interruptible block.
+                if batch_start + 20 < len(unknown_lines):
+                    await _checkpoint(db, scan, "normalize")
 
             # Bound *concurrency*, not coverage: every unknown line must still be
             # normalized (and therefore eligible for remediation) no matter how
@@ -356,7 +413,6 @@ async def run_pipeline(
         #    BATFISH_PASS (RULE 13). --------------------------------------
         scan.status = "batfish_evaluating"
         db.commit()
-        import asyncio
         loop = asyncio.get_running_loop()
         bf_result = await loop.run_in_executor(
             None,
@@ -529,6 +585,9 @@ async def run_pipeline(
         # exit. Nothing further to do here.
         return scan
     except Exception as e:  # keep the demo resilient; surface the error on the scan
+        # A DB error leaves the session needing a rollback before it can
+        # commit anything, including this failure record.
+        db.rollback()
         scan.status = "failed"
         scan.error = str(e)
         db.commit()

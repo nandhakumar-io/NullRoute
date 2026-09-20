@@ -24,20 +24,21 @@ const ICONS: Record<ToastKind, string> = {
   info: "ℹ",
 };
 
-// Solid (not translucent) backgrounds: a semi-transparent toast sitting
-// fixed bottom-right of the viewport reads as a dark smear/shadow over
-// whatever content happens to be underneath it on that page (e.g. it was
-// covering the error text and Save/Cancel buttons on the Change Request
-// edit panel), rather than as a clearly distinct notification.
+// Colours come from CSS variables (.ui-toast-* in index.css) rather than
+// Tailwind palette classes. The light-mode theme remaps text-red-300 to a
+// dark red but never remapped bg-red-950, which produced dark-red text on a
+// dark-red box (unreadable). The variables are correct in both themes, and
+// the .ui-toast base paints an opaque surface underneath the tint so nothing
+// behind the toast shows through.
 const STYLES: Record<ToastKind, string> = {
-  success: "border-emerald-800/60 bg-emerald-950 text-emerald-300",
-  error: "border-red-800/60 bg-red-950 text-red-300",
-  info: "border-soc-borderlit bg-soc-panel2 text-slate-200",
+  success: "ui-toast ui-toast-ok",
+  error: "ui-toast ui-toast-bad",
+  info: "ui-toast ui-toast-info",
 };
 
 const ICON_STYLES: Record<ToastKind, string> = {
-  success: "bg-emerald-500 text-white",
-  error: "bg-red-500 text-white",
+  success: "bg-emerald-600 text-white",
+  error: "bg-red-600 text-white",
   info: "bg-cyan-600 text-white",
 };
 
@@ -78,20 +79,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 w-full max-w-sm pointer-events-none"
+        className="fixed bottom-4 right-4 z-[120] flex flex-col gap-2 w-[calc(100vw-2rem)] max-w-sm pointer-events-none"
       >
         {items.map((t) => (
           <div
             key={t.id}
-            role="status"
-            className={`pointer-events-auto flex items-start gap-3 rounded-xl border shadow-lg px-4 py-3 text-sm animate-toast-in ${STYLES[t.kind]}`}
+            role={t.kind === "error" ? "alert" : "status"}
+            className={`pointer-events-auto flex items-start gap-3 rounded-xl shadow-lg px-4 py-3 text-sm animate-toast-in ${STYLES[t.kind]}`}
           >
             <span
               className={`flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold mt-0.5 ${ICON_STYLES[t.kind]}`}
             >
               {ICONS[t.kind]}
             </span>
-            <p className="flex-1 leading-snug break-words">{t.message}</p>
+            <p className="flex-1 leading-snug break-words" style={{ color: "var(--ink)" }}>{t.message}</p>
             <button
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss notification"

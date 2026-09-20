@@ -96,6 +96,27 @@ async def _stop_embedded_workers() -> None:
     _embedded_worker_tasks.clear()
 
 
+def _reconcile_scans_on_startup() -> None:
+    """Scan pipelines are in-process tasks, so a crash / hot reload / deploy
+    silently kills them and leaves their rows "running" (or "stopping")
+    forever. Move those to a resumable STOPPED/PAUSED state. Single-worker
+    deployment assumption; set SCAN_RECONCILE_ON_STARTUP=false if you run
+    several API workers against one database."""
+    if os.environ.get("SCAN_RECONCILE_ON_STARTUP", "true").lower() in ("0", "false", "no"):
+        return
+    try:
+        from app.db import SessionLocal
+        from app.services import scan_runner
+
+        db = SessionLocal()
+        try:
+            scan_runner.reconcile_stale(db, startup=True)
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 - never block startup on repair
+        logging.getLogger("main").exception("scan reconciliation at startup failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -103,9 +124,17 @@ async def lifespan(app: FastAPI):
     # exactly once here — never per-request. See app/ai/model_registry.py.
     init_ai_registry()
     _start_embedded_workers()
+    _reconcile_scans_on_startup()
     try:
         yield
     finally:
+        # Cancel in-flight scan pipelines first so each persists a
+        # resumable STOPPED state instead of being left "running" forever.
+        try:
+            from app.services import scan_runner
+            await scan_runner.shutdown()
+        except Exception:  # noqa: BLE001
+            logging.getLogger("main").exception("scan_runner shutdown failed")
         await _stop_embedded_workers()
 
 

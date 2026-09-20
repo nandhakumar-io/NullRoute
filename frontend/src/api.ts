@@ -284,6 +284,7 @@ export interface Scan {
   final_decision?: string | null;
   final_reason?: string | null;
   evidence_id?: string | null;
+  source_filename?: string | null;
   control_state?: string | null;
   pipeline_stage?: string | null;
   paused_at?: string | null;
@@ -1499,7 +1500,7 @@ export const endpoints = {
   getNetworkScan: (id: string) => api.get<NetworkScanJob>(`/api/network-scans/${id}`),
   createNetworkScan: (payload: NetworkScanJobCreate) =>
     api.post<NetworkScanJob>("/api/network-scans", payload),
-  scans: () => api.get<Scan[]>("/api/scans"),
+  scans: (params?: { device_id?: string; limit?: number }) => api.get<Scan[]>("/api/scans", { params }),
   runningScans: () => api.get<Scan[]>("/api/scans/running"),
   scan: (id: string) => api.get<ScanDetail>(`/api/scans/${id}`),
   rerunScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/rerun`),
@@ -1507,6 +1508,18 @@ export const endpoints = {
   stopScan: (id: string, immediate = false) =>
     api.post<ScanDetail>(`/api/scans/${id}/stop`, undefined, { params: immediate ? { immediate: true } : undefined }),
   resumeScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/resume`),
+  bulkStopScans: (scanIds: string[], immediate = true) =>
+    api.post<{ stopped: string[]; skipped: { id: string; detail: string }[] }>("/api/scans/bulk-stop", {
+      scan_ids: scanIds,
+      immediate,
+    }),
+  deleteScan: (id: string, force = false) =>
+    api.delete<{ deleted: string }>(`/api/scans/${id}`, { params: force ? { force: true } : undefined }),
+  bulkDeleteScans: (scanIds: string[], force = false) =>
+    api.post<{ deleted: string[]; failed: { id: string; detail: string }[] }>("/api/scans/bulk-delete", {
+      scan_ids: scanIds,
+      force,
+    }),
   pipelineStatus: (id: string) => api.get<PipelineStatus>(`/api/scans/${id}/pipeline-status`),
   batfishAnalysis: (scanId: string) => api.get<BatfishAnalysis>(`/api/scans/${scanId}/batfish`),
   snapshotDiff: (scanId: string) => api.get<SnapshotDiff>(`/api/scans/${scanId}/snapshot-diff`),

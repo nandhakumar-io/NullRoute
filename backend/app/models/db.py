@@ -77,6 +77,10 @@ class Scan(Base):
     framework = Column(String, default="CIS")
     raw_config_path = Column(String)  # MinIO object key
     raw_config_hash = Column(String)
+    # Original file name for config uploads (single + bulk). Ad-hoc uploads
+    # all share one sandbox Device, so without this every row in the
+    # Validation list is just "Ad-Hoc Config Uploads" and can't be told apart.
+    source_filename = Column(String, nullable=True)
     parsed_json = Column(JSON, nullable=True)
     baseline_json = Column(JSON, nullable=True)
     compliance_score = Column(Float, nullable=True)

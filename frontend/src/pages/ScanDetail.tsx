@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { endpoints, ScanDetail as ScanDetailType, EvidenceRecord, ScanAIAnalysis, DeviceVulnerabilityMatch, ChangeRequest, DeploymentRecord } from "../api";
+import { useToast } from "../lib/toast";
+import { useConfirm } from "../lib/confirm";
 import {
   PageHeader, Loading, ScoreRing, SeverityBadge, ResultBadge, StatusBadge, EmptyState,
   DecisionPipeline, opaTone, batfishTone, riskTone, decisionTone, PipelineStepData,
@@ -33,6 +35,9 @@ const AI_DECISION_TONE: Record<string, string> = {
 export default function ScanDetail() {
   const { scanId } = useParams();
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [deleting, setDeleting] = useState(false);
   const [creatingCr, setCreatingCr] = useState(false);
   const [scan, setScan] = useState<ScanDetailType | null>(null);
   const [evidence, setEvidence] = useState<EvidenceRecord | null>(null);
@@ -83,7 +88,13 @@ export default function ScanDetail() {
         setLoadError(null);
         setScan(scanRes.data);
 
-        const pipelineDone = ["completed", "review", "blocked"].includes(scanRes.data.status);
+        // "failed" belongs here too now that the pipeline genuinely runs in
+        // the background: a scan can reach it mid-poll (it used to run
+        // synchronously inside the upload request, so by the time this page
+        // ever saw the scan it was already in a terminal state). Without
+        // this, a failed scan polled forever since pipelineDone never went
+        // true.
+        const pipelineDone = ["completed", "review", "blocked", "failed"].includes(scanRes.data.status);
 
         // The rest of these are independent of one another -- fetch them in
         // parallel instead of one after another. Chaining 4-6 sequential
@@ -189,6 +200,12 @@ export default function ScanDetail() {
   }, [scan, remediations]);
 
   const pipelineCompleted = !!scan && ["completed", "review", "blocked"].includes(scan.status);
+  // A pipeline is live if the scan hasn't reached any terminal state. NB: a
+  // *finished* scan keeps control_state="RUNNING", so control_state alone
+  // can't tell "running" from "done" -- that is why Delete used to be
+  // disabled for every completed scan.
+  const scanLive =
+    !!scan && !["completed", "review", "blocked", "failed", "stopped"].includes(scan.status) && scan.control_state !== "STOPPED";
   const aiReady = aiAnalysis !== null && aiAnalysis.count >= 0 && pipelineCompleted;
   // If pipeline is done, wait for AI analysis before fully lighting up 'completed'
   let currentStageIdx = -1;
@@ -308,12 +325,51 @@ export default function ScanDetail() {
     }
   }
 
+  async function handleDelete() {
+    if (!scan) return;
+    const ok = await confirm(
+      "This permanently deletes the scan and its findings, OPA/Batfish results, and AI analysis. Evidence records and device snapshots are kept but detached from it. This can't be undone." +
+        (scanLive ? "\n\nThe running pipeline will be stopped first." : ""),
+      { title: "Delete this scan", confirmLabel: "Delete", danger: true }
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await endpoints.deleteScan(scan.id, scanLive);
+      toast.success("Scan deleted.");
+      navigate("/validation");
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 409 && typeof detail === "string" && detail.includes("golden baseline")) {
+        const forceOk = await confirm(detail, { title: "Delete anyway?", confirmLabel: "Delete anyway", danger: true });
+        if (forceOk) {
+          try {
+            await endpoints.deleteScan(scan.id, true);
+            toast.success("Scan deleted.");
+            navigate("/validation");
+            return;
+          } catch (e2: any) {
+            toast.error(e2?.response?.data?.detail || "Failed to delete the scan");
+          }
+        }
+      } else {
+        toast.error(detail || "Failed to delete the scan");
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   async function handlePipelineAction(action: "pause" | "stop" | "resume") {
     if (!scanId) return;
     setPipelineActionPending(action);
     try {
-      const call = action === "pause" ? endpoints.pauseScan : action === "stop" ? endpoints.stopScan : endpoints.resumeScan;
-      const res = await call(scanId);
+      // Stop is a force stop: the server cancels the pipeline and persists
+      // STOPPED before responding, so there is no "Stopping…" limbo to poll.
+      const res =
+        action === "pause" ? await endpoints.pauseScan(scanId)
+        : action === "stop" ? await endpoints.stopScan(scanId, true)
+        : await endpoints.resumeScan(scanId);
       // Apply the server's response straight away instead of a full page
       // reload -- a reload re-fetches every asset and re-runs every effect
       // on the page just to show a control_state change, which is what made
@@ -335,7 +391,7 @@ export default function ScanDetail() {
         }
       }
     } catch (e: any) {
-      alert(e?.response?.data?.detail || `Failed to ${action} the pipeline`);
+      toast.error(e?.response?.data?.detail || `Failed to ${action} the pipeline`);
     } finally {
       setPipelineActionPending(null);
     }
@@ -374,7 +430,7 @@ export default function ScanDetail() {
         subtitle={`Scan ${scan.id}`}
         action={
           <div className="flex items-center gap-2">
-            {(!scan.control_state || scan.control_state === "RUNNING") && !pipelineCompleted && scan.status !== "failed" && (
+            {scanLive && (!scan.control_state || scan.control_state === "RUNNING") && (
               <button
                 onClick={() => handlePipelineAction("pause")}
                 disabled={pipelineActionPending !== null}
@@ -384,12 +440,12 @@ export default function ScanDetail() {
                 {pipelineActionPending === "pause" ? "Pausing…" : "Pause pipeline"}
               </button>
             )}
-            {["RUNNING", "PAUSE_REQUESTED", "PAUSED"].includes(scan.control_state || "") && !pipelineCompleted && scan.status !== "failed" && (
+            {(scanLive || scan.control_state === "PAUSED") && (
               <button
                 onClick={() => handlePipelineAction("stop")}
-                disabled={pipelineActionPending !== null}
+                disabled={pipelineActionPending !== null || scan.control_state === "STOP_REQUESTED"}
                 className="btn-secondary text-base"
-                title="Stop at the next stage checkpoint — resumable later, not discarded"
+                title="Stop immediately — progress already saved is kept and it can be resumed later"
               >
                 {pipelineActionPending === "stop" ? "Stopping…" : "Stop pipeline"}
               </button>
@@ -407,6 +463,14 @@ export default function ScanDetail() {
             <button onClick={handleRerun} disabled={rerunning} className="btn-secondary text-base">
               {rerunning ? "Re-running…" : "Re-run evaluation"}
             </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting || pipelineActionPending !== null}
+              className="btn-secondary text-base border-red-800/60 text-red-400 hover:bg-red-500/10"
+              title={scanLive ? "Stop the running pipeline and permanently delete this scan" : "Permanently delete this scan"}
+            >
+              {deleting ? "Deleting…" : "Delete scan"}
+            </button>
           </div>
         }
       />
@@ -415,7 +479,7 @@ export default function ScanDetail() {
         <div className="card mb-3 border-amber-800/60 bg-amber-950/20 text-base text-amber-300">
           {scan.control_state === "PAUSE_REQUESTED" && "Pause requested — will pause at the next stage checkpoint."}
           {scan.control_state === "PAUSED" && `Paused at stage: ${scan.pipeline_stage || "unknown"}. Resume to continue from here, or Stop to end it instead.`}
-          {scan.control_state === "STOP_REQUESTED" && "Stop requested — will stop at the next stage checkpoint."}
+          {scan.control_state === "STOP_REQUESTED" && "Stopping…"}
           {scan.control_state === "STOPPED" && `Stopped at stage: ${scan.pipeline_stage || "unknown"}. Resume to pick up from here.`}
         </div>
       )}

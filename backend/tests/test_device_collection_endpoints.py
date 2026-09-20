@@ -100,7 +100,7 @@ def test_collect_endpoint_no_credentials(client):
     assert resp.status_code == 400
 
 
-def test_scan_endpoint_feeds_pipeline(client, monkeypatch):
+def test_scan_endpoint_feeds_pipeline(client, monkeypatch, respx_mock):
     device_id = _create_device_with_creds(client)
 
     from app.routers import devices as devices_mod
@@ -120,21 +120,19 @@ def test_scan_endpoint_feeds_pipeline(client, monkeypatch):
 
     monkeypatch.setattr(devices_mod, "get_collector", lambda vendor, transport=None: _FakeCollector())
 
-    import re
-    with respx.mock:
-        respx.get(url__regex=re.compile(r".*/v1/secret/data/.*")).mock(
-            return_value=httpx.Response(
-                200,
-                json={"data": {"data": {"credential_type": "ssh_password", "username": "admin", "password": "x"}}},
-            )
+    respx_mock.get(url__regex=re.compile(r".*/v1/secret/data/.*")).mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": {"data": {"credential_type": "ssh_password", "username": "admin", "password": "x"}}},
         )
-        respx.post(url__regex=re.compile(r".*/v1/data/compliance/evaluate")).mock(
-            return_value=httpx.Response(200, json={"result": {"decision": "PASS", "decision_id": "d1", "findings": []}})
-        )
-        respx.post(url__regex=re.compile(r".*/generate")).mock(
-            return_value=httpx.Response(200, json={"response": "{}"})
-        )
-        resp = client.post(f"/api/devices/{device_id}/scan", json={})
+    )
+    respx_mock.post("http://opa:8181/v1/data/compliance/evaluate").mock(
+        return_value=httpx.Response(200, json={"result": {"decision": "PASS", "decision_id": "d1", "findings": []}})
+    )
+    respx_mock.post("http://100.95.230.65:8000/generate").mock(
+        return_value=httpx.Response(200, json={"response": "{}"})
+    )
+    resp = client.post(f"/api/devices/{device_id}/scan", json={})
 
     assert resp.status_code == 200
     body = resp.json()

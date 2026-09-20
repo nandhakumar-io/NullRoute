@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { endpoints, Scan } from "../api";
 import { useToast } from "../lib/toast";
 import { useConfirm } from "../lib/confirm";
 
 const STAGE_LABEL: Record<string, string> = {
+  queued: "Queued",
+  resuming: "Resuming",
   uploaded: "Starting",
   parsed: "Parsing",
   normalized: "Normalizing",
@@ -29,30 +31,32 @@ function stageLabel(s: Scan): string {
 export default function RunningPipelines() {
   const [scans, setScans] = useState<Scan[]>([]);
   const [open, setOpen] = useState(false);
-  const [stoppingId, setStoppingId] = useState<string | null>(null);
+  const [stoppingIds, setStoppingIds] = useState<Set<string>>(new Set());
+  // Bumped whenever the list is changed by an action. A poll that started
+  // before the bump carries a stale snapshot (it may still list a scan that
+  // was just stopped) and must not overwrite the fresher state -- that race
+  // is what made the count drop and then jump back up.
+  const pollSeq = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
 
-  useEffect(() => {
-    let isActive = true;
-    async function poll() {
-      try {
-        const res = await endpoints.runningScans();
-        if (isActive) setScans(res.data);
-      } catch {
-        // Best-effort -- a failed poll just leaves the last known count
-        // showing rather than blanking the widget out.
-      }
+  const refresh = useCallback(async () => {
+    const seq = ++pollSeq.current;
+    try {
+      const res = await endpoints.runningScans();
+      if (seq === pollSeq.current) setScans(res.data);
+    } catch {
+      // Best-effort -- a failed poll just leaves the last known list showing.
     }
-    poll();
-    const id = window.setInterval(poll, 5000);
-    return () => {
-      isActive = false;
-      window.clearInterval(id);
-    };
   }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = window.setInterval(refresh, open ? 2000 : 5000);
+    return () => window.clearInterval(id);
+  }, [refresh, open]);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -62,23 +66,45 @@ export default function RunningPipelines() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
-  async function stopNow(scan: Scan) {
-    const ok = await confirm(
-      `Stop this pipeline immediately? It will be cancelled mid-stage rather than waiting for its next checkpoint — whatever it already saved is kept, and it can be resumed later from there.`,
-      { title: "Stop pipeline now", confirmLabel: "Stop now", danger: true }
-    );
+  async function stopMany(targets: Scan[], title: string, message: string) {
+    if (targets.length === 0) return;
+    const ok = await confirm(message, { title, confirmLabel: "Stop now", danger: true });
     if (!ok) return;
-    setStoppingId(scan.id);
+    const ids = targets.map((t) => t.id);
+    setStoppingIds((prev) => new Set([...prev, ...ids]));
     try {
-      await endpoints.stopScan(scan.id, true);
-      toast.success("Pipeline stopped.");
-      setScans((prev) => prev.filter((s) => s.id !== scan.id));
+      // One call, one server-side pass: every live task is cancelled together
+      // and each scan is persisted as STOPPED before this returns.
+      const res = await endpoints.bulkStopScans(ids, true);
+      const gone = new Set([...res.data.stopped, ...res.data.skipped.map((s) => s.id)]);
+      pollSeq.current++; // invalidate any in-flight poll snapshot
+      setScans((prev) => prev.filter((s) => !gone.has(s.id)));
+      toast.success(ids.length === 1 ? "Pipeline stopped." : `Stopped ${res.data.stopped.length} pipelines.`);
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || "Failed to stop the pipeline");
     } finally {
-      setStoppingId(null);
+      setStoppingIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((i) => next.delete(i));
+        return next;
+      });
+      refresh(); // reconcile with the server's truth either way
     }
   }
+
+  const stopNow = (scan: Scan) =>
+    stopMany(
+      [scan],
+      "Stop pipeline now",
+      "Stop this pipeline immediately? It is cancelled mid-stage rather than waiting for its next checkpoint. Whatever it already saved is kept, and it can be resumed later from there."
+    );
+
+  const stopAll = () =>
+    stopMany(
+      scans.filter((s) => s.control_state !== "PAUSED"),
+      "Stop all pipelines",
+      `Stop all ${scans.filter((s) => s.control_state !== "PAUSED").length} running or queued pipelines immediately? Saved progress is kept and each can be resumed later.`
+    );
 
   const count = scans.length;
 
@@ -107,11 +133,23 @@ export default function RunningPipelines() {
 
       {open && (
         <div
-          className="absolute right-0 mt-2 w-96 max-h-[28rem] overflow-y-auto rounded-lg border shadow-xl z-50"
+          className="absolute right-0 mt-2 w-[min(24rem,calc(100vw-1.5rem))] max-h-[28rem] overflow-y-auto rounded-lg border shadow-xl z-[70]"
           style={{ background: "var(--panel)", borderColor: "var(--border)" }}
         >
-          <div className="px-4 py-3 border-b text-sm font-semibold" style={{ borderColor: "var(--border)", color: "var(--ink)" }}>
-            Running pipelines {count > 0 && `(${count})`}
+          <div
+            className="px-4 py-3 border-b text-sm font-semibold flex items-center justify-between gap-3 sticky top-0"
+            style={{ borderColor: "var(--border)", color: "var(--ink)", background: "var(--panel)" }}
+          >
+            <span>Running pipelines {count > 0 && `(${count})`}</span>
+            {count > 1 && (
+              <button
+                onClick={stopAll}
+                disabled={stoppingIds.size > 0}
+                className="text-xs font-medium px-2.5 py-1 rounded-md border border-red-800/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+              >
+                Stop all
+              </button>
+            )}
           </div>
 
           {count === 0 && (
@@ -130,7 +168,7 @@ export default function RunningPipelines() {
                 }}
               >
                 <div className="text-sm font-medium truncate" style={{ color: "var(--ink)" }}>
-                  Scan {s.id.slice(0, 8)} · {s.framework}
+                  {s.source_filename || `Scan ${s.id.slice(0, 8)}`} · {s.framework}
                 </div>
                 <div className="text-xs mt-0.5" style={{ color: "var(--ink-faint)" }}>
                   {stageLabel(s)}
@@ -138,11 +176,11 @@ export default function RunningPipelines() {
               </button>
               <button
                 onClick={() => stopNow(s)}
-                disabled={stoppingId === s.id}
+                disabled={stoppingIds.has(s.id) || s.control_state === "STOP_REQUESTED"}
                 className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-md border border-red-800/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                 title="Cancel this pipeline immediately, without waiting for its next checkpoint"
               >
-                {stoppingId === s.id ? "Stopping…" : "Stop now"}
+                {stoppingIds.has(s.id) ? "Stopping…" : "Stop now"}
               </button>
             </div>
           ))}

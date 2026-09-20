@@ -1,75 +1,89 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 import asyncio
+import logging
+import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal, get_db
-from app.models.db import BatfishAnalysis, Device, Finding, Scan
+from app.db import get_db
+from app.models.db import BatfishAnalysis, Device, Finding, Scan, Tenant
 from app.routers.devices import get_or_create_demo_tenant
 from app.schemas import ScanDetailOut, ScanOut
-from app.services.pipeline import STAGE_LABELS, resume_pipeline, run_pipeline
+from app.services import audit_service, scan_deletion, scan_runner
+from app.services.pipeline import STAGE_LABELS, mark_resuming, validate_resumable
+from app.services.scan_runner import TERMINAL_SCAN_STATUSES, has_live_task, scan_phase
 from app.services.vendor_detect import detect_vendor
 
-from app.auth.dependencies import get_current_user, require_role
+from app.auth.dependencies import CurrentUser, get_current_user, require_role
+
+logger = logging.getLogger("scans")
 
 router = APIRouter(prefix="/api/scans", tags=["scans"], dependencies=[Depends(get_current_user)])
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5MB safety cap for uploaded config files
+# Bulk-upload guard rails. Queued scans hold their config text in memory
+# until they get a pipeline slot, so bound the batch.
+MAX_BULK_FILES = int(os.getenv("SCAN_BULK_MAX_FILES", "50"))
+MAX_BULK_TOTAL_BYTES = int(os.getenv("SCAN_BULK_MAX_TOTAL_BYTES", str(50 * 1024 * 1024)))
 
-# Scan statuses a pipeline never leaves once reached -- everything else
-# means it's queued, actively running, or paused/stop-requested and
-# therefore belongs in the "running pipelines" list below.
-TERMINAL_SCAN_STATUSES = {"completed", "review", "blocked", "failed", "stopped"}
+# Kept as module-level names: other modules/tests import these from here.
+RUNNING_SCAN_TASKS = scan_runner.RUNNING_SCAN_TASKS
 
-# Tracks the live asyncio.Task for each scan currently being processed in
-# the background, so an "immediate" stop can cancel it directly instead of
-# only flipping control_state and waiting for run_pipeline's own
-# checkpoint to notice (see stop_scan(..., immediate=True) below). Populated
-# in upload_config/bulk_upload, cleared by _run_scan_pipeline_in_own_session
-# itself once it finishes (normally, on failure, or on cancellation).
-RUNNING_SCAN_TASKS: Dict[str, asyncio.Task] = {}
+_ANY_WRITE_ROLES = ("admin", "operator", "security_analyst")
 
 
-async def _run_scan_pipeline_in_own_session(scan_id: str, raw_text: str, framework: str) -> None:
-    """Runs off the request's async context (which is gone by the time this
-    executes) -- open a fresh session here, matching how
-    document_ingestion's _run_job_in_own_session handles the same problem.
+def _detail(scan: Scan, db: Session) -> ScanDetailOut:
+    findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
+    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
 
-    run_pipeline() already persists status="failed" + scan.error on a
-    genuine failure (see services/pipeline.py) before re-raising, so a plain
-    Exception here just needs to be swallowed -- the scan row already
-    recorded it. asyncio.CancelledError (from stop_scan(..., immediate=True)
-    cancelling this task directly) is handled separately: it isn't an
-    Exception subclass, so it isn't caught below, and run_pipeline's own
-    stage-boundary checkpoints never got a chance to see it -- this is the
-    one place that persists the STOPPED state for that path.
-    """
-    db = SessionLocal()
-    try:
-        scan = db.query(Scan).get(scan_id)
-        if not scan:
-            return
-        try:
-            await run_pipeline(db, scan, raw_text, framework=framework)
-        except asyncio.CancelledError:
-            try:
-                db.rollback()
-                scan = db.query(Scan).get(scan_id)
-                if scan and scan.control_state != "STOPPED":
-                    scan.status = "stopped"
-                    scan.control_state = "STOPPED"
-                    scan.stopped_at = datetime.utcnow()
-                    db.commit()
-            except Exception:
-                pass
-            raise
-        except Exception:
-            pass
-    finally:
-        RUNNING_SCAN_TASKS.pop(scan_id, None)
-        db.close()
+
+def _tenant_for(db: Session, user: CurrentUser) -> Tenant:
+    tenant = db.get(Tenant, user.tenant_id) if getattr(user, "tenant_id", None) else None
+    return tenant or get_or_create_demo_tenant(db)
+
+
+def _adhoc_device(db: Session, tenant: Tenant) -> Device:
+    """The shared 'Ad-Hoc Config Uploads' sandbox device (reused so uploads
+    don't clutter the inventory with one device per file)."""
+    device = db.query(Device).filter(
+        Device.tenant_id == tenant.id, Device.hostname == "Ad-Hoc Config Uploads", Device.vendor == "Ad-Hoc",
+    ).first()
+    if not device:
+        device = Device(
+            tenant_id=tenant.id, hostname="Ad-Hoc Config Uploads", vendor="Ad-Hoc", os=None,
+            description="Sandbox device for config uploads", enabled=False,
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
+    return device
+
+
+def _scan_or_404(db: Session, scan_id: str, user: CurrentUser) -> Scan:
+    scan = db.get(Scan, scan_id)
+    if not scan or (getattr(user, "tenant_id", None) and scan.tenant_id != user.tenant_id):
+        raise HTTPException(404, "Scan not found")
+    return scan
+
+
+def _clean_filename(name: Optional[str]) -> Optional[str]:
+    if not name:
+        return None
+    return os.path.basename(name.replace("\\", "/"))[:255] or None
+
+
+def _upload_problem(raw: bytes) -> Optional[str]:
+    """Reason a file can't be scanned as a text config, else None."""
+    if len(raw) > MAX_UPLOAD_BYTES:
+        return f"Configuration file too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)}MB)"
+    if not raw.strip():
+        return "Configuration file is empty"
+    if b"\x00" in raw[:8192]:
+        return "File is binary, not a text configuration"
+    return None
 
 
 @router.post("/upload", response_model=ScanDetailOut)
@@ -78,48 +92,24 @@ async def upload_config(
     framework: str = Form("ALL"),
     hostname: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    _user=Depends(require_role("admin", "operator", "security_analyst")),
+    user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
 ):
-    raw_bytes = await file.read()
-    if len(raw_bytes) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "Configuration file too large (max 5MB)")
-    try:
-        raw_text = raw_bytes.decode("utf-8", errors="replace")
-    except Exception:
-        raise HTTPException(400, "Unable to decode configuration file as text")
+    raw_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
+    problem = _upload_problem(raw_bytes)
+    if problem:
+        raise HTTPException(413 if "too large" in problem else 400, problem)
+    raw_text = raw_bytes.decode("utf-8", errors="replace")
 
     guess = detect_vendor(raw_text)
-    tenant = get_or_create_demo_tenant(db)
+    tenant = _tenant_for(db, user)
 
     # SECURITY/spec section 4: do NOT assign vendor/os from the raw guess
     # here -- a review_required guess (low confidence, or a vendor outside
     # the six supported ones) must never become a confident device identity.
-    # run_pipeline() below re-runs detect_vendor() and is the single place
-    # that gates vendor/os assignment on review_required; setting it here
-    # first would silently defeat that gate (device.vendor would already be
-    # populated by the time pipeline.py's `device.vendor or guess.vendor`
-    # check runs).
-    guest_hostname = hostname or "Ad-Hoc Config Uploads"
-    
-    # Try to reuse the Ad-Hoc Config Uploads device to avoid cluttering the inventory
+    # run_pipeline() re-runs detect_vendor() and is the single place that
+    # gates vendor/os assignment on review_required.
     if not hostname:
-        device = db.query(Device).filter(
-            Device.tenant_id == tenant.id, 
-            Device.hostname == guest_hostname,
-            Device.vendor == "Ad-Hoc"
-        ).first()
-        if not device:
-            device = Device(
-                tenant_id=tenant.id,
-                hostname=guest_hostname,
-                vendor="Ad-Hoc",
-                os=None,
-                description="Sandbox device for config uploads",
-                enabled=False,
-            )
-            db.add(device)
-            db.commit()
-            db.refresh(device)
+        device = _adhoc_device(db, tenant)
     else:
         device = Device(
             tenant_id=tenant.id,
@@ -131,31 +121,19 @@ async def upload_config(
         db.commit()
         db.refresh(device)
 
-    scan = Scan(tenant_id=tenant.id, device_id=device.id, framework=framework, status="uploaded")
+    scan = Scan(
+        tenant_id=tenant.id, device_id=device.id, framework=framework, status="uploaded",
+        source_filename=_clean_filename(file.filename),
+    )
     db.add(scan)
     db.commit()
     db.refresh(scan)
 
-    # Run the actual pipeline (parse/normalize/OPA/Batfish/risk/correlate/
-    # evidence) as a background task instead of awaiting it here. It used
-    # to run synchronously inside this request, so the upload call itself
-    # blocked for however long the whole pipeline took -- on a slow config
-    # (or one that hit a flaky downstream service) that meant a long-hanging
-    # HTTP request the browser could time out on, which is what made a
-    # config upload occasionally look like it "bugs out the app". Now the
-    # request returns as soon as the Scan row exists (status="uploaded",
-    # control_state="RUNNING" by default) and the frontend's existing
-    # scan-detail polling picks up progress from there -- same shape it
-    # already treats a scan as being in-progress.
-    task = asyncio.create_task(_run_scan_pipeline_in_own_session(scan.id, raw_text, framework))
-    RUNNING_SCAN_TASKS[scan.id] = task
-
-    findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
-    return ScanDetailOut(
-        **ScanOut.model_validate(scan).model_dump(),
-        baseline_json=scan.baseline_json,
-        findings=findings,
-    )
+    # The pipeline runs in the background (never inside this request): the
+    # call returns as soon as the Scan row exists and the frontend polls
+    # for progress. scan_runner registers the task so it can be stopped.
+    scan_runner.start_scan_task(scan.id, raw_text, framework)
+    return _detail(scan, db)
 
 
 @router.post("/bulk-upload", response_model=List[ScanDetailOut])
@@ -163,84 +141,88 @@ async def bulk_upload(
     files: List[UploadFile] = File(...),
     framework: str = Form("ALL"),
     db: Session = Depends(get_db),
-    _user=Depends(require_role("admin", "operator", "security_analyst")),
+    user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
 ):
-    results = []
-    for file in files:
-        raw_bytes = await file.read()
-        tenant = get_or_create_demo_tenant(db)
-        if len(raw_bytes) > MAX_UPLOAD_BYTES:
-            # Never silently discard untrusted input (spec section 3/16):
-            # record a failed device+scan pair so an oversized upload is
-            # still visible in the audit trail instead of vanishing.
-            device = Device(tenant_id=tenant.id, hostname=file.filename, vendor=None, os=None)
-            db.add(device)
-            db.commit()
-            db.refresh(device)
-            scan = Scan(
-                tenant_id=tenant.id, device_id=device.id, framework=framework,
-                status="failed", error=f"Configuration file too large (max {MAX_UPLOAD_BYTES} bytes)",
-            )
-            db.add(scan)
-            db.commit()
-            db.refresh(scan)
-            results.append(ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=None, findings=[]))
-            continue
-        raw_text = raw_bytes.decode("utf-8", errors="replace")
-        guess = detect_vendor(raw_text)
-        guest_hostname = "Ad-Hoc Config Uploads"
-        
-        # See upload_config() above -- reuse ad-hoc device.
-        device = db.query(Device).filter(
-            Device.tenant_id == tenant.id, 
-            Device.hostname == guest_hostname,
-            Device.vendor == "Ad-Hoc"
-        ).first()
-        if not device:
-            device = Device(
-                tenant_id=tenant.id,
-                hostname=guest_hostname,
-                vendor="Ad-Hoc",
-                os=None,
-                description="Sandbox device for config uploads",
-                enabled=False,
-            )
-            db.add(device)
-            db.commit()
-            db.refresh(device)
-            
-        # Since it's a bulk upload without assigned hostnames per file, we link them all here.
-        db.commit()
-        db.refresh(device)
-        scan = Scan(tenant_id=tenant.id, device_id=device.id, framework=framework, status="uploaded")
+    """Queue many configuration files at once.
+
+    Returns immediately with one scan per file (status ``queued``); pipelines
+    then run in the background, at most SCAN_PIPELINE_CONCURRENCY at a time,
+    so a big batch can't flood the LLM / Batfish / DB pool. One bad file
+    never sinks the batch: it becomes a visible ``failed`` scan with the
+    reason instead (untrusted input is never silently discarded).
+    """
+    if not files:
+        raise HTTPException(400, "No files were uploaded")
+    if len(files) > MAX_BULK_FILES:
+        raise HTTPException(413, f"Too many files: {len(files)} (max {MAX_BULK_FILES} per batch)")
+
+    # Read everything first (bounded per file and in total) so an over-limit
+    # batch is rejected before any scan rows exist.
+    payloads: List[tuple] = []
+    total = 0
+    for f in files:
+        raw = await f.read(MAX_UPLOAD_BYTES + 1)
+        total += min(len(raw), MAX_UPLOAD_BYTES)
+        if total > MAX_BULK_TOTAL_BYTES:
+            raise HTTPException(413, f"Batch too large (max {MAX_BULK_TOTAL_BYTES // (1024 * 1024)}MB in total)")
+        payloads.append((_clean_filename(f.filename) or "config", raw))
+
+    tenant = _tenant_for(db, user)
+    device = _adhoc_device(db, tenant)
+
+    created: List[tuple] = []  # (Scan, raw_bytes | None)
+    for name, raw in payloads:
+        problem = _upload_problem(raw)
+        scan = Scan(
+            tenant_id=tenant.id, device_id=device.id, framework=framework, source_filename=name,
+            status="failed" if problem else "queued", error=problem,
+        )
         db.add(scan)
-        db.commit()
+        created.append((scan, None if problem else raw))
+    db.commit()  # one transaction for the whole batch
+    for scan, _ in created:
         db.refresh(scan)
-        # Same fix as upload_config() above: don't block this loop (and the
-        # whole request) on the pipeline for every file in the batch.
-        task = asyncio.create_task(_run_scan_pipeline_in_own_session(scan.id, raw_text, framework))
-        RUNNING_SCAN_TASKS[scan.id] = task
-        findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
-        results.append(ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings))
-    return results
+
+    to_archive = []
+    for scan, raw in created:
+        if raw is None:
+            continue
+        scan_runner.start_scan_task(scan.id, raw.decode("utf-8", errors="replace"), framework)
+        to_archive.append((scan.id, scan.tenant_id, scan.device_id, raw))
+    scan_runner.archive_raw_configs_in_background(to_archive)
+
+    return [_detail(scan, db) for scan, _ in created]
 
 
 @router.get("", response_model=List[ScanOut])
-def list_scans(db: Session = Depends(get_db)):
-    return db.query(Scan).order_by(Scan.created_at.desc()).limit(100).all()
+def list_scans(
+    device_id: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Scan)
+    if device_id:
+        q = q.filter(Scan.device_id == device_id)
+    return q.order_by(Scan.created_at.desc()).limit(limit).all()
 
 
 @router.get("/running", response_model=List[ScanOut])
 def list_running_scans(db: Session = Depends(get_db)):
-    """Scans whose pipeline is still in flight, paused, or has a pending
-    pause/stop request -- i.e. anything not in a terminal state. Backs the
-    'Running Pipelines' panel so an operator can see and stop these without
-    hunting through the full scan list.
+    """Scans whose pipeline is still in flight, queued, paused, or has a
+    pending pause/stop request -- i.e. anything not in a terminal state.
+    Backs the 'Running Pipelines' panel.
 
-    NOTE: this must stay declared before GET /{scan_id} below -- a route
-    here that fell after the dynamic path would have scan_id="running"
-    matched by /{scan_id} instead of this one, 404ing every time.
+    Lazily repairs scans whose pipeline no longer exists (stuck
+    *_REQUESTED) so they can't linger here forever.
+
+    NOTE: must stay declared before GET /{scan_id} below -- otherwise
+    scan_id="running" would be matched by the dynamic route and 404.
     """
+    try:
+        scan_runner.reconcile_stale(db)
+    except Exception:  # noqa: BLE001 - never let repair break the listing
+        logger.exception("reconcile_stale failed")
+        db.rollback()
     return (
         db.query(Scan)
         .filter(~Scan.status.in_(TERMINAL_SCAN_STATUSES))
@@ -250,13 +232,141 @@ def list_running_scans(db: Session = Depends(get_db)):
     )
 
 
+# ---- bulk actions (declared before /{scan_id} routes) ------------------------
+
+class BulkStopRequest(BaseModel):
+    scan_ids: List[str] = Field(min_length=1, max_length=500)
+    immediate: bool = True
+
+
+class BulkDeleteRequest(BaseModel):
+    scan_ids: List[str] = Field(min_length=1, max_length=500)
+    force: bool = False
+
+
+@router.post("/bulk-stop")
+async def bulk_stop_scans(
+    payload: BulkStopRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
+):
+    """Stop many scans in one call. All live tasks are cancelled together and
+    every scan is finalized before this returns (see scan_runner.stop_scans)."""
+    ids = list(dict.fromkeys(payload.scan_ids))
+    scans = db.query(Scan).filter(Scan.id.in_(ids), Scan.tenant_id == user.tenant_id).all()
+    found = {s.id for s in scans}
+    outcomes = await scan_runner.stop_scans(db, scans, immediate=payload.immediate)
+    stopped = [i for i, o in outcomes.items() if o in ("stopped", "already_stopped", "stopping")]
+    skipped = [{"id": i, "detail": "Scan has already finished; nothing to stop"} for i, o in outcomes.items() if o == "finished"]
+    skipped += [{"id": i, "detail": "Scan not found"} for i in ids if i not in found]
+    audit_service.record_from_user(
+        db, user, action="scan.bulk_stop", request=request, result="SUCCESS", object_type="scan", object_id=None,
+        new_value={"requested": len(ids), "stopped": stopped, "immediate": payload.immediate},
+    )
+    return {"stopped": stopped, "skipped": skipped}
+
+
+@router.post("/bulk-delete")
+async def bulk_delete_scans(
+    payload: BulkDeleteRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Delete many scans. Partial success is normal: the response lists what
+    was ``deleted`` and, for everything that wasn't, a ``failed`` entry with
+    the reason (still running, golden baseline, not found). ``force`` stops
+    running scans first and overrides the golden-baseline protection."""
+    deleted, failed = await _delete_scans(db, list(dict.fromkeys(payload.scan_ids)), payload.force, user)
+    audit_service.record_from_user(
+        db, user, action="scan.bulk_delete", request=request, result="SUCCESS" if deleted else "FAILURE",
+        object_type="scan", object_id=None,
+        new_value={"requested": len(payload.scan_ids), "deleted": deleted, "failed": [f["id"] for f in failed], "force": payload.force},
+    )
+    return {"deleted": deleted, "failed": [{"id": f["id"], "detail": f["detail"]} for f in failed]}
+
+
+async def _delete_scans(db: Session, ids: List[str], force: bool, user: CurrentUser):
+    scans = {s.id: s for s in db.query(Scan).filter(Scan.id.in_(ids), Scan.tenant_id == user.tenant_id).all()}
+    failed: List[Dict[str, Any]] = []
+    doomed: List[str] = []
+    golden = set(scan_deletion.golden_baseline_scan_ids(db, list(scans)))
+    to_stop: List[Scan] = []
+
+    for sid in ids:
+        scan = scans.get(sid)
+        if scan is None:
+            failed.append({"id": sid, "status": 404, "detail": "Scan not found"})
+            continue
+        live = scan_phase(scan) == "live" or has_live_task(sid)
+        if live and not force:
+            failed.append({"id": sid, "status": 409, "detail": "Scan is still running. Stop it first, or force delete."})
+            continue
+        if sid in golden and not force:
+            failed.append({
+                "id": sid, "status": 409,
+                "detail": "This scan is the approved golden baseline for its device. Deleting it removes that baseline.",
+            })
+            continue
+        if live:
+            to_stop.append(scan)
+        doomed.append(sid)
+
+    if to_stop:
+        # Cancel first so no pipeline task is still writing rows we're about to delete.
+        await scan_runner.stop_scans(db, to_stop, immediate=True)
+
+    deleted: List[str] = []
+
+    def _purge(batch: List[str]) -> None:
+        scan_deletion.purge_scans(db, batch)
+        db.commit()
+
+    try:
+        if doomed:
+            _purge(doomed)
+        deleted = list(doomed)
+    except Exception:  # noqa: BLE001 - isolate the offender, keep the rest
+        db.rollback()
+        logger.exception("bulk scan delete failed; retrying one by one")
+        for sid in doomed:
+            try:
+                _purge([sid])
+                deleted.append(sid)
+            except Exception as exc:  # noqa: BLE001
+                db.rollback()
+                logger.exception("delete of scan %s failed", sid)
+                failed.append({"id": sid, "status": 500, "detail": f"Delete failed: {exc.__class__.__name__}"})
+    return deleted, failed
+
+
+@router.delete("/{scan_id}")
+async def delete_scan(
+    scan_id: str,
+    request: Request,
+    force: bool = Query(False, description="Stop a running scan first and override the golden-baseline protection."),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_role("admin", "operator")),
+):
+    """Delete one scan and its findings / OPA / Batfish / AI results. Evidence
+    records and topology snapshots are kept but detached from it."""
+    deleted, failed = await _delete_scans(db, [scan_id], force, user)
+    audit_service.record_from_user(
+        db, user, action="scan.delete", request=request, result="SUCCESS" if deleted else "FAILURE",
+        object_type="scan", object_id=scan_id, new_value={"force": force},
+    )
+    if failed:
+        raise HTTPException(failed[0]["status"], failed[0]["detail"])
+    return {"deleted": scan_id}
+
+
 @router.get("/{scan_id}", response_model=ScanDetailOut)
 def get_scan(scan_id: str, db: Session = Depends(get_db)):
     scan = db.query(Scan).get(scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
-    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
-    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+    return _detail(scan, db)
 
 
 @router.post("/{scan_id}/rerun", response_model=ScanDetailOut)
@@ -359,25 +469,21 @@ async def rerun_scan(
 async def pause_scan(
     scan_id: str,
     db: Session = Depends(get_db),
-    _user=Depends(require_role("admin", "operator", "security_analyst")),
+    user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
 ):
     """Request that a running scan's pipeline pause at its next stage
-    checkpoint (services/pipeline.py::_checkpoint). This only *requests*
-    the pause -- the pipeline coroutine itself (which may be another
-    in-flight request, e.g. the original /upload call) is what actually
-    stops and persists control_state=PAUSED once it reaches a safe point;
-    that's usually near-instant, but isn't guaranteed synchronous with
-    this call returning."""
-    scan = db.query(Scan).get(scan_id)
-    if not scan:
-        raise HTTPException(404, "Scan not found")
-    if scan.control_state not in ("RUNNING", "PAUSE_REQUESTED"):
-        raise HTTPException(409, f"Scan is not running (control_state={scan.control_state}); nothing to pause")
-    scan.control_state = "PAUSE_REQUESTED"
+    checkpoint. If no pipeline is actually alive for it (orphaned by a
+    restart) there is no checkpoint to wait for, so it is paused directly."""
+    scan = _scan_or_404(db, scan_id, user)
+    if scan_phase(scan) != "live" or scan.control_state not in ("RUNNING", "PAUSE_REQUESTED", None):
+        raise HTTPException(409, f"Scan is not running (status={scan.status}, control_state={scan.control_state}); nothing to pause")
+    if has_live_task(scan_id):
+        scan.control_state = "PAUSE_REQUESTED"
+    else:
+        scan.status, scan.control_state, scan.paused_at = "paused", "PAUSED", datetime.utcnow()
     db.commit()
     db.refresh(scan)
-    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
-    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+    return _detail(scan, db)
 
 
 @router.post("/{scan_id}/stop", response_model=ScanDetailOut)
@@ -385,83 +491,50 @@ async def stop_scan(
     scan_id: str,
     immediate: bool = Query(
         False,
-        description="Cancel the in-flight pipeline task right away instead of waiting for its next "
-        "stage checkpoint. Whatever the current stage had already committed is kept; anything it "
-        "was mid-write on when cancelled is not.",
+        description="Force stop: cancel the in-flight pipeline task now instead of waiting for its next stage "
+        "checkpoint. Whatever the current stage had already committed is kept; it can be resumed later.",
     ),
     db: Session = Depends(get_db),
-    _user=Depends(require_role("admin", "operator", "security_analyst")),
+    user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
 ):
-    """Request that a running scan's pipeline stop. By default this stops at
-    its next stage checkpoint (usually near-instant, but not guaranteed
-    synchronous with this call returning) -- a stopped scan is not discarded,
-    its checkpoint (raw config in MinIO, baseline once normalization has
-    completed, findings already persisted) is kept, and it can be restarted
-    later via /{scan_id}/resume from wherever it stopped.
+    """Stop a scan. A stopped scan is not discarded -- its checkpoint is kept
+    and /{scan_id}/resume can restart it from there.
 
-    With immediate=True, the backing asyncio task is cancelled directly
-    (see RUNNING_SCAN_TASKS) rather than waiting for run_pipeline to reach
-    its own checkpoint -- for the 'Stop now' action on a Running Pipelines
-    panel, where the operator wants the pipeline to actually die right now,
-    not at its own convenience.
+    Idempotent and always terminal: with immediate=True the scan is STOPPED
+    when this returns, even if no pipeline task existed for it (queued,
+    orphaned by a reload, already paused). Stopping an already-stopped scan
+    just returns it; only a scan that already *finished* is a 409.
     """
-    scan = db.query(Scan).get(scan_id)
-    if not scan:
-        raise HTTPException(404, "Scan not found")
-    if scan.control_state not in ("RUNNING", "PAUSE_REQUESTED", "PAUSED"):
-        raise HTTPException(409, f"Scan is not running or paused (control_state={scan.control_state}); nothing to stop")
-    was_paused = scan.control_state == "PAUSED"
-    scan.control_state = "STOP_REQUESTED"
-    db.commit()
-
-    if immediate:
-        task = RUNNING_SCAN_TASKS.get(scan_id)
-        if task and not task.done():
-            task.cancel()
-            # Give the cancelled task a moment to persist STOPPED itself
-            # (see _run_scan_pipeline_in_own_session's CancelledError
-            # handler) before we read the scan back below -- best-effort;
-            # if it doesn't finish in time control_state is at least
-            # already STOP_REQUESTED and the next poll will pick up STOPPED
-            # once it lands.
-            try:
-                await asyncio.wait_for(task, timeout=2)
-            except (Exception, asyncio.CancelledError):
-                pass
-
-    if was_paused:
-        # A PAUSED scan has no in-flight coroutine left to reach a
-        # checkpoint and flip this to STOPPED for us -- do it directly.
-        scan.status = "stopped"
-        scan.control_state = "STOPPED"
-        scan.stopped_at = datetime.utcnow()
-        db.commit()
+    scan = _scan_or_404(db, scan_id, user)
+    outcomes = await scan_runner.stop_scans(db, [scan], immediate=immediate)
+    if outcomes.get(scan_id) == "finished":
+        raise HTTPException(409, f"Scan has already finished (status={scan.status}); nothing to stop")
     db.refresh(scan)
-    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
-    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+    return _detail(scan, db)
 
 
 @router.post("/{scan_id}/resume", response_model=ScanDetailOut)
 async def resume_scan(
     scan_id: str,
     db: Session = Depends(get_db),
-    _user=Depends(require_role("admin", "operator", "security_analyst")),
+    user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
 ):
-    """Resume a PAUSED or STOPPED scan's pipeline from its last checkpointed
-    stage (services/pipeline.py::resume_pipeline). Runs synchronously, same
-    as the original /upload call -- the response only comes back once the
-    pipeline completes or hits another pause/stop."""
-    scan = db.query(Scan).get(scan_id)
-    if not scan:
-        raise HTTPException(404, "Scan not found")
+    """Resume a PAUSED or STOPPED scan from its last checkpointed stage.
+
+    Returns immediately (status ``resuming``); the pipeline continues in the
+    background like the original upload, so it shows up in the running list
+    and can be paused/stopped again."""
+    scan = _scan_or_404(db, scan_id, user)
     if scan.control_state not in ("PAUSED", "STOPPED"):
         raise HTTPException(409, f"Scan is not paused or stopped (control_state={scan.control_state}); nothing to resume")
     try:
-        scan = await resume_pipeline(db, scan)
+        validate_resumable(scan)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    findings = db.query(Finding).filter(Finding.scan_id == scan_id).all()
-    return ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings)
+    mark_resuming(db, scan)
+    scan_runner.start_resume_task(scan.id)
+    db.refresh(scan)
+    return _detail(scan, db)
 
 
 @router.get("/{scan_id}/pipeline-status")

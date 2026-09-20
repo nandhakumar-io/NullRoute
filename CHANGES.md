@@ -1,136 +1,31 @@
-# Changes made in this session
+# NetSecAuditor: scan stop / delete / bulk-upload changes
 
-## 1. Topology page — was showing fake data, now real
-- `backend/app/routers/topology.py`: removed the stub that fabricated a
-  straight-line chain of `"mock-link"` connections between devices
-  regardless of actual connectivity. Now serves real interface/VLAN/VRF
-  counts from `NetworkInterface`/`VLAN`/`VRF`, and a real link list.
-- New capability: **SNMP/LLDP neighbor discovery**, wired end-to-end:
-  - `backend/app/services/collectors/base.py` — added `get_neighbors()` hook.
-  - `backend/app/services/collectors/snmp.py` — real LLDP-MIB walk
-    (`lldpRemSysName`/`lldpRemPortId`/`lldpRemPortDesc`/`lldpRemChassisId`
-    + `lldpLocPortId` for local port names).
-  - `backend/app/gateway/connectors.py` — `GET_NEIGHBORS` now dispatches to
-    the collector instead of falling through to a meaningless
-    `collect_config` call; added a mock-connector branch too.
-  - `backend/app/routers/device_gateway.py` — new
-    `POST /api/devices/{id}/gateway-get-neighbors` endpoint.
-  - `backend/app/services/topology_service.py` — new
-    `persist_observed_links()` (stores real neighbor results as
-    `NetworkLink` rows, matched to a known device by hostname) and
-    `get_topology_links()` (merges observed links ahead of subnet-inferred
-    ones for the same device pair).
-- `frontend/src/pages/Topology.tsx` — theme-aware canvas (was hardcoded
-  dark regardless of light/dark mode), a working "Discover Neighbors
-  (SNMP/LLDP)" button, a legend distinguishing observed vs. inferred links,
-  a real per-device interface list in the side panel, removed the dead
-  "Mock Batfish Sandbox" button, wired "Launch in GNS3 Lab" to the real
-  GNS3 page.
-- `frontend/src/pages/DeviceDetail.tsx` — added an "LLDP Neighbors" panel
-  with the same discovery action.
-- `frontend/src/api.ts` — added `gatewayGetNeighbors()`, extended the
-  `Topology`/`TopologyLink` types.
+Copy these files over the same paths in your project (paths are relative to the repo root).
 
-## 2. SNMP info not showing on Devices
-Root cause: the frontend read `response.data.data`, but the gateway
-actually nests results under `response.data.normalized_data`
-(`backend/app/gateway/worker.py::process_job`). Every SNMP poll was
-silently returning `undefined`, so the UI always showed "Timeout"/empty
-regardless of whether SNMP actually worked. Fixed in 4 places:
-- `frontend/src/pages/Devices.tsx` (`SnmpIndicator`)
-- `frontend/src/pages/DeviceDetail.tsx` (facts, interfaces, health metrics)
+## Backend (new)
+- backend/app/services/scan_runner.py      background execution, concurrency cap, guaranteed force-stop, orphan repair
+- backend/app/services/scan_deletion.py    metadata-driven delete of a scan and its dependents
+- backend/alembic/versions/y0z1a2b3c4d5_add_scan_source_filename.py
+- backend/tests/test_scan_lifecycle.py     23 tests
 
-## 3. "Ask NetSecAuditor" (RAG) always giving the fallback answer
-Two real bugs:
-- The corpus was only ever built by a manual `/api/rag/reindex` click —
-  never automatically. Fixed: `backend/app/services/pipeline.py` now calls
-  `rag_service.index_scan_results()` right after each scan completes, and
-  `answer_query()` auto-reindexes once if a tenant's corpus is completely
-  empty.
-- The lexical matcher had no stemming, so a query word like "findings"
-  would never match the indexed word "finding". Added a small suffix
-  stripper in `backend/app/services/rag_service.py`.
+## Backend (modified)
+- backend/app/routers/scans.py    DELETE /{id}, POST /bulk-delete, POST /bulk-stop, robust stop/pause/resume, bulk-upload rewrite
+- backend/app/services/pipeline.py
+- backend/app/main.py             startup reconcile + shutdown hook
+- backend/app/models/db.py, schemas.py, db.py    scans.source_filename
 
-## 4. Drift page — light mode
-Several headings/labels used hardcoded `text-white`, which is invisible on
-a white card in light mode (the app's global light-mode CSS only remaps
-`slate`/`cyan`/etc. utility classes, not `text-white`). Also the page
-header used `bg-gradient-to-r from-slate-900 to-slate-950`, which the
-light-mode remap doesn't touch (it only catches plain `bg-slate-9xx`, not
-gradient `from-`/`to-` utilities). Fixed in
-`frontend/src/pages/Drift.tsx`.
+## Frontend (modified)
+- frontend/src/pages/Validation.tsx
+- frontend/src/pages/ScanDetail.tsx
+- frontend/src/components/RunningPipelines.tsx
+- frontend/src/lib/toast.tsx
+- frontend/src/index.css
+- frontend/src/api.ts
 
-## 5. Human-correction training loop for config parsing
-The write side was already solid: `backend/app/services/hitl_service.py`
-already embeds a human-approved/corrected mapping's raw command pattern
-into `CommandMapping.embedding` via `vector_search.store_embedding()`.
+## Env knobs
+SCAN_PIPELINE_CONCURRENCY (3), SCAN_STOP_GRACE_SECONDS (3), SCAN_BULK_MAX_FILES (50),
+SCAN_BULK_MAX_TOTAL_BYTES (52428800), SCAN_RECONCILE_ON_STARTUP (true)
 
-The bug was on the **read side**: `backend/app/ai/normalize.py`'s
-`retrieve_similar_mappings()` — called every time a new unknown config
-line is interpreted — never actually queried those embeddings. It
-re-implemented a separate, weaker plain-token-overlap search from scratch.
-So every human correction was being saved but silently never fed back
-into future interpretations; the loop only closed on paper.
-
-Fixed: `retrieve_similar_mappings()` now calls the real
-`vector_search.find_similar_mappings()` (pgvector cosine similarity on
-Postgres, in-process cosine/token-overlap fallback on SQLite), scoped by
-tenant. `backend/app/services/pipeline.py` now passes `scan.tenant_id`
-through to it.
-
-## 6. `/api/metrics/compliance-summary` 500, and the dataset/training gate was silently a no-op
-Two separate bugs found from a crash log:
-
-- **The crash**: `backend/app/routers/metrics.py::get_compliance_summary` ordered
-  the most-recent-production-model query by `ModelRegistryEntry.created_at`,
-  which doesn't exist on that model (`AttributeError`). Fixed to order by
-  `approved_at` — the timestamp that actually reflects when a model was
-  promoted to `PRODUCTION`.
-- **The real gap this session was asked to close**: "human corrections become
-  reusable training data" already worked for the embedding half (see §5) —
-  every approved/corrected mapping gets embedded via
-  `vector_search.store_embedding()`. But `dataset_service.create_dataset_version()`
-  only ever snapshots `TrainingExample` rows with `validation_status ==
-  "VALIDATED"`, and **nothing anywhere set that status** — it defaults to
-  `PENDING` and stayed there forever. So every dataset ever compiled would
-  be empty, and no training job built from one would have any data.
-  Added the missing second HITL gate:
-  - `backend/app/routers/training.py` — `GET /api/training/examples`
-    (queue, filterable by `validation_status` and `human_action`),
-    `POST /api/training/examples/{id}/validate`,
-    `POST /api/training/examples/{id}/exclude`,
-    `POST /api/training/examples/bulk-validate`. Same `admin`/
-    `security_analyst` role gate as mapping review, same
-    `audit_service.record_from_user()` logging.
-  - `backend/app/schemas.py` — `TrainingExampleOut`.
-  - `frontend/src/pages/TrainingCenter.tsx` — new "Training Examples" tab
-    between Human Review and Datasets: filter by action (e.g. just
-    `CORRECTED` to see the unknown-command fixes), checkbox multi-select +
-    bulk validate, per-row validate/exclude. Tab bar redone with icons and
-    a live pending-count badge.
-  - `frontend/src/api.ts` — `TrainingExample` type,
-    `trainingExamples()`/`validateTrainingExample()`/
-    `excludeTrainingExample()`/`bulkValidateTrainingExamples()`.
-
-No schema/migration change — `TrainingExample.validation_status` already
-existed, it was simply never written to.
-
-## Not done / suggested next steps
-- No `npm install`/`vite build` or `pytest` run was possible in this
-  sandbox (no network access) — the Python files were verified with
-  `python3 -m py_compile`, and the TSX files were checked by eye
-  (balanced braces/JSX, correct imports/types) but not compiled. Recommend
-  running `npm run build` and the backend test suite before deploying.
-- The Topology page's non-canvas UI (side panel, legend) inherits the
-  app's global light-mode CSS remap and wasn't given a bespoke light-mode
-  pass beyond that — worth a visual check.
-- Neighbor discovery currently only works over SNMP (LLDP-MIB). CDP over
-  SSH `show cdp neighbors detail` would be a good follow-up for
-  Cisco-heavy fleets that disable LLDP.
-- `dataset_service.create_dataset_version()` still requires the caller to
-  pass a `version_label` by hand (`POST /api/ai/datasets?version_label=...`)
-  — worth auto-generating a default label (e.g. date + example count) in
-  the frontend so a reviewer isn't stuck typing one.
-- Consider a lighter-weight approval path for `human_action == "APPROVED"`
-  examples (no correction, so lower review burden) vs. `CORRECTED` ones —
-  right now both go through the same one-by-one/bulk validate UI.
+## Not yet verified
+Full backend suite: 384 passed, 22 failed, 1 error. Not yet compared against the original code,
+so it is unknown which failures pre-date these changes. No browser test of the UI.

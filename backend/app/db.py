@@ -148,6 +148,7 @@ _POSTGRES_MIGRATIONS = [
     "ALTER TABLE scans ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP",
     "ALTER TABLE scans ADD COLUMN IF NOT EXISTS resumed_at TIMESTAMP",
     "ALTER TABLE scans ADD COLUMN IF NOT EXISTS stopped_at TIMESTAMP",
+    "ALTER TABLE scans ADD COLUMN IF NOT EXISTS source_filename VARCHAR",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS revision INTEGER DEFAULT 1",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_confidence VARCHAR",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_applied JSON",
@@ -209,6 +210,7 @@ _SQLITE_COLUMNS = [
     ("network_interfaces", "source", "VARCHAR"),
     ("vlans", "interfaces", "JSON"),
     ("vlans", "source", "VARCHAR"),
+    ("scans", "source_filename", "VARCHAR"),
 ]
 
 

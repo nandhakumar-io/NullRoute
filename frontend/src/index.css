@@ -326,6 +326,16 @@ html.dark .btn-secondary:hover { @apply bg-slate-700; }
 }
 .animate-toast-in { animation: toast-in 160ms ease-out; }
 
+/* Toasts: opaque surface + semantic tint, readable in both themes. */
+.ui-toast { background-color: var(--surface); border: 1px solid var(--border-strong); color: var(--ink); }
+.ui-toast-ok   { background-image: linear-gradient(var(--ok-bg), var(--ok-bg));     border-color: var(--ok-bd); }
+.ui-toast-bad  { background-image: linear-gradient(var(--bad-bg), var(--bad-bg));   border-color: var(--bad-bd); }
+.ui-toast-info { background-image: linear-gradient(var(--info-bg), var(--info-bg)); border-color: var(--info-bd); }
+
+/* Row selection in list pages (Validation) */
+.ui-check { width: 1.05rem; height: 1.05rem; accent-color: var(--brand); cursor: pointer; }
+.ui-selected { border-color: var(--brand) !important; box-shadow: 0 0 0 1px var(--brand); }
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

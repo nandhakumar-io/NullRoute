@@ -508,7 +508,7 @@ def collect_configuration(
         "config_hash": result.config_hash,
     }
 
-async def _background_collect_and_scan(device_id: str, tenant_id: str, framework: str, user_subject: str):
+async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: str, framework: str, user_subject: str):
     from app.db import SessionLocal
     from app.models.db import Device, Scan, Finding
     from app.services.pipeline import run_pipeline
@@ -521,21 +521,31 @@ async def _background_collect_and_scan(device_id: str, tenant_id: str, framework
     # Run in a brand new database session because the HTTP request's Depends(Session) will be closed.
     with SessionLocal() as db:
         device = _scoped_query(db, tenant_id).filter(Device.id == device_id).first()
-        if not device:
+        scan = _scoped_query(db, tenant_id).filter(Scan.id == scan_id).first()
+        if not device or not scan:
             return
             
         try:
             credentials = _resolve_credentials(db, device, tenant_id)
         except (ValueError, openbao_service.OpenBaoError) as e:
+            scan.status = "failed"
+            scan.error = f"Could not resolve credentials: {e}"
+            db.commit()
             return  # Fail gracefully in the background
 
         collector = get_collector(device.vendor, transport=device.protocol)
         try:
             result = await anyio.to_thread.run_sync(collector.collect_config, device, credentials)
         except Exception as e:
+            scan.status = "failed"
+            scan.error = f"Collection exception: {e}"
+            db.commit()
             return
 
         if not result.success or not result.raw_config:
+            scan.status = "failed"
+            scan.error = result.error or "Failed to collect configuration"
+            db.commit()
             return
 
         raw_text = result.raw_config
@@ -544,16 +554,6 @@ async def _background_collect_and_scan(device_id: str, tenant_id: str, framework
         device.last_collected_at = result.collected_at
         device.last_collection_transport = result.transport
         db.commit()
-
-        scan = Scan(
-            tenant_id=tenant_id,
-            device_id=device.id,
-            status="uploaded",
-            framework=framework,
-        )
-        db.add(scan)
-        db.commit()
-        db.refresh(scan)
 
         await run_pipeline(db, scan, raw_text, framework=framework)
 
@@ -582,29 +582,29 @@ async def run_scan(
     if not device:
         raise HTTPException(404, "Device not found")
 
+    scan = Scan(
+        tenant_id=tenant_id,
+        device_id=device.id,
+        status="uploaded",
+        framework=framework,
+    )
+    db.add(scan)
+    db.commit()
+    db.refresh(scan)
+
     # Queue the collection + scan as a background task to prevent proxy timeouts
     # on slow device connections. 
     background_tasks.add_task(
         _background_collect_and_scan,
+        scan_id=scan.id,
         device_id=device.id,
         tenant_id=tenant_id,
         framework=framework,
         user_subject=current_user.subject if current_user else "api"
     )
 
-    # Return a pseudo-queued scan object so the UI doesn't crash expecting a ScanDetailOut
-    import datetime
-    mock_scan = Scan(
-        id="queued-background-task",
-        tenant_id=tenant_id,
-        device_id=device_id,
-        status="uploaded",
-        framework=framework,
-        created_at=datetime.datetime.utcnow(),
-        updated_at=datetime.datetime.utcnow(),
-    )
     return ScanDetailOut(
-        **ScanOut.model_validate(mock_scan).model_dump(),
+        **ScanOut.model_validate(scan).model_dump(),
         baseline_json={},
         findings=[],
     )

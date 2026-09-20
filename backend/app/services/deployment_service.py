@@ -115,6 +115,7 @@ async def deploy_change_request(
     credential_ref_id: Optional[str] = None,
     transport: Optional[str] = None,
     framework: str = "ALL",
+    target_control_ids: Optional[list] = None,
 ) -> DeploymentRecord:
     if cr.status != "APPROVED":
         raise ValueError(f"Change request {cr.id} is not APPROVED (status={cr.status})")

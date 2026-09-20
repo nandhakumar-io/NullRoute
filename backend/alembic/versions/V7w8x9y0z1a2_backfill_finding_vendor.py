@@ -20,7 +20,7 @@ Create Date: 2026-09-17 00:00:00.000000
 from alembic import op
 
 revision = "v7w8x9y0z1a2"
-down_revision = "u6v7w8x9y0z1"
+down_revision = "c6d7e8f9a0b1"
 branch_labels = None
 depends_on = None
 

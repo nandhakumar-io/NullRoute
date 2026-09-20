@@ -20,8 +20,8 @@ pause / stop and resume the pipeline at any stage"):
 from alembic import op
 import sqlalchemy as sa
 
-revision = "x9y0z1a2b3c4"
-down_revision = "w8x9y0z1a2b3"
+revision = "x9y0z1a2b3c5"
+down_revision = "v7w8x9y0z1a2"
 branch_labels = None
 depends_on = None
 

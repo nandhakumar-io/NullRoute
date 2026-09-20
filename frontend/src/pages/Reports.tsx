@@ -39,9 +39,19 @@ export default function Reports() {
                     <td className="py-2 pr-4 font-semibold">{s.compliance_score ?? "—"}%</td>
                     <td className="py-2 pr-4 text-slate-500">{new Date(s.created_at).toLocaleString()}</td>
                     <td className="py-2 pr-4 space-x-3">
-                      <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "pdf")}>PDF</a>
-                      <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "json")}>JSON</a>
-                      <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "csv")}>CSV</a>
+                      {s.status === "completed" ? (
+                        <>
+                          <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "pdf")}>PDF</a>
+                          <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "json")}>JSON</a>
+                          <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "csv")}>CSV</a>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-slate-500 cursor-not-allowed" title="Not available until scan completes">PDF</span>
+                          <span className="text-slate-500 cursor-not-allowed" title="Not available until scan completes">JSON</span>
+                          <span className="text-slate-500 cursor-not-allowed" title="Not available until scan completes">CSV</span>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

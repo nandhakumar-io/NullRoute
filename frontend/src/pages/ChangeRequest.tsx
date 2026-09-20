@@ -364,11 +364,11 @@ export default function ChangeRequests() {
                   </div>
                   <div className="text-sm ui-muted">Created {fmt(cr.created_at)}{cr.created_by && ` by ${cr.created_by}`}</div>
                 </div>
-                {cr.status === "APPROVED" && (
+                {(cr.status === "APPROVED" || cr.status === "FAILED") && (
                   <button className="ui-btn ui-btn-deploy" disabled={!canDeploy || deployingId === cr.id}
                     title={canDeploy ? undefined : "Requires operator or admin role"}
                     onClick={() => setDeployTarget(cr)}>
-                    {!canDeploy && "🔒 "}{deployingId === cr.id ? "Deploying…" : "Deploy…"}
+                    {!canDeploy && "🔒 "}{deployingId === cr.id ? "Deploying…" : (cr.status === "FAILED" ? "Retry Deployment…" : "Deploy…")}
                   </button>
                 )}
               </div>
@@ -421,7 +421,7 @@ export default function ChangeRequests() {
                 ) : (
                   <DecisionSummary cr={cr} />
                 )}
-                {cr.status === "APPROVED" && !canDeploy && (
+                {(cr.status === "APPROVED" || cr.status === "FAILED") && !canDeploy && (
                   <div className="text-sm ui-muted">Deploying requires the operator or admin role.</div>
                 )}
               </Section>

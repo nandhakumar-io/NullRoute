@@ -334,8 +334,8 @@ async def _deploy_change_request(
     target_control_ids: Optional[list],
     holder: Dict[str, Any],
 ) -> DeploymentRecord:
-    if cr.status != "APPROVED":
-        raise ValueError(f"Change request {cr.id} is not APPROVED (status={cr.status})")
+    if cr.status not in ("APPROVED", "FAILED"):
+        raise ValueError(f"Change request {cr.id} is not APPROVED or FAILED (status={cr.status})")
     # The approval must still describe what is about to be pushed (HITL binding).
     from app.services.change_request_service import approval_still_valid
     stale_reason = approval_still_valid(cr)

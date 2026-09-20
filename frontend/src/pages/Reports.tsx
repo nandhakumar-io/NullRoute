@@ -39,7 +39,7 @@ export default function Reports() {
                     <td className="py-2 pr-4 font-semibold">{s.compliance_score ?? "—"}%</td>
                     <td className="py-2 pr-4 text-slate-500">{new Date(s.created_at).toLocaleString()}</td>
                     <td className="py-2 pr-4 space-x-3">
-                      {s.status === "completed" ? (
+                      {s.compliance_score != null || s.status === "completed" ? (
                         <>
                           <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "pdf")}>PDF</a>
                           <a className="text-cyan-400 hover:underline" href={endpoints.reportUrl(s.id, "json")}>JSON</a>

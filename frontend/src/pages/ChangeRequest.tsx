@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { endpoints, ChangeRequest, DeploymentRecord, DeployPlan, EditPreview } from "../api";
+import { endpoints, ChangeRequest, DeploymentRecord, PushPlan, EditPreview } from "../api";
 import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import SideBySideDiff from "../components/SideBySideDiff";
@@ -106,14 +106,14 @@ function DiffPanel({ crId }: { crId: string }) {
 // Exactly what deployment will send to the device. Only these commands are
 // pushed -- never the whole configuration shown in the diff.
 function DeployPlanPanel({ crId, revision }: { crId: string; revision?: number }) {
-  const [plan, setPlan] = useState<DeployPlan | null>(null);
+  const [plan, setPlan] = useState<PushPlan | null>(null);
   const [err, setErr] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setPlan(null);
     setErr(false);
     endpoints
-      .changeRequestDeployPlan(crId)
+      .changeRequestPushPlan(crId)
       .then((r) => !cancelled && setPlan(r.data))
       .catch(() => !cancelled && setErr(true));
     return () => {

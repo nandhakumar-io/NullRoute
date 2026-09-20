@@ -70,7 +70,7 @@ def _resolve_credentials(db: Session, device: Device, tenant_id: str, protocol: 
     if not ref_row:
         raise GatewayError(GatewayErrorCode.CREDENTIAL_UNAVAILABLE, "No credential reference on file for this device")
     try:
-        return openbao_service.get_device_credentials(tenant_id, ref_row.credential_ref)
+        return openbao_service.get_device_credentials(tenant_id, ref_row.id)
     except openbao_service.OpenBaoError as e:
         raise GatewayError(GatewayErrorCode.CREDENTIAL_UNAVAILABLE, f"Could not resolve credentials: {type(e).__name__}") from e
 

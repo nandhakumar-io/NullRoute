@@ -149,15 +149,10 @@ def _get_juniper_cli_config(m) -> str:
     dispatch()` is ncclient's own public entry point for a raw/custom RPC;
     call it directly, once.
     """
-    rpc_xml = """
-    <command format="text">
-      <![CDATA[show configuration | display set]]>
-    </command>
-    """
+    rpc_xml = '<command format="text">show configuration | display set</command>'
     try:
-        from lxml import etree
-        parser = etree.XMLParser(strip_cdata=False)
-        reply = m.dispatch(etree.fromstring(rpc_xml.encode('utf-8'), parser=parser))
+        from ncclient.xml_ import to_ele
+        reply = m.dispatch(to_ele(rpc_xml))
         raw = reply.xml if hasattr(reply, "xml") else str(reply)
         # Extract text content from the <output> wrapper Junos returns for
         # a text-format command RPC.
@@ -166,7 +161,11 @@ def _get_juniper_cli_config(m) -> str:
             return match.group(1).strip()
         # Strip all tags as fallback
         return _xml_to_cli_text(raw)
-    except Exception:  # noqa: BLE001 -- fall back to get-config below
+    except Exception as e:
+        import logging
+        logging.getLogger("ncclient.collectors.netconf").warning(
+            "Juniper 'display set' RPC failed, falling back to get-config: %r", e
+        )
         return ""
 
 

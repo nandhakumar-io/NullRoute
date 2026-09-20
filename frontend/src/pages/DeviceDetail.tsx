@@ -724,7 +724,6 @@ export default function DeviceDetail() {
               </div>
             </div>
           )}
-          )}
         </div>
 
         <div className="card">

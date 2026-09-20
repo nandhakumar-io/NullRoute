@@ -273,7 +273,11 @@ def get_init_issues(bf) -> List[Dict[str, Any]]:
     analysis metadata, and are never silently turned into PASS."""
     issues: List[Dict[str, Any]] = []
     try:
-        pce = bf.q.parseStatus().answer().frame()
+        if hasattr(bf.q, "fileParseStatus"):
+            pce = bf.q.fileParseStatus().answer().frame()
+        else:
+            pce = bf.q.parseStatus().answer().frame()
+            
         for _, row in pce.iterrows():
             if str(row.get("Status", "")).upper() != "PASSED":
                 issues.append({

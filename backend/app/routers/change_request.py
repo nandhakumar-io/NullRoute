@@ -99,6 +99,71 @@ def list_change_requests(
     return {"count": len(rows), "change_requests": [change_request_service.to_dict(c) for c in rows]}
 
 
+ADMIN_ROLES = ("admin", "TENANT_ADMIN", "SUPER_ADMIN")
+
+
+@router.post("/{cr_id}/preview-edit")
+def preview_edit(
+    cr_id: str,
+    snippet: Optional[str] = Body(None),
+    proposed_config: Optional[str] = Body(None),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    _user: CurrentUser = Depends(require_role(*ADMIN_ROLES)),
+):
+    """Read-only: merged config, commands that would be pushed, and warnings for a
+    proposed edit -- nothing is saved."""
+    cr = _get_owned(db, tenant_id, cr_id)
+    device = db.query(Device).filter(Device.id == cr.device_id).first()
+    try:
+        return change_request_service.preview_edit(db, cr, device, snippet=snippet, proposed_config=proposed_config)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.patch("/{cr_id}")
+async def edit_change_request(
+    cr_id: str,
+    request: Request,
+    snippet: Optional[str] = Body(None, description="Corrected CLI delta, re-merged onto the archived current config"),
+    proposed_config: Optional[str] = Body(None, description="Corrected full proposed configuration"),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(require_role(*ADMIN_ROLES)),
+):
+    """Admin fine-tuning of a proposal before deployment. Re-merges, re-validates,
+    and resets approval: the edited change must be approved again."""
+    cr = _get_owned(db, tenant_id, cr_id)
+    device = db.query(Device).filter(Device.id == cr.device_id).first()
+    if (snippet is None) == (proposed_config is None):
+        raise HTTPException(400, "Provide exactly one of snippet or proposed_config")
+    prior = {"status": cr.status, "proposed_config_hash": cr.proposed_config_hash, "revision": cr.revision or 1}
+    try:
+        cr = await change_request_service.update_proposal(
+            db, cr, device, edited_by=user.username, snippet=snippet, proposed_config=proposed_config,
+        )
+    except ValueError as e:
+        audit_service.record_from_user(
+            db, user, action="change_request.edit", request=request, result="FAILURE",
+            object_type="change_request", object_id=cr_id, old_value=prior, new_value={"error": str(e)},
+        )
+        raise HTTPException(409, str(e))
+    audit_service.record_from_user(
+        db, user, action="change_request.edit", request=request, result="SUCCESS",
+        object_type="change_request", object_id=cr_id, old_value=prior,
+        new_value={"status": cr.status, "proposed_config_hash": cr.proposed_config_hash, "revision": cr.revision},
+    )
+    return change_request_service.to_dict(cr)
+
+
+@router.get("/{cr_id}/deploy-plan")
+def get_deploy_plan(cr_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+    """The exact commands deployment would push -- never a whole configuration."""
+    cr = _get_owned(db, tenant_id, cr_id)
+    device = db.query(Device).filter(Device.id == cr.device_id).first()
+    return change_request_service.deploy_plan(cr, device)
+
+
 @router.get("/{cr_id}")
 def get_change_request(cr_id: str, db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
     return change_request_service.to_dict(_get_owned(db, tenant_id, cr_id))
@@ -248,9 +313,8 @@ async def deploy(
     except ValueError as e:
         raise HTTPException(409, str(e))
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise e
+        logger.exception("Deployment of change request %s crashed", cr_id)
+        raise HTTPException(500, f"Deployment failed to start: {type(e).__name__}: {e}")
 
 
 
@@ -419,6 +483,7 @@ async def simulate_drift(
 async def rollback(
     cr_id: str,
     deployment_id: str,
+    request: Request,
     reason: Optional[str] = Body(default=None),
     credential_ref_id: Optional[str] = Body(default=None),
     framework: str = Body(default="ALL"),
@@ -439,8 +504,10 @@ async def rollback(
         )
     except ValueError as e:
         raise HTTPException(409, str(e))
-    await audit_service.log_action(
-        db, tenant_id, user.username, "ROLLBACK_DEPLOYMENT", "deployment_record", deployment_id,
+    audit_service.record_from_user(
+        db, user, action="deployment.rollback", request=request,
+        result="SUCCESS" if rb.status == "VERIFIED" else "FAILURE",
+        object_type="deployment_record", object_id=deployment_id,
         old_value={"deployment_status": dr.status}, new_value={"rollback_status": rb.status},
     )
     return rollback_service.to_dict(rb)

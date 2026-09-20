@@ -174,7 +174,7 @@ class OPAAnalysis(Base):
     historical evidence is never overwritten, per RULE 15)."""
     __tablename__ = "opa_analyses"
     id = Column(String, primary_key=True, default=gen_uuid)
-    scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
     policy_version = Column(String)
     decision = Column(String)  # PASS/REVIEW/BLOCK/OPA_UNAVAILABLE
     decision_id = Column(String)
@@ -209,7 +209,7 @@ class EvidenceRecord(Base):
     __tablename__ = "evidence_records"
     id = Column(String, primary_key=True, default=gen_uuid)
     evidence_id = Column(String, unique=True, nullable=False)
-    scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
     device_id = Column(String)
     tenant_id = Column(String, index=True)
     event_type = Column(String, nullable=True)  # e.g. "compliance_scan" -- see services/evidence_service.py
@@ -695,11 +695,16 @@ class ChangeRequest(Base):
     # Merge metadata for remediation snippets (Phase 10 / UI Preview)
     snippet = Column(Text, nullable=True)
     merge_style = Column(String, nullable=True)
-    merge_confidence = Column(Float, nullable=True)
+    merge_confidence = Column(String, nullable=True)  # HIGH | MEDIUM | LOW
     merge_applied = Column(JSON, nullable=True)
     merge_warnings = Column(JSON, nullable=True)
     merge_commands = Column(JSON, nullable=True)
-    
+
+    # Admin fine-tuning of the proposal (see change_request_service.update_proposal)
+    edited_by = Column(String, nullable=True)
+    edited_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=True, default=1)
+
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

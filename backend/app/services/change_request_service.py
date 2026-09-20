@@ -90,6 +90,7 @@ def to_dict(cr: ChangeRequest) -> Dict[str, Any]:
         "merge_applied": cr.merge_applied,
         "merge_warnings": cr.merge_warnings,
         "merge_commands": cr.merge_commands,
+        "edited_by": cr.edited_by, "edited_at": cr.edited_at, "revision": cr.revision or 1,
     }
 
 
@@ -117,90 +118,17 @@ def preview_merge(
     }
 
 
-async def create_and_validate(
-    db: Session,
-    tenant_id: str,
-    device: Device,
-    proposed_config: Optional[str] = None,
-    created_by: str = None,
-    source: str = "manual",
-    current_config: Optional[str] = None,
-    snippet: Optional[str] = None,
-) -> ChangeRequest:
-    """Create a ChangeRequest and run it through the full validation
-    pipeline. Exactly one of `proposed_config` (a complete configuration)
-    or `snippet` (a CLI remediation delta, e.g. straight from a Finding's
-    `remediation` text) must be given.
-
-    When `snippet` is given, services/config_merge.py::apply_commands()
-    (the merge engine -- previously implemented but never called from any
-    endpoint) is run against the device's current configuration first, and
-    its merged_text becomes `proposed_config` for every step below
-    (validation, hashing, archival). This is the same merge preview_merge()
-    runs, so a CR created from a snippet a reviewer already previewed
-    produces exactly the config they saw.
-    """
-    if (proposed_config is None) == (snippet is None):
-        raise ValueError("create_and_validate requires exactly one of proposed_config or snippet")
-
-    if current_config is None:
-        current_config = latest_known_config(db, device.id)
-
-    merge_result = None
-    if snippet is not None:
-        merge_result = config_merge.apply_commands(current_config, snippet, vendor=device.vendor)
-        proposed_config = merge_result.merged_text
-
-    cr = ChangeRequest(
-        tenant_id=tenant_id, device_id=device.id, created_by=created_by, source=source,
-        # Canonical (volatile-line-stripped) hashes -- see
-        # services/config_merge.py::config_hash and
-        # services/collectors/base.py::CollectionResult.__post_init__ for
-        # why: deployment_service.py compares these against freshly
-        # collected devices' CollectionResult.config_hash (now also
-        # canonical), and a raw byte hash would false-positive on
-        # vendor-inserted volatile lines (timestamps, NVRAM metadata) that
-        # differ on every collection regardless of whether anything
-        # meaningful changed.
-        proposed_config_hash=config_merge.config_hash(proposed_config),
-        current_config_hash=(config_merge.config_hash(current_config) if current_config else None),
-        status="DRAFT",
-    )
-    if merge_result is not None:
-        cr.snippet = snippet
-        cr.merge_style = merge_result.style
-        cr.merge_confidence = merge_result.confidence
-        cr.merge_applied = [a.to_dict() for a in merge_result.applied]
-        cr.merge_warnings = list(merge_result.warnings)
-        cr.merge_commands = list(merge_result.commands)
-    db.add(cr)
-    db.commit()
-    db.refresh(cr)
-
-    # Archive both sides in MinIO (Phase 8 pattern); best-effort, never
-    # blocks validation (see minio_service.put_object docstring).
-    proposed_put = minio_service.put_object(
-        object_key(tenant_id, device.id, cr.id, "proposed.cfg"),
-        proposed_config.encode("utf-8"), content_type="text/plain",
-    )
-    if proposed_put is not None:
-        cr.proposed_config_object_key = proposed_put.object_key
-    if current_config is not None:
-        current_put = minio_service.put_object(
-            object_key(tenant_id, device.id, cr.id, "current.cfg"),
-            current_config.encode("utf-8"), content_type="text/plain",
-        )
-        if current_put is not None:
-            cr.current_config_object_key = current_put.object_key
-    db.commit()
-
+async def _validate(db: Session, cr: ChangeRequest, device: Device, proposed_config: str,
+                    current_config: Optional[str]) -> None:
+    """Run the full OPA/Batfish/risk validation and record the verdict on `cr`
+    (status -> PENDING_APPROVAL, or DRAFT/BLOCK if validation itself failed)."""
     try:
         vendor = device.vendor or "Unknown"
         baseline: SecurityBaselineModel = parse_config(vendor, proposed_config)
         baseline.device.hostname = baseline.device.hostname or device.hostname
         baseline.raw_config_hash = cr.proposed_config_hash
 
-        opa_decision = await evaluate_baseline_via_opa(f"cr:{cr.id}", baseline, "ALL", db=db, tenant_id=tenant_id)
+        opa_decision = await evaluate_baseline_via_opa(f"cr:{cr.id}", baseline, "ALL", db=db, tenant_id=cr.tenant_id)
 
         bf_result = batfish_service.analyze_security_behavior(
             scan_id=f"cr-{cr.id}", vendor=vendor,
@@ -277,6 +205,94 @@ async def create_and_validate(
         cr.final_reason = f"Validation could not complete: {e}"
         cr.status = "DRAFT"
 
+
+
+async def create_and_validate(
+    db: Session,
+    tenant_id: str,
+    device: Device,
+    proposed_config: Optional[str] = None,
+    created_by: str = None,
+    source: str = "manual",
+    current_config: Optional[str] = None,
+    snippet: Optional[str] = None,
+) -> ChangeRequest:
+    """Create a ChangeRequest and run it through the full validation
+    pipeline. Exactly one of `proposed_config` (a complete configuration)
+    or `snippet` (a CLI remediation delta, e.g. straight from a Finding's
+    `remediation` text) must be given.
+
+    When `snippet` is given, services/config_merge.py::apply_commands()
+    (the merge engine -- previously implemented but never called from any
+    endpoint) is run against the device's current configuration first, and
+    its merged_text becomes `proposed_config` for every step below
+    (validation, hashing, archival). This is the same merge preview_merge()
+    runs, so a CR created from a snippet a reviewer already previewed
+    produces exactly the config they saw.
+    """
+    if (proposed_config is None) == (snippet is None):
+        raise ValueError("create_and_validate requires exactly one of proposed_config or snippet")
+
+    if current_config is None:
+        current_config = latest_known_config(db, device.id)
+
+    # A remediation delta submitted as `proposed_config` (what the scan page used
+    # to do) is NOT a device config: treat it as a snippet so it is merged onto the
+    # current config instead of replacing it.
+    if snippet is None and proposed_config is not None and current_config \
+            and not config_merge.is_full_config(proposed_config):
+        snippet, proposed_config = proposed_config, None
+
+    merge_result = None
+    if snippet is not None:
+        merge_result = config_merge.apply_commands(current_config, snippet, vendor=device.vendor)
+        proposed_config = merge_result.merged_text
+
+    cr = ChangeRequest(
+        tenant_id=tenant_id, device_id=device.id, created_by=created_by, source=source,
+        # Canonical (volatile-line-stripped) hashes -- see
+        # services/config_merge.py::config_hash and
+        # services/collectors/base.py::CollectionResult.__post_init__ for
+        # why: deployment_service.py compares these against freshly
+        # collected devices' CollectionResult.config_hash (now also
+        # canonical), and a raw byte hash would false-positive on
+        # vendor-inserted volatile lines (timestamps, NVRAM metadata) that
+        # differ on every collection regardless of whether anything
+        # meaningful changed.
+        proposed_config_hash=config_merge.config_hash(proposed_config),
+        current_config_hash=(config_merge.config_hash(current_config) if current_config else None),
+        status="DRAFT",
+    )
+    if merge_result is not None:
+        cr.snippet = snippet
+        cr.merge_style = merge_result.style
+        cr.merge_confidence = merge_result.confidence
+        cr.merge_applied = [a.to_dict() for a in merge_result.applied]
+        cr.merge_warnings = list(merge_result.warnings)
+        cr.merge_commands = list(merge_result.commands)
+    db.add(cr)
+    db.commit()
+    db.refresh(cr)
+
+    # Archive both sides in MinIO (Phase 8 pattern); best-effort, never
+    # blocks validation (see minio_service.put_object docstring).
+    proposed_put = minio_service.put_object(
+        object_key(tenant_id, device.id, cr.id, "proposed.cfg"),
+        proposed_config.encode("utf-8"), content_type="text/plain",
+    )
+    if proposed_put is not None:
+        cr.proposed_config_object_key = proposed_put.object_key
+    if current_config is not None:
+        current_put = minio_service.put_object(
+            object_key(tenant_id, device.id, cr.id, "current.cfg"),
+            current_config.encode("utf-8"), content_type="text/plain",
+        )
+        if current_put is not None:
+            cr.current_config_object_key = current_put.object_key
+    db.commit()
+
+    await _validate(db, cr, device, proposed_config, current_config)
+
     db.commit()
     db.refresh(cr)
     return cr
@@ -300,6 +316,91 @@ def reject(db: Session, cr: ChangeRequest, rejected_by: str, reason: Optional[st
     cr.rejected_by = rejected_by
     cr.rejected_at = datetime.utcnow()
     cr.rejection_reason = reason
+    db.commit()
+    db.refresh(cr)
+    return cr
+
+
+EDITABLE_STATUSES = ("DRAFT", "PENDING_APPROVAL", "APPROVED")
+
+
+def _read_blob(key: Optional[str]) -> Optional[str]:
+    if not key:
+        return None
+    try:
+        return minio_service.get_object(key).decode("utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def preview_edit(db: Session, cr: ChangeRequest, device: Device, snippet: Optional[str] = None,
+                 proposed_config: Optional[str] = None) -> Dict[str, Any]:
+    """Read-only: what would this edit produce? Merges onto the CR's ARCHIVED
+    current config (the base its approval hash was taken against)."""
+    if (snippet is None) == (proposed_config is None):
+        raise ValueError("Provide exactly one of snippet or proposed_config")
+    current = _read_blob(cr.current_config_object_key) or latest_known_config(db, device.id)
+    if snippet is not None:
+        res = config_merge.apply_commands(current, snippet, vendor=device.vendor)
+        proposed, commands, extra = res.merged_text, list(res.commands), res.to_dict()
+    else:
+        proposed = proposed_config
+        if current and not config_merge.is_full_config(proposed_config):
+            res = config_merge.apply_commands(current, proposed_config, vendor=device.vendor)
+            proposed, commands, extra = res.merged_text, list(res.commands), res.to_dict()
+        else:
+            plan = config_merge.delta_between(current, proposed_config, device.vendor)
+            commands, extra = plan.commands, {"warnings": plan.warnings, "safe": plan.safe, "style": plan.style}
+    return {"current_config": current, "proposed_config": proposed, "commands": commands,
+            "diff_stats": config_merge.diff_stats(current, proposed), **extra}
+
+
+def deploy_plan(cr: ChangeRequest, device: Device) -> Dict[str, Any]:
+    """Exactly what deployment would push for this CR (never a full config)."""
+    plan = config_merge.resolve_deploy_commands(
+        cr.merge_commands, _read_blob(cr.current_config_object_key),
+        _read_blob(cr.proposed_config_object_key), device.vendor,
+    )
+    return {"commands": plan.commands, "warnings": plan.warnings, "safe": plan.safe and bool(plan.commands),
+            "style": plan.style}
+
+
+async def update_proposal(db: Session, cr: ChangeRequest, device: Device, edited_by: str,
+                          snippet: Optional[str] = None, proposed_config: Optional[str] = None) -> ChangeRequest:
+    """Admin fine-tuning: replace the proposed change, re-merge onto the archived
+    current config, re-run validation, and require a fresh approval."""
+    if cr.status not in EDITABLE_STATUSES:
+        raise ValueError(f"Change request {cr.id} cannot be edited in status {cr.status}")
+    prev = preview_edit(db, cr, device, snippet=snippet, proposed_config=proposed_config)
+    proposed = prev["proposed_config"]
+    current = prev["current_config"]
+    if not (proposed or "").strip():
+        raise ValueError("Proposed change is empty")
+
+    use_snippet = snippet is not None or (current and not config_merge.is_full_config(proposed_config or ""))
+    raw_snippet = snippet if snippet is not None else proposed_config
+    cr.proposed_config_hash = config_merge.config_hash(proposed)
+    if use_snippet:
+        cr.snippet = raw_snippet
+        cr.merge_style = prev.get("style")
+        cr.merge_confidence = prev.get("confidence")
+        cr.merge_applied = prev.get("applied")
+        cr.merge_warnings = prev.get("warnings")
+        cr.merge_commands = prev.get("commands")
+    else:  # full-config edit: deployment will diff it against the device
+        cr.snippet = cr.merge_style = cr.merge_confidence = None
+        cr.merge_applied = cr.merge_warnings = cr.merge_commands = None
+
+    put = minio_service.put_object(object_key(cr.tenant_id, device.id, cr.id, "proposed.cfg"),
+                                   proposed.encode("utf-8"), content_type="text/plain")
+    if put is not None:
+        cr.proposed_config_object_key = put.object_key
+    # Any edit invalidates a prior approval / rejection.
+    cr.approved_by = cr.approved_at = cr.rejected_by = cr.rejected_at = cr.rejection_reason = None
+    cr.edited_by, cr.edited_at = edited_by, datetime.utcnow()
+    cr.revision = (cr.revision or 1) + 1
+    db.commit()
+    await _validate(db, cr, device, proposed, current)
     db.commit()
     db.refresh(cr)
     return cr

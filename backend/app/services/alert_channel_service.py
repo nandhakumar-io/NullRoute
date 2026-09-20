@@ -160,23 +160,79 @@ async def _send_webhook(config: Dict[str, Any], secret: Dict[str, Any], payload:
     return f"Delivered (HTTP {resp.status_code})"
 
 
+_VAPID_CACHE: Dict[str, Any] = {}
+
+
+def _b64u(data: bytes) -> str:
+    import base64
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _load_vapid():
+    """Resolve the VAPID keypair from VAPID_PRIVATE_KEY, which may be a raw
+    base64url P-256 scalar, inline PEM text, or a path to a PEM file. The public
+    key is always DERIVED from the private key, so the two can never mismatch
+    (a mismatch makes every push fail with 401/403). Returns
+    (vapid_private_key_for_pywebpush, public_key_b64url)."""
+    import base64
+    import os
+
+    raw = (os.getenv("VAPID_PRIVATE_KEY") or "").strip().strip('"').strip("'")
+    if not raw:
+        raise ChannelError("Web Push is not configured on this server (VAPID_PRIVATE_KEY is unset)")
+    if raw in _VAPID_CACHE:
+        return _VAPID_CACHE[raw]
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    key = None
+    try:
+        if "BEGIN" in raw:
+            key = serialization.load_pem_private_key(raw.replace("\\n", "\n").encode(), password=None)
+        elif os.path.sep in raw or raw.lower().endswith(".pem"):
+            if not os.path.isfile(raw):
+                raise ChannelError(
+                    f"VAPID_PRIVATE_KEY points to '{raw}', which does not exist inside this container. "
+                    "Put the raw base64url key (or the PEM text) in VAPID_PRIVATE_KEY instead of a host path."
+                )
+            with open(raw, "rb") as fh:
+                key = serialization.load_pem_private_key(fh.read(), password=None)
+        else:
+            d = int.from_bytes(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)), "big")
+            key = ec.derive_private_key(d, ec.SECP256R1())
+    except ChannelError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise ChannelError(f"VAPID_PRIVATE_KEY is not a valid P-256 key: {e}") from e
+
+    pub = key.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                            serialization.NoEncryption()).decode()
+    _VAPID_CACHE[raw] = (pem, _b64u(pub))
+    return _VAPID_CACHE[raw]
+
+
 def _vapid_config():
     import os
 
-    private_key = os.getenv("VAPID_PRIVATE_KEY")
-    public_key = os.getenv("VAPID_PUBLIC_KEY")
+    private_pem, public_key = _load_vapid()
     claim_email = os.getenv("VAPID_CLAIM_EMAIL", "admin@netsec-auditor.local")
-    if not private_key or not public_key:
-        raise ChannelError(
-            "Web Push is not configured on this server (VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY unset)"
-        )
-    return private_key, public_key, claim_email
+    configured_pub = (os.getenv("VAPID_PUBLIC_KEY") or "").strip()
+    if configured_pub and configured_pub != public_key:
+        logger.warning("VAPID_PUBLIC_KEY does not match VAPID_PRIVATE_KEY; using the key derived from the private key.")
+    return private_pem, public_key, claim_email
 
 
 def get_vapid_public_key() -> Optional[str]:
+    """Public key handed to browsers -- derived from the private key when possible."""
     import os
 
-    return os.getenv("VAPID_PUBLIC_KEY")
+    try:
+        return _load_vapid()[1]
+    except ChannelError as e:
+        logger.warning("Web Push unavailable: %s", e)
+        return None
 
 
 async def _send_push_to_subscription(sub: PushSubscription, title: str, body: str, url: Optional[str] = None) -> None:
@@ -188,21 +244,30 @@ async def _send_push_to_subscription(sub: PushSubscription, title: str, body: st
     private_key, _public_key, claim_email = _vapid_config()
     payload = json.dumps({"title": title, "body": body, "url": url or "/alerts"})
 
-    try:
+    import anyio
+
+    def _send():
+        from py_vapid import Vapid
         webpush(
-            subscription_info={
-                "endpoint": sub.endpoint,
-                "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
-            },
+            subscription_info={"endpoint": sub.endpoint, "keys": {"p256dh": sub.p256dh, "auth": sub.auth}},
             data=payload,
-            vapid_private_key=private_key,
+            vapid_private_key=Vapid.from_pem(private_key.encode()),
             vapid_claims={"sub": f"mailto:{claim_email}"},
+            timeout=10,
         )
-    except WebPushException as e:  # noqa: BLE001
-        raise ChannelError(f"Web Push delivery failed: {e}") from e
+
+    try:
+        await anyio.to_thread.run_sync(_send)  # pywebpush is blocking (requests)
+    except WebPushException as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        err = ChannelError(f"Web Push delivery failed{f' (HTTP {status})' if status else ''}: {e}")
+        err.gone = status in (404, 410)  # type: ignore[attr-defined]
+        raise err from e
+    except Exception as e:  # noqa: BLE001 -- bad keys, DNS, TLS ... must not abort the fan-out
+        raise ChannelError(f"Web Push delivery failed: {type(e).__name__}: {e}") from e
 
 
-async def _send_push(db: Session, tenant_id: str, title: str, body: str) -> str:
+async def _send_push(db: Session, tenant_id: str, title: str, body: str, url: Optional[str] = None) -> str:
     subs = db.query(PushSubscription).filter(PushSubscription.tenant_id == tenant_id).all()
     if not subs:
         raise ChannelError("No browsers/devices are subscribed to push notifications yet")
@@ -210,7 +275,7 @@ async def _send_push(db: Session, tenant_id: str, title: str, body: str) -> str:
     delivered, failed = 0, 0
     for sub in subs:
         try:
-            await _send_push_to_subscription(sub, title, body)
+            await _send_push_to_subscription(sub, title, body, url)
             sub.last_used_at = datetime.utcnow()
             sub.last_error = None
             delivered += 1
@@ -221,7 +286,7 @@ async def _send_push(db: Session, tenant_id: str, title: str, body: str) -> str:
             # etc.) returns 404/410 from the push service -- pywebpush surfaces
             # this in the exception text; clean those rows up rather than
             # retrying them forever.
-            if "410" in str(e) or "404" in str(e):
+            if getattr(e, "gone", False):
                 db.delete(sub)
     db.commit()
 
@@ -235,7 +300,7 @@ async def _send_push(db: Session, tenant_id: str, title: str, body: str) -> str:
 # ---------------------------------------------------------------------------
 
 async def test_channel(db: Session, channel: AlertChannel) -> str:
-    secret = _get_secret(channel.tenant_id, channel.credential_ref)
+    secret = (channel.secret_data or {})
     config = channel.config or {}
 
     if channel.channel_type == "email":
@@ -270,7 +335,7 @@ def _rule_matches(rule: AlertRule, category: str, severity: str) -> bool:
     return True
 
 
-async def route_and_dispatch(db: Session, alert) -> Dict[str, Any]:
+async def route_and_dispatch(db: Session, alert, extra_channel_ids: Optional[List[str]] = None) -> Dict[str, Any]:
     """Evaluate every enabled AlertRule for this tenant and dispatch to
     every matched, enabled AlertChannel. Returns a per-channel result map
     merged into Alert.dispatch_results alongside the legacy env-dispatch
@@ -291,6 +356,7 @@ async def route_and_dispatch(db: Session, alert) -> Dict[str, Any]:
         if _rule_matches(rule, alert.category, alert.severity):
             matched_channel_ids.update(rule.channel_ids or [])
 
+    matched_channel_ids.update(extra_channel_ids or [])
     if not matched_channel_ids:
         return results
 
@@ -307,20 +373,20 @@ async def route_and_dispatch(db: Session, alert) -> Dict[str, Any]:
         key = f"channel:{channel.name}"
         try:
             if channel.channel_type == "email":
-                secret = _get_secret(channel.tenant_id, channel.credential_ref)
+                secret = (channel.secret_data or {})
                 msg = await _send_email(channel.config or {}, secret, title, body)
             elif channel.channel_type == "ntfy":
-                secret = _get_secret(channel.tenant_id, channel.credential_ref)
+                secret = (channel.secret_data or {})
                 msg = await _send_ntfy(channel.config or {}, secret, title, body, alert.severity)
             elif channel.channel_type == "webhook":
-                secret = _get_secret(channel.tenant_id, channel.credential_ref)
+                secret = (channel.secret_data or {})
                 msg = await _send_webhook(channel.config or {}, secret, payload={
                     "id": alert.id, "category": alert.category, "severity": alert.severity,
                     "title": alert.title, "detail": alert.detail, "scan_id": alert.scan_id,
                     "device_id": alert.device_id,
                 })
             elif channel.channel_type == "push":
-                msg = await _send_push(db, channel.tenant_id, title, body)
+                msg = await _send_push(db, channel.tenant_id, title, body, "/alerts")
             else:
                 msg = f"failed: unsupported channel_type '{channel.channel_type}'"
                 results[key] = msg

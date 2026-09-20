@@ -82,17 +82,33 @@ def _patch_common(monkeypatch, db):
     monkeypatch.setattr(rollback_service, "run_pipeline", _fake_run_pipeline)
 
 
+DRIFTED_RUNNING = "hostname r1\nip http server\nip ssh version 2\n"
+
+
+def _stateful_collector(first_raw, later_raw, later_hash):
+    calls = {"n": 0}
+
+    def collect(device_, creds):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return CollectionResult(success=True, raw_config=first_raw, config_hash="pre")
+        return CollectionResult(success=True, raw_config=later_raw, config_hash=later_hash)
+    return type("C", (), {"collect_config": staticmethod(collect)})()
+
+
 @pytest.mark.asyncio
 async def test_rollback_succeeds_and_verifies(db, scenario, monkeypatch):
     device, cr, dr = scenario
     _patch_common(monkeypatch, db)
+    pushed = []
+
+    def push(device_, creds, lines):
+        pushed.append(list(lines))
+        return DeploymentResult(success=True, transport="ssh")
     monkeypatch.setattr(rollback_service, "get_deployer",
-                         lambda transport: type("D", (), {"push_config": staticmethod(
-                             lambda device_, creds, lines: DeploymentResult(success=True, transport="ssh"))})())
-    monkeypatch.setattr(rollback_service, "get_collector",
-                         lambda vendor: type("C", (), {"collect_config": staticmethod(
-                             lambda device_, creds: CollectionResult(
-                                 success=True, raw_config=CURRENT_CONFIG, config_hash=CURRENT_HASH))})())
+                        lambda transport: type("D", (), {"push_config": staticmethod(push)})())
+    coll = _stateful_collector(DRIFTED_RUNNING, CURRENT_CONFIG, CURRENT_HASH)
+    monkeypatch.setattr(rollback_service, "get_collector", lambda vendor, transport=None: coll)
 
     rb = await rollback_service.rollback_deployment(db, dr, initiated_by="bob")
 
@@ -100,6 +116,8 @@ async def test_rollback_succeeds_and_verifies(db, scenario, monkeypatch):
     assert rb.post_rollback_verified is True
     assert rb.post_rollback_hash == CURRENT_HASH
     assert rb.post_rollback_scan_id is not None
+    # Only the difference is reverted -- never the whole archived config.
+    assert pushed == [["no ip http server", "no ip ssh version 2"]]
     db.refresh(dr)
     assert dr.rolled_back is True
 
@@ -112,6 +130,8 @@ async def test_rollback_push_failure_is_critical(db, scenario, monkeypatch):
                          lambda transport: type("D", (), {"push_config": staticmethod(
                              lambda device_, creds, lines: DeploymentResult(
                                  success=False, transport="ssh", error="auth failed"))})())
+    coll = _stateful_collector(DRIFTED_RUNNING, DRIFTED_RUNNING, "x")
+    monkeypatch.setattr(rollback_service, "get_collector", lambda vendor, transport=None: coll)
 
     rb = await rollback_service.rollback_deployment(db, dr, initiated_by="bob")
 
@@ -132,7 +152,7 @@ async def test_rollback_verification_mismatch_is_critical_not_success(db, scenar
                          lambda transport: type("D", (), {"push_config": staticmethod(
                              lambda device_, creds, lines: DeploymentResult(success=True, transport="ssh"))})())
     monkeypatch.setattr(rollback_service, "get_collector",
-                         lambda vendor: type("C", (), {"collect_config": staticmethod(
+                         lambda vendor, transport=None: type("C", (), {"collect_config": staticmethod(
                              lambda device_, creds: CollectionResult(
                                  success=True, raw_config="hostname r1\nsomething-else\n",
                                  config_hash="not-the-target-hash"))})())

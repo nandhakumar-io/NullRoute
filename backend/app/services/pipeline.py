@@ -469,6 +469,11 @@ async def run_pipeline(
         db.commit()
         await events.publish("compliance.scan.completed", {"scan_id": scan.id, "score": score, "decision": compliance_decision.decision})
 
+        # User-configured "alert me when the score drops below X" thresholds.
+        # Best-effort inside evaluate_compliance_thresholds -- never fails a scan.
+        from app.services import alert_service
+        await alert_service.evaluate_compliance_thresholds(db, scan)
+
         # Keep the "Ask NetSecAuditor" RAG corpus current: incrementally
         # upsert this scan's device + failing findings rather than waiting
         # on a manual /api/rag/reindex click. Best-effort -- indexing

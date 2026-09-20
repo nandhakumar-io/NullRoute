@@ -917,3 +917,128 @@ def missing_expected(expected_text: Optional[str], actual_text: Optional[str]) -
     """Lines present in `expected_text` but absent from `actual_text`
     (order-insensitive)."""
     return line_delta(actual_text, expected_text)["added"]
+
+
+# ---------------------------------------------------------------------------
+# Delta between two full configurations (deploy / rollback safety)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DeltaPlan:
+    commands: List[str]
+    warnings: List[str] = field(default_factory=list)
+    safe: bool = True          # False => refuse to push; cannot compute a trustworthy delta
+    style: str = ""
+
+
+def _negate(line: str) -> str:
+    return line[3:].strip() if line.lower().startswith("no ") else f"no {line}"
+
+
+def _replaced_by(line: str, adds: Sequence[str]) -> bool:
+    """True if removing `line` is unnecessary because an added line supersedes it:
+    it is that line's negation, or shares a single-valued command prefix."""
+    low = line.lower()
+    neg = _negate(line).lower()
+    if any(a.lower() == neg for a in adds):
+        return True
+    for p in _SINGLE_VALUED_PREFIXES:
+        if low.startswith(p) and any(a.lower().startswith(p) for a in adds):
+            return True
+    return False
+
+
+def _ios_nodes(text: str) -> List[_Node]:
+    out: List[_Node] = []
+    for n in _parse_ios(text):
+        if n.raw_block is None and (n.text.startswith(("!", "#")) or _VOLATILE_RE.match(n.text)):
+            continue
+        n.children = [c for c in n.children if not c.text.startswith(("!", "#")) and not _VOLATILE_RE.match(c.text)]
+        out.append(n)
+    return out
+
+
+def _ios_delta(from_text: str, to_text: str) -> DeltaPlan:
+    old = {n.text: n for n in _ios_nodes(from_text)}
+    new = _ios_nodes(to_text)
+    new_texts = {n.text for n in new}
+    cmds: List[str] = []
+    warns: List[str] = []
+
+    leaf_adds = [n.text for n in new if not n.children and n.raw_block is None and n.text not in old]
+
+    for n in new:
+        o = old.get(n.text)
+        if o is None:
+            cmds.append(n.text)
+            if n.children:
+                cmds.extend(c.text for c in n.children)
+                cmds.append("exit")
+            continue
+        old_kids = [c.text for c in o.children]
+        new_kids = [c.text for c in n.children]
+        add = [c for c in new_kids if c not in old_kids]
+        rem = [c for c in old_kids if c not in new_kids and not _replaced_by(c, add)]
+        if add or rem:
+            cmds.append(n.text)
+            cmds.extend(_negate(r) for r in rem)
+            cmds.extend(add)
+            cmds.append("exit")
+
+    for text, o in old.items():
+        if text in new_texts:
+            continue
+        if o.children or o.raw_block is not None:
+            warns.append(f"Not auto-removing block '{text}' (remove it manually if intended).")
+        elif not _replaced_by(text, leaf_adds):
+            cmds.append(_negate(text))
+    return DeltaPlan(cmds, warns, True, "ios")
+
+
+def _set_delta(from_text: str, to_text: str) -> DeltaPlan:
+    a = [_clean(l) for l in canonical_lines(from_text)]
+    b = [_clean(l) for l in canonical_lines(to_text)]
+    sa, sb = set(a), set(b)
+    cmds = [l for l in b if l.lower().startswith("set ") and l not in sa]
+    cmds += ["delete " + l[4:] for l in a if l.lower().startswith("set ") and l not in sb]
+    warns = []
+    if any(not l.lower().startswith("set ") for l in b):
+        warns.append("Non set-style lines in the proposed config were ignored; only 'set' lines are diffed.")
+    return DeltaPlan(cmds, warns, True, "set")
+
+
+def delta_between(from_text: Optional[str], to_text: Optional[str], vendor: Optional[str] = None) -> DeltaPlan:
+    """Minimal ordered commands that transform `from_text` into `to_text`.
+
+    Never falls back to "send the whole config": when the platform's syntax
+    cannot be diffed exactly (FortiOS blocks, hierarchical Junos, unknown
+    vendors) the plan is flagged unsafe and callers must refuse to push."""
+    style = detect_style(vendor, from_text or to_text)
+    if not (from_text or "").strip():
+        return DeltaPlan([], ["No baseline configuration to diff against."], False, style)
+    if style == "ios":
+        return _ios_delta(from_text, to_text or "")
+    if style == "set":
+        return _set_delta(from_text, to_text or "")
+    return DeltaPlan([], [f"Cannot compute an exact delta for '{style}' style configuration."], False, style)
+
+
+def resolve_deploy_commands(
+    merge_commands: Optional[Sequence[str]],
+    current_text: Optional[str],
+    proposed_text: Optional[str],
+    vendor: Optional[str] = None,
+) -> DeltaPlan:
+    """What actually gets pushed for a change request. Order of preference:
+    1. the merge engine's own deployable commands (snippet-based CRs);
+    2. the proposed text itself when it is a delta rather than a full config
+       (legacy CRs created with a snippet as `proposed_config`);
+    3. a computed diff of current -> proposed for genuine full configs.
+    A whole configuration is never pushed."""
+    if merge_commands:
+        return DeltaPlan(list(merge_commands), [], True, "merge")
+    proposed = proposed_text or ""
+    if not is_full_config(proposed):
+        cmds = deployable_commands(proposed, vendor)
+        return DeltaPlan(cmds, [], bool(cmds), "snippet")
+    return delta_between(current_text, proposed, vendor)

@@ -43,7 +43,7 @@ import anyio
 from sqlalchemy.orm import Session
 
 from app.models.db import ChangeRequest, Device, DeploymentRecord, RollbackRecord, Scan
-from app.services import alert_service, evidence_service, minio_service, openbao_service
+from app.services import alert_service, config_merge, evidence_service, minio_service, openbao_service
 from app.services.collectors.registry import get_collector
 from app.services.deployment.registry import get_deployer
 from app.services.deployment_service import _resolve_credentials
@@ -152,11 +152,44 @@ async def rollback_deployment(
         await _anchor_rollback_event(db, rb, device, "rollback.credentials_unavailable")
         return rb
 
-    # 1. Push the archived pre-change config back, via the SAME transport
-    #    the original deployment used (RULE 11 -- no second implementation).
-    config_lines = [line for line in rollback_text.splitlines() if line.strip()]
+    # 1. Revert ONLY what changed. Pushing the entire archived config back
+    #    re-applies the whole device configuration; instead diff the device's
+    #    current running config against the pre-change config and send that.
+    collector = get_collector(device.vendor, transport=rb.transport)
+    running_text = None
+    try:
+        pre = await anyio.to_thread.run_sync(collector.collect_config, device, credentials)
+        if pre.success and pre.raw_config:
+            running_text = pre.raw_config
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not collect running config before rollback", exc_info=True)
+    proposed_text = None
+    if cr.proposed_config_object_key:
+        try:
+            proposed_text = minio_service.get_object(cr.proposed_config_object_key).decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001
+            proposed_text = None
+
+    plan = config_merge.delta_between(running_text or proposed_text, rollback_text, device.vendor)
+    if not plan.safe and cr.merge_commands and all(str(c).lower().startswith("set ") for c in cr.merge_commands):
+        plan = config_merge.DeltaPlan(["delete " + str(c)[4:] for c in cr.merge_commands], [], True, "inverse-set")
+    if not plan.safe:
+        rb.status = "CRITICAL_MANUAL_INTERVENTION_REQUIRED"
+        rb.error = ("Could not derive a safe minimal revert for this device/config format "
+                    f"({'; '.join(plan.warnings)}); refusing to push a full configuration. Manual recovery required.")
+        rb.completed_at = datetime.utcnow()
+        db.commit()
+        del credentials
+        await _alert_failure(db, rb, device)
+        await _anchor_rollback_event(db, rb, device, "rollback.no_safe_delta")
+        return rb
+
     deployer = get_deployer(rb.transport)
-    push_result = await anyio.to_thread.run_sync(deployer.push_config, device, credentials, config_lines)
+    if plan.commands:
+        push_result = await anyio.to_thread.run_sync(deployer.push_config, device, credentials, plan.commands)
+    else:  # device already matches the pre-change config
+        from app.services.deployment.base import DeploymentResult
+        push_result = DeploymentResult(success=True, transport=rb.transport or "ssh", output="already at target")
     del credentials
 
     if not push_result.success:
@@ -175,7 +208,6 @@ async def rollback_deployment(
     #    re-hashing the device's actual configuration (section 12).
     try:
         verify_credentials = _resolve_credentials(db, device, dr.tenant_id, credential_ref_id)
-        collector = get_collector(device.vendor)
         post_result = await anyio.to_thread.run_sync(collector.collect_config, device, verify_credentials)
         del verify_credentials
     except (ValueError, openbao_service.OpenBaoError) as e:
@@ -202,6 +234,16 @@ async def rollback_deployment(
 
     rb.post_rollback_hash = post_result.config_hash
     rb.post_rollback_verified = (post_result.config_hash == rb.target_config_hash)
+    if not rb.post_rollback_verified:
+        from app.services.deployment_service import same_content
+        rb.post_rollback_verified = same_content(post_result.raw_config, rollback_text)
+    if rb.post_rollback_verified and getattr(push_result, "pending_confirm", False):
+        try:
+            cc = _resolve_credentials(db, device, dr.tenant_id, credential_ref_id)
+            await anyio.to_thread.run_sync(deployer.confirm_commit, device, cc)
+            del cc
+        except Exception:  # noqa: BLE001
+            logger.warning("Rollback commit confirm failed", exc_info=True)
 
     # 3. Evidence trail: rerun the SAME compliance pipeline on the
     #    post-rollback config (identical pattern to deployment_service.py's

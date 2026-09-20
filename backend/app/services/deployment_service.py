@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.models.db import (ChangeRequest, Device, DeviceCredentialRef,
                             DeploymentRecord, Finding, Scan)
-from app.services import alert_service, minio_service, openbao_service
+from app.services import alert_service, config_merge, minio_service, openbao_service
 from app.services.collectors.registry import get_collector
 from app.services.deployment.registry import get_deployer
 from app.services.pipeline import run_pipeline
@@ -106,6 +106,14 @@ def _resolve_credentials(
         credential_type=ref_row.credential_type, 
         secret=ref_row.secret_data or {}
     )
+
+
+def same_content(a: Optional[str], b: Optional[str]) -> bool:
+    """Same configuration lines, ignoring order, whitespace and volatile lines.
+    Forgives a device re-ordering/re-indenting output; an extra or missing line
+    is still a mismatch (i.e. genuine drift)."""
+    norm = lambda t: sorted(" ".join(l.split()) for l in config_merge.canonical_lines(t))
+    return norm(a) == norm(b)
 
 
 async def deploy_change_request(
@@ -187,9 +195,27 @@ async def deploy_change_request(
             logger.warning("Failed to dispatch stale-hash-abort alert", exc_info=True)
         return dr
 
-    # 2. Push. `credentials` goes out of scope once this returns (RULE 6).
+    # 2. Push ONLY the delta. Previously every line of the full proposed
+    #    config was sent through send_config_set, re-applying the whole device
+    #    configuration (can lock a device out / make it unusable).
     proposed_text = minio_service.get_object(cr.proposed_config_object_key).decode("utf-8", errors="replace")
-    config_lines = [line for line in proposed_text.splitlines() if line.strip()]
+    plan = config_merge.resolve_deploy_commands(
+        cr.merge_commands, pre_result.raw_config, proposed_text, device.vendor,
+    )
+    if not plan.safe or not plan.commands:
+        dr.status = "FAILED"
+        dr.error = (
+            "Refusing to deploy: no safe, minimal command set could be derived for this change "
+            f"({'; '.join(plan.warnings) or 'nothing to change'}). Edit the change request's proposed "
+            "commands and re-approve it."
+        )
+        dr.completed_at = datetime.utcnow()
+        cr.status = "FAILED"
+        db.commit()
+        del credentials
+        return dr
+    config_lines = plan.commands
+    logger.info("Deploying %d command(s) to device %s for CR %s", len(config_lines), device.id, cr.id)
     deployer = get_deployer(transport)
     dr.status = "DEPLOYING"
     db.commit()
@@ -247,7 +273,27 @@ async def deploy_change_request(
         return dr
 
     dr.post_config_hash = post_result.config_hash
-    dr.post_verification_passed = (post_result.config_hash == cr.proposed_config_hash)
+    hash_match = (post_result.config_hash == cr.proposed_config_hash)
+    # Hash is order/whitespace sensitive; the same lines in a different order
+    # (devices reorder output) is not drift, an extra/missing line is.
+    dr.post_verification_passed = hash_match or same_content(post_result.raw_config, proposed_text)
+
+    # Junos commit-confirmed: finalise only once the device is reachable and the
+    # change is visible; otherwise leave it to auto-revert on the device.
+    if getattr(push_result, "pending_confirm", False):
+        if dr.post_verification_passed:
+            try:
+                confirm_creds = _resolve_credentials(db, device, cr.tenant_id, credential_ref_id, transport=dr.transport)
+                confirm = await anyio.to_thread.run_sync(deployer.confirm_commit, device, confirm_creds)
+                del confirm_creds
+            except (ValueError, openbao_service.OpenBaoError) as e:
+                confirm = None
+                dr.error = f"Could not confirm commit (credentials unavailable: {e}); the device will auto-revert."
+            if confirm is not None and not confirm.success:
+                dr.error = f"Commit confirm failed: {confirm.error}; the device will auto-revert."
+                dr.post_verification_passed = False
+        else:
+            dr.error = ((dr.error or "") + " Change was not confirmed; the device will auto-revert its commit-confirmed change.").strip()
 
     # 3b. Optional supplemental pyATS/Genie verification (spec sections
     #     29-34/47) -- Cisco-only, best-effort, and NEVER authoritative:
@@ -278,6 +324,16 @@ async def deploy_change_request(
     await run_pipeline(db, scan, post_result.raw_config, framework=framework)
     db.refresh(scan)
     dr.post_scan_id = scan.id
+
+    if target_control_ids:
+        failing = [
+            f.control_id for f in db.query(Finding).filter(
+                Finding.scan_id == scan.id, Finding.control_id.in_(list(target_control_ids)),
+            ).all() if f.result != "PASS"
+        ]
+        if failing:
+            dr.post_verification_passed = False
+            dr.error = (dr.error or "") + f" Targeted control(s) did not flip to PASS: {', '.join(sorted(set(failing)))}."
 
     if dr.post_verification_passed:
         dr.status = "VERIFIED"

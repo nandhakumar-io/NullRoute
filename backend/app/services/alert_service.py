@@ -120,6 +120,7 @@ async def create_alert(
     scan_id: Optional[str] = None,
     device_id: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
+    extra_channel_ids: Optional[List[str]] = None,
 ) -> Alert:
     if severity not in VALID_SEVERITIES:
         severity = "MEDIUM"
@@ -134,7 +135,7 @@ async def create_alert(
     legacy_results = await _dispatch(alert)
     try:
         from app.services import alert_channel_service
-        channel_results = await alert_channel_service.route_and_dispatch(db, alert)
+        channel_results = await alert_channel_service.route_and_dispatch(db, alert, extra_channel_ids)
     except Exception as e:  # noqa: BLE001 - configurable-channel routing must never block alert creation
         logger.warning("Configurable alert-channel routing failed: %s", e)
         channel_results = {}
@@ -284,3 +285,56 @@ async def alert_vulnerability_breach(db: Session, tenant_id: str, device_id: str
         detail=f"Device matched vulnerable CPE indicating exposure to {cve_id}.",
         device_id=device_id, extra={"cve_id": cve_id, "risk_score": score, "evidence": evidence},
     )
+
+
+async def evaluate_compliance_thresholds(db: Session, scan: Scan) -> List[Alert]:
+    """Raise COMPLIANCE_SCORE_LOW for every enabled tenant threshold the scan's
+    compliance score is below. Best-effort: never raises into the pipeline."""
+    created: List[Alert] = []
+    try:
+        from app.models.alerting import ComplianceAlertThreshold
+
+        score = scan.compliance_score
+        if score is None:
+            return created
+        rows = db.query(ComplianceAlertThreshold).filter(
+            ComplianceAlertThreshold.tenant_id == scan.tenant_id,
+            ComplianceAlertThreshold.enabled == True,  # noqa: E712
+        ).all()
+        for t in rows:
+            if t.device_id and t.device_id != scan.device_id:
+                continue
+            if t.framework and (scan.framework or "").upper() not in (t.framework.upper(), "ALL"):
+                continue
+            if score >= t.threshold:
+                continue
+            if t.only_on_crossing:
+                prev = (
+                    db.query(Scan)
+                    .filter(Scan.device_id == scan.device_id, Scan.id != scan.id,
+                            Scan.compliance_score.isnot(None), Scan.created_at < scan.created_at)
+                    .order_by(Scan.created_at.desc()).first()
+                )
+                if prev is not None and prev.compliance_score < t.threshold:
+                    continue
+            hostname = getattr(getattr(scan, "device", None), "hostname", None) or scan.device_id
+            alert = await create_alert(
+                db, scan.tenant_id, "COMPLIANCE_SCORE_LOW", t.severity or "HIGH",
+                title=f"Compliance score {score:g}% is below threshold {t.threshold:g}% on {hostname}",
+                detail=f"Threshold '{t.name}': scan {scan.id} ({scan.framework}) scored {score:g}%, "
+                       f"below the configured minimum of {t.threshold:g}%.",
+                scan_id=scan.id, device_id=scan.device_id,
+                extra={"threshold_id": t.id, "threshold": t.threshold, "score": score},
+                extra_channel_ids=list(t.channel_ids or []),
+            )
+            t.last_triggered_at = datetime.utcnow()
+            t.trigger_count = (t.trigger_count or 0) + 1
+            db.commit()
+            created.append(alert)
+    except Exception:  # noqa: BLE001
+        logger.exception("Compliance threshold evaluation failed for scan %s", getattr(scan, "id", None))
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+    return created

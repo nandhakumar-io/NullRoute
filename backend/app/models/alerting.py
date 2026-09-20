@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.models.db import Base
@@ -110,3 +110,32 @@ class PushSubscription(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_used_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
+
+class ComplianceAlertThreshold(Base):
+    """Raise a COMPLIANCE_SCORE_LOW alert when a completed scan's compliance
+    score (0-100) is below `threshold`.
+
+    Scope: `device_id` / `framework` of None mean "any". `channel_ids` are
+    notified directly in addition to whatever AlertRule routing already
+    matches the resulting alert. `only_on_crossing` suppresses repeats: it
+    alerts only when the device's previous scored scan was at/above the
+    threshold (or there was none).
+    """
+
+    __tablename__ = "compliance_alert_thresholds"
+
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    enabled = Column(Boolean, nullable=False, default=True)
+    threshold = Column(Float, nullable=False)
+    device_id = Column(String, nullable=True)
+    framework = Column(String, nullable=True)
+    severity = Column(String, nullable=False, default="HIGH")
+    channel_ids = Column(JSON, nullable=False, default=list)
+    only_on_crossing = Column(Boolean, nullable=False, default=False)
+    last_triggered_at = Column(DateTime, nullable=True)
+    trigger_count = Column(Integer, nullable=False, default=0)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

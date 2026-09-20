@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { endpoints, ChangeRequest, DeploymentRecord } from "../api";
+import { endpoints, ChangeRequest, DeploymentRecord, DeployPlan, EditPreview } from "../api";
 import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import SideBySideDiff from "../components/SideBySideDiff";
@@ -99,6 +99,158 @@ function DiffPanel({ crId }: { crId: string }) {
         it is syntax only until a human clicks Approve below.
       </div>
       <SideBySideDiff currentConfig={configs?.current_config} proposedConfig={configs?.proposed_config} />
+    </div>
+  );
+}
+
+// Exactly what deployment will send to the device. Only these commands are
+// pushed -- never the whole configuration shown in the diff.
+function DeployPlanPanel({ crId, revision }: { crId: string; revision?: number }) {
+  const [plan, setPlan] = useState<DeployPlan | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setPlan(null);
+    setErr(false);
+    endpoints
+      .changeRequestDeployPlan(crId)
+      .then((r) => !cancelled && setPlan(r.data))
+      .catch(() => !cancelled && setErr(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [crId, revision]);
+  if (err) return null;
+  if (!plan) return <div className="text-xs text-slate-500">Working out deploy commands…</div>;
+  return (
+    <div className="rounded-lg border border-soc-border bg-soc-bg/40 p-3 space-y-1.5">
+      <div className="text-xs font-semibold text-slate-300">
+        Commands that will be pushed to the device ({plan.commands.length})
+      </div>
+      {plan.safe ? (
+        <pre className="text-xs font-mono text-emerald-300 whitespace-pre-wrap">{plan.commands.join("\n")}</pre>
+      ) : (
+        <div className="text-xs text-red-400">
+          No safe minimal command set could be derived — deployment will be refused. Edit the proposal below.
+        </div>
+      )}
+      {plan.warnings.map((w, i) => (
+        <div key={i} className="text-xs text-amber-400">{w}</div>
+      ))}
+    </div>
+  );
+}
+
+// Admin-only fine-tuning of the proposed change. Edits the CLI delta (or, for
+// full-config proposals, the config), previews the merge, and on save
+// re-validates and sends the change back for approval.
+function EditProposal({ cr, onSaved }: { cr: ChangeRequest; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [asSnippet, setAsSnippet] = useState(true);
+  const [preview, setPreview] = useState<EditPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function start() {
+    setMsg(null);
+    setPreview(null);
+    if (cr.snippet) {
+      setAsSnippet(true);
+      setText(cr.snippet);
+    } else {
+      // Legacy / full-config proposal: edit the proposed text itself. A short
+      // delta is auto-merged by the server, a full config is diffed at deploy.
+      const r = await endpoints.changeRequestConfigs(cr.id);
+      setAsSnippet(false);
+      setText(r.data.proposed_config || "");
+    }
+    setOpen(true);
+  }
+
+  const body = () => (asSnippet ? { snippet: text } : { proposed_config: text });
+
+  async function doPreview() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      setPreview((await endpoints.previewChangeRequestEdit(cr.id, body())).data);
+    } catch (e: any) {
+      setMsg(e?.response?.data?.detail || "Preview failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await endpoints.editChangeRequest(cr.id, body());
+      setOpen(false);
+      onSaved();
+    } catch (e: any) {
+      setMsg(e?.response?.data?.detail || "Could not save the edit.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        className="text-sm text-amber-300 hover:text-amber-200 underline decoration-dotted"
+        onClick={start}
+      >
+        Edit proposed change (admin)
+      </button>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-amber-800/50 bg-amber-950/10 p-3 space-y-2">
+      <div className="text-sm font-medium text-amber-200">
+        {asSnippet ? "Proposed CLI commands" : "Proposed configuration"}
+      </div>
+      <div className="text-xs text-slate-400">
+        {asSnippet
+          ? "Only these commands are merged onto the device's current configuration and pushed. "
+          : "Editing the full proposed configuration; deployment pushes only the difference from the device. "}
+        Saving re-validates the change and requires it to be approved again.
+      </div>
+      <textarea
+        className="w-full h-48 font-mono text-xs rounded border border-soc-border bg-soc-bg p-2 text-slate-200"
+        value={text}
+        spellCheck={false}
+        onChange={(e) => {
+          setText(e.target.value);
+          setPreview(null);
+        }}
+      />
+      {preview && (
+        <div className="space-y-1 text-xs">
+          <div className="text-slate-300">
+            Preview: {preview.commands.length} command(s) will be pushed
+            {preview.diff_stats && ` · +${preview.diff_stats.added} / −${preview.diff_stats.removed} lines vs current`}
+            {preview.confidence && ` · merge confidence ${preview.confidence}`}
+          </div>
+          <pre className="font-mono text-emerald-300 whitespace-pre-wrap">{preview.commands.join("\n")}</pre>
+          {(preview.warnings || []).map((w, i) => (
+            <div key={i} className="text-amber-400">{w}</div>
+          ))}
+        </div>
+      )}
+      {msg && <div className="text-xs text-red-400">{msg}</div>}
+      <div className="flex gap-2">
+        <button className="btn-secondary" disabled={busy || !text.trim()} onClick={doPreview}>Preview</button>
+        <button
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-amber-900/40 text-amber-200 border border-amber-800/60 hover:bg-amber-900/60 disabled:opacity-40"
+          disabled={busy || !text.trim()}
+          onClick={save}
+        >
+          {busy ? "Working…" : "Save & re-validate"}
+        </button>
+        <button className="px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
     </div>
   );
 }
@@ -334,6 +486,7 @@ export default function ChangeRequests() {
   // Deploy/rollback/simulate-drift are all gated require_role("admin","operator")
   // on the backend; mirror that here so the UI disables rather than 403s.
   const canDeploy = hasRole("operator"); // true for operator OR admin
+  const canEdit = hasRole("admin"); // admin-only fine-tuning of the proposal
   const [items, setItems] = useState<ChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -504,10 +657,23 @@ export default function ChangeRequests() {
                     </button>
                     {diffOpenId === cr.id && (
                       <div className="mt-2">
-                        <DiffPanel crId={cr.id} />
+                        <DiffPanel key={`${cr.id}-${cr.revision || 1}`} crId={cr.id} />
                       </div>
                     )}
                   </div>
+
+                  {["PENDING_APPROVAL", "APPROVED", "DRAFT"].includes(cr.status) && (
+                    <div className="mt-3 space-y-2">
+                      <DeployPlanPanel crId={cr.id} revision={cr.revision} />
+                      {cr.edited_by && (
+                        <div className="text-xs text-slate-500">
+                          Edited by {cr.edited_by}
+                          {cr.edited_at && ` at ${new Date(cr.edited_at).toLocaleString()}`} (revision {cr.revision}) — approval was reset.
+                        </div>
+                      )}
+                      {canEdit && <EditProposal cr={cr} onSaved={load} />}
+                    </div>
+                  )}
 
                   {cr.status === "REJECTED" && cr.rejection_reason && (
                     <div className="text-sm text-red-400 mt-1">Rejected: {cr.rejection_reason}</div>

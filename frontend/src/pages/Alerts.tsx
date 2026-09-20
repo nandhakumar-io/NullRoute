@@ -8,6 +8,9 @@ import {
   AlertChannelCreate,
   AlertRule,
   AlertRuleCreate,
+  ComplianceThreshold,
+  ComplianceThresholdCreate,
+  Device,
   PushSubscriptionSummary,
   SimulatableCategory,
 } from "../api";
@@ -17,7 +20,7 @@ import { pushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } fr
 const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
 const STATUSES = ["OPEN", "ACKNOWLEDGED"];
 
-type Tab = "feed" | "channels" | "rules" | "push";
+type Tab = "feed" | "channels" | "rules" | "thresholds" | "push";
 
 const CHANNEL_LABEL: Record<AlertChannelType, string> = {
   email: "Email (SMTP)",
@@ -79,6 +82,7 @@ export default function Alerts() {
             ["feed", "Alert Feed"],
             ["channels", "Channels"],
             ["rules", "Routing Rules"],
+            ["thresholds", "Score Thresholds"],
             ["push", "Browser Push"],
           ] as [Tab, string][]).map(([t, label]) => (
             <button
@@ -98,6 +102,7 @@ export default function Alerts() {
       {tab === "feed" && <FeedTab />}
       {tab === "channels" && <ChannelsTab onChanged={refreshCounts} />}
       {tab === "rules" && <RulesTab onChanged={refreshCounts} />}
+      {tab === "thresholds" && <ThresholdsTab />}
       {tab === "push" && <PushTab />}
     </div>
   );
@@ -883,6 +888,227 @@ function RulesTab({ onChanged }: { onChanged: () => void }) {
                 disabled={saving || !form.name}
                 className="px-4 py-2 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded hover:bg-cyan-900 text-sm font-semibold disabled:opacity-50"
               >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compliance-score thresholds
+// ---------------------------------------------------------------------------
+
+const EMPTY_THRESHOLD_FORM = (): ComplianceThresholdCreate => ({
+  name: "",
+  threshold: 80,
+  enabled: true,
+  device_id: null,
+  framework: null,
+  severity: "HIGH",
+  channel_ids: [],
+  only_on_crossing: false,
+});
+
+function ThresholdsTab() {
+  const [items, setItems] = useState<ComplianceThreshold[]>([]);
+  const [channels, setChannels] = useState<AlertChannel[]>([]);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ComplianceThreshold | null>(null);
+  const [form, setForm] = useState<ComplianceThresholdCreate>(EMPTY_THRESHOLD_FORM());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      endpoints.complianceThresholds(),
+      endpoints.alertChannels(),
+      endpoints.devices({ limit: 200 }).catch(() => ({ data: { items: [] } } as any)),
+    ])
+      .then(([t, c, d]) => {
+        setItems(t.data.thresholds);
+        setChannels(c.data.channels);
+        setDevices(d.data.items || []);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+  useEffect(load, [load]);
+
+  function openCreate() {
+    setEditing(null);
+    setForm(EMPTY_THRESHOLD_FORM());
+    setError(null);
+    setModalOpen(true);
+  }
+  function openEdit(t: ComplianceThreshold) {
+    setEditing(t);
+    setForm({
+      name: t.name, threshold: t.threshold, enabled: t.enabled, device_id: t.device_id, framework: t.framework,
+      severity: t.severity, channel_ids: t.channel_ids, only_on_crossing: t.only_on_crossing,
+    });
+    setError(null);
+    setModalOpen(true);
+  }
+  function toggle(list: string[], v: string) {
+    return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
+  }
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      if (editing) await endpoints.updateComplianceThreshold(editing.id, form);
+      else await endpoints.createComplianceThreshold(form);
+      setModalOpen(false);
+      load();
+    } catch (e: any) {
+      const d = e?.response?.data?.detail;
+      setError(typeof d === "string" ? d : e?.message || "Failed to save threshold");
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function remove(t: ComplianceThreshold) {
+    if (!confirm(`Delete threshold "${t.name}"?`)) return;
+    await endpoints.deleteComplianceThreshold(t.id);
+    load();
+  }
+  async function flip(t: ComplianceThreshold) {
+    await endpoints.updateComplianceThreshold(t.id, { enabled: !t.enabled });
+    load();
+  }
+  const deviceName = (id: string | null) =>
+    id ? devices.find((d) => d.id === id)?.hostname || id : "All devices";
+  const channelName = (id: string) => channels.find((c) => c.id === id)?.name || id;
+
+  return (
+    <div className="px-8 pb-8">
+      <p className="text-xs text-slate-500 mb-4">
+        Get alerted when a completed scan's compliance score falls below a minimum. The alert appears in the feed and is
+        sent to the channels chosen here (plus any Routing Rule that matches category COMPLIANCE_SCORE_LOW).
+      </p>
+      <div className="flex justify-end mb-4">
+        <button
+          onClick={openCreate}
+          className="px-4 py-2 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded hover:bg-cyan-900 text-sm font-semibold"
+        >
+          + Add Threshold
+        </button>
+      </div>
+      {loading && <Loading />}
+      {!loading && items.length === 0 && (
+        <EmptyState message="No score thresholds yet. Add one to be notified when a scan's compliance score drops below a minimum." />
+      )}
+      <div className="space-y-3">
+        {items.map((t) => (
+          <div key={t.id} className="card">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-slate-200 font-medium">{t.name}</span>
+                  <span className="badge badge-medium">score &lt; {t.threshold}%</span>
+                  <SeverityBadge severity={t.severity} />
+                  {!t.enabled && <span className="badge badge-fail">Disabled</span>}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  {deviceName(t.device_id)} · {t.framework || "any framework"}
+                  {t.only_on_crossing && " · only when the score first drops below"}
+                </div>
+                <div className="flex gap-1 flex-wrap mt-2">
+                  {t.channel_ids.length === 0 && <span className="text-xs text-slate-500">Feed + routing rules only</span>}
+                  {t.channel_ids.map((id) => (
+                    <span key={id} className="badge badge-na">{channelName(id)}</span>
+                  ))}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">
+                  Triggered {t.trigger_count}×{t.last_triggered_at && ` · last ${new Date(t.last_triggered_at).toLocaleString()}`}
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button className="btn-secondary" onClick={() => flip(t)}>{t.enabled ? "Disable" : "Enable"}</button>
+                <button className="btn-secondary" onClick={() => openEdit(t)}>Edit</button>
+                <button className="px-3 py-1.5 text-sm text-red-400 hover:text-red-300" onClick={() => remove(t)}>Delete</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+          <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-slate-200 mb-4">{editing ? "Edit Threshold" : "Add Score Threshold"}</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Name</label>
+                <input className="input w-full" value={form.name} placeholder="e.g. Core routers below 85%"
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">
+                  Alert when compliance score is below: <span className="text-cyan-300">{form.threshold}%</span>
+                </label>
+                <input type="range" min={0} max={100} step={1} className="w-full" value={form.threshold}
+                  onChange={(e) => setForm((f) => ({ ...f, threshold: Number(e.target.value) }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Device</label>
+                  <select className="input w-full" value={form.device_id || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, device_id: e.target.value || null }))}>
+                    <option value="">All devices</option>
+                    {devices.map((d) => <option key={d.id} value={d.id}>{d.hostname || d.id}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Severity</label>
+                  <select className="input w-full" value={form.severity}
+                    onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value }))}>
+                    {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Framework (blank = any)</label>
+                <input className="input w-full" value={form.framework || ""} placeholder="CIS, NIST …"
+                  onChange={(e) => setForm((f) => ({ ...f, framework: e.target.value || null }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Notify channels</label>
+                {channels.length === 0 && (
+                  <div className="text-xs text-slate-500">No channels yet — add one under Channels, or rely on the feed and routing rules.</div>
+                )}
+                <div className="space-y-1">
+                  {channels.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm text-slate-300">
+                      <input type="checkbox" checked={form.channel_ids.includes(c.id)}
+                        onChange={() => setForm((f) => ({ ...f, channel_ids: toggle(f.channel_ids, c.id) }))} />
+                      {CHANNEL_ICON[c.channel_type]} {c.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={!!form.only_on_crossing}
+                  onChange={(e) => setForm((f) => ({ ...f, only_on_crossing: e.target.checked }))} />
+                Only alert when the score first drops below (skip repeats while it stays low)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={form.enabled !== false}
+                  onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))} />
+                Enabled
+              </label>
+              {error && <div className="text-xs text-red-400">{error}</div>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={() => setModalOpen(false)} className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200">Cancel</button>
+              <button onClick={save} disabled={saving || !form.name}
+                className="px-4 py-2 bg-cyan-950 border border-cyan-800 text-cyan-300 rounded hover:bg-cyan-900 text-sm font-semibold disabled:opacity-50">
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

@@ -33,10 +33,17 @@ class DeploymentResult:
     error: Optional[str] = None
     duration_ms: float = 0.0
     completed_at: datetime = field(default_factory=datetime.utcnow)
+    # True when the change is applied but on a timer (Junos `commit confirmed`)
+    # and will auto-revert unless confirm_commit() is called.
+    pending_confirm: bool = False
 
 
 class BaseDeployer(ABC):
     transport: str = "unknown"
+
+    def confirm_commit(self, device: Device, credentials: DeviceCredentials) -> DeploymentResult:
+        """Finalise a timed commit. No-op for transports that commit immediately."""
+        return DeploymentResult(success=True, transport=self.transport, output="nothing to confirm")
 
     @abstractmethod
     def push_config(self, device: Device, credentials: DeviceCredentials, config_lines: List[str]) -> DeploymentResult:

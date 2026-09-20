@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user, require_role
 from app.auth.rbac import ALL_ROLE_NAMES
 from app.db import get_db
-from app.models.alerting import AlertChannel, AlertRule, PushSubscription
+from app.models.alerting import AlertChannel, AlertRule, ComplianceAlertThreshold, PushSubscription
 from app.models.db import Alert
 from app.services import alert_channel_service, alert_service, audit_service
 
@@ -98,6 +98,14 @@ SIMULATABLE_CATEGORIES: Dict[str, Dict[str, str]] = {
         "title": "Critical compliance finding raised by scan",
         "detail": (
             "A control mapped to CIS/NIST failed with CRITICAL severity. "
+            "Simulated event — no scan was run."
+        ),
+    },
+    "COMPLIANCE_SCORE_LOW": {
+        "severity": "HIGH",
+        "title": "Compliance score below configured threshold",
+        "detail": (
+            "A scan's compliance score dropped below the configured minimum. "
             "Simulated event — no scan was run."
         ),
     },
@@ -216,7 +224,7 @@ def _channel_out(c: AlertChannel) -> Dict[str, Any]:
         "channel_type": c.channel_type,
         "enabled": c.enabled,
         "config": c.config or {},
-        "has_credentials": bool(c.credential_ref),
+        "has_credentials": bool(c.secret_data),
         "last_test_status": c.last_test_status,
         "last_test_at": c.last_test_at.isoformat() if c.last_test_at else None,
         "last_test_message": c.last_test_message,
@@ -243,16 +251,9 @@ def create_channel(
     if payload.channel_type not in ("email", "ntfy", "webhook", "push"):
         raise HTTPException(400, "channel_type must be one of email, ntfy, webhook, push")
 
-    credential_ref = None
-    if payload.secret:
-        try:
-            credential_ref = alert_channel_service.store_channel_secret(tenant_id, payload.secret)
-        except alert_channel_service.ChannelError as e:
-            raise HTTPException(502, str(e))
-
     ch = AlertChannel(
         tenant_id=tenant_id, name=payload.name, channel_type=payload.channel_type,
-        enabled=payload.enabled, config=payload.config, credential_ref=credential_ref,
+        enabled=payload.enabled, config=payload.config, secret_data=payload.secret or None,
         last_test_status="NEVER_TESTED", created_by=user.subject if user else "api",
     )
     db.add(ch)
@@ -281,13 +282,7 @@ def update_channel(
         setattr(ch, k, v)
 
     if payload.secret is not None:
-        try:
-            if ch.credential_ref:
-                alert_channel_service.rotate_channel_secret(tenant_id, ch.credential_ref, payload.secret)
-            else:
-                ch.credential_ref = alert_channel_service.store_channel_secret(tenant_id, payload.secret)
-        except alert_channel_service.ChannelError as e:
-            raise HTTPException(502, str(e))
+        ch.secret_data = payload.secret or None
 
     ch.updated_at = datetime.utcnow()
     db.commit()
@@ -308,8 +303,6 @@ def delete_channel(
     user: CurrentUser = Depends(MANAGE_ALERTING),
 ):
     ch = _channel_or_404(db, channel_id, tenant_id)
-    if ch.credential_ref:
-        alert_channel_service.delete_channel_secret(tenant_id, ch.credential_ref)
     db.delete(ch)
     db.commit()
     audit_service.record_from_user(
@@ -390,6 +383,8 @@ ALERT_CATEGORIES = [
     # platform/version matches a known-exploited CVE. Registered here so
     # AlertRule routing can target it like any other category.
     "VULNERABILITY_BREACH",
+    # Raised when a scan's compliance score is below a configured threshold.
+    "COMPLIANCE_SCORE_LOW",
 ]
 
 
@@ -548,3 +543,129 @@ def list_push_subscriptions(db: Session = Depends(get_db), tenant_id: str = Depe
             for s in rows
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Compliance-score thresholds
+# ---------------------------------------------------------------------------
+
+class ThresholdCreate(BaseModel):
+    name: str
+    threshold: float = Field(..., ge=0, le=100, description="Alert when a scan's compliance score is below this (0-100)")
+    enabled: bool = True
+    device_id: Optional[str] = None
+    framework: Optional[str] = None
+    severity: str = "HIGH"
+    channel_ids: List[str] = Field(default_factory=list)
+    only_on_crossing: bool = False
+
+
+class ThresholdUpdate(BaseModel):
+    name: Optional[str] = None
+    threshold: Optional[float] = Field(None, ge=0, le=100)
+    enabled: Optional[bool] = None
+    device_id: Optional[str] = None
+    framework: Optional[str] = None
+    severity: Optional[str] = None
+    channel_ids: Optional[List[str]] = None
+    only_on_crossing: Optional[bool] = None
+
+
+def _threshold_out(t: ComplianceAlertThreshold) -> Dict[str, Any]:
+    return {
+        "id": t.id, "name": t.name, "enabled": t.enabled, "threshold": t.threshold,
+        "device_id": t.device_id, "framework": t.framework, "severity": t.severity,
+        "channel_ids": t.channel_ids or [], "only_on_crossing": t.only_on_crossing,
+        "last_triggered_at": t.last_triggered_at.isoformat() if t.last_triggered_at else None,
+        "trigger_count": t.trigger_count or 0,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    }
+
+
+def _check_threshold_refs(db: Session, tenant_id: str, severity: Optional[str], channel_ids: Optional[List[str]]):
+    if severity is not None and severity not in alert_service.VALID_SEVERITIES:
+        raise HTTPException(400, f"severity must be one of {', '.join(alert_service.VALID_SEVERITIES)}")
+    if channel_ids:
+        found = {c.id for c in db.query(AlertChannel).filter(
+            AlertChannel.tenant_id == tenant_id, AlertChannel.id.in_(channel_ids)).all()}
+        missing = set(channel_ids) - found
+        if missing:
+            raise HTTPException(400, f"Unknown channel id(s): {', '.join(sorted(missing))}")
+
+
+def _threshold_or_404(db: Session, tid: str, tenant_id: str) -> ComplianceAlertThreshold:
+    t = db.query(ComplianceAlertThreshold).filter(
+        ComplianceAlertThreshold.id == tid, ComplianceAlertThreshold.tenant_id == tenant_id).first()
+    if not t:
+        raise HTTPException(404, "Threshold not found")
+    return t
+
+
+@router.get("/thresholds")
+def list_thresholds(db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant)):
+    rows = db.query(ComplianceAlertThreshold).filter(ComplianceAlertThreshold.tenant_id == tenant_id) \
+        .order_by(ComplianceAlertThreshold.created_at.desc()).all()
+    return {"count": len(rows), "thresholds": [_threshold_out(t) for t in rows]}
+
+
+@router.post("/thresholds")
+def create_threshold(
+    payload: ThresholdCreate, request: Request,
+    db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(MANAGE_ALERTING),
+):
+    _check_threshold_refs(db, tenant_id, payload.severity, payload.channel_ids)
+    t = ComplianceAlertThreshold(
+        tenant_id=tenant_id, name=payload.name, enabled=payload.enabled, threshold=payload.threshold,
+        device_id=payload.device_id or None, framework=payload.framework or None, severity=payload.severity,
+        channel_ids=payload.channel_ids, only_on_crossing=payload.only_on_crossing,
+        created_by=user.subject if user else "api",
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    audit_service.record_from_user(
+        db, request=request, user=user, action="CREATE_COMPLIANCE_THRESHOLD",
+        object_type="compliance_threshold", object_id=t.id,
+        new_value={"name": t.name, "threshold": t.threshold}, result="SUCCESS",
+    )
+    return _threshold_out(t)
+
+
+@router.patch("/thresholds/{threshold_id}")
+def update_threshold(
+    threshold_id: str, payload: ThresholdUpdate, request: Request,
+    db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(MANAGE_ALERTING),
+):
+    t = _threshold_or_404(db, threshold_id, tenant_id)
+    data = payload.model_dump(exclude_unset=True)
+    _check_threshold_refs(db, tenant_id, data.get("severity"), data.get("channel_ids"))
+    for k, v in data.items():
+        if k in ("device_id", "framework") and not v:
+            v = None
+        setattr(t, k, v)
+    t.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(t)
+    audit_service.record_from_user(
+        db, request=request, user=user, action="UPDATE_COMPLIANCE_THRESHOLD",
+        object_type="compliance_threshold", object_id=t.id, result="SUCCESS",
+    )
+    return _threshold_out(t)
+
+
+@router.delete("/thresholds/{threshold_id}", status_code=204)
+def delete_threshold(
+    threshold_id: str, request: Request,
+    db: Session = Depends(get_db), tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(MANAGE_ALERTING),
+):
+    t = _threshold_or_404(db, threshold_id, tenant_id)
+    db.delete(t)
+    db.commit()
+    audit_service.record_from_user(
+        db, request=request, user=user, action="DELETE_COMPLIANCE_THRESHOLD",
+        object_type="compliance_threshold", object_id=threshold_id, result="SUCCESS",
+    )
+    return None

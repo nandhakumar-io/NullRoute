@@ -986,6 +986,32 @@ export interface AlertChannelCreate {
   secret?: Record<string, any>;
 }
 
+export interface ComplianceThreshold {
+  id: string;
+  name: string;
+  enabled: boolean;
+  threshold: number;
+  device_id: string | null;
+  framework: string | null;
+  severity: string;
+  channel_ids: string[];
+  only_on_crossing: boolean;
+  last_triggered_at: string | null;
+  trigger_count: number;
+  created_at: string | null;
+}
+
+export type ComplianceThresholdCreate = {
+  name: string;
+  threshold: number;
+  enabled?: boolean;
+  device_id?: string | null;
+  framework?: string | null;
+  severity?: string;
+  channel_ids: string[];
+  only_on_crossing?: boolean;
+};
+
 export interface AlertRule {
   id: string;
   name: string;
@@ -1042,6 +1068,31 @@ export interface ChangeRequest {
   rejection_reason: string | null;
   created_at: string;
   updated_at: string;
+  // Remediation-delta merge metadata / admin edits
+  snippet?: string | null;
+  merge_style?: string | null;
+  merge_confidence?: string | null;
+  merge_warnings?: string[] | null;
+  merge_commands?: string[] | null;
+  edited_by?: string | null;
+  edited_at?: string | null;
+  revision?: number;
+}
+
+export interface DeployPlan {
+  commands: string[];
+  warnings: string[];
+  safe: boolean;
+  style: string;
+}
+
+export interface EditPreview {
+  current_config: string | null;
+  proposed_config: string;
+  commands: string[];
+  warnings: string[];
+  confidence?: string;
+  diff_stats?: { added: number; removed: number };
 }
 
 export interface DeploymentRecord {
@@ -1528,6 +1579,14 @@ export const endpoints = {
     api.patch<AlertRule>(`/api/alerts/rules/${id}`, payload),
   deleteAlertRule: (id: string) => api.delete(`/api/alerts/rules/${id}`),
 
+  complianceThresholds: () =>
+    api.get<{ count: number; thresholds: ComplianceThreshold[] }>("/api/alerts/thresholds"),
+  createComplianceThreshold: (payload: ComplianceThresholdCreate) =>
+    api.post<ComplianceThreshold>("/api/alerts/thresholds", payload),
+  updateComplianceThreshold: (id: string, payload: Partial<ComplianceThresholdCreate>) =>
+    api.patch<ComplianceThreshold>(`/api/alerts/thresholds/${id}`, payload),
+  deleteComplianceThreshold: (id: string) => api.delete(`/api/alerts/thresholds/${id}`),
+
   pushVapidPublicKey: () => api.get<{ public_key: string }>("/api/alerts/push/vapid-public-key"),
   pushSubscribe: (payload: { endpoint: string; keys: { p256dh: string; auth: string }; user_agent?: string }) =>
     api.post<{ status: string; id: string }>("/api/alerts/push/subscribe", payload),
@@ -1546,8 +1605,14 @@ export const endpoints = {
     api.get<{ current_config: string | null; proposed_config: string | null; current_config_hash: string | null; proposed_config_hash: string | null }>(
       `/api/change-requests/${id}/configs`,
     ),
-  createChangeRequest: (deviceId: string, proposedConfig: string) =>
-    api.post<ChangeRequest>("/api/change-requests", { device_id: deviceId, proposed_config: proposedConfig }),
+  /** Send a remediation DELTA as `snippet` -- the backend merges it onto the device's current config. */
+  createChangeRequest: (deviceId: string, snippet: string) =>
+    api.post<ChangeRequest>("/api/change-requests", { device_id: deviceId, snippet }),
+  changeRequestDeployPlan: (id: string) => api.get<DeployPlan>(`/api/change-requests/${id}/deploy-plan`),
+  previewChangeRequestEdit: (id: string, body: { snippet?: string; proposed_config?: string }) =>
+    api.post<EditPreview>(`/api/change-requests/${id}/preview-edit`, body),
+  editChangeRequest: (id: string, body: { snippet?: string; proposed_config?: string }) =>
+    api.patch<ChangeRequest>(`/api/change-requests/${id}`, body),
   approveChangeRequest: (id: string) => api.post<ChangeRequest>(`/api/change-requests/${id}/approve`),
   rejectChangeRequest: (id: string, reason: string) =>
     api.post<ChangeRequest>(`/api/change-requests/${id}/reject`, { reason }),

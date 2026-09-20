@@ -6,6 +6,7 @@ installed, degrading to a clean DeploymentResult(success=False).
 """
 from __future__ import annotations
 
+import os
 from typing import Dict, List
 
 from app.models.db import Device
@@ -48,19 +49,23 @@ class SSHDeployer(BaseDeployer):
             return DeploymentResult(success=False, error="Device has no management address/hostname to connect to")
 
         secret = credentials.secret
-        conn_params = {
-            "device_type": device_type,
-            "host": management_address,
-            "username": secret.get("username"),
-            "password": secret.get("password"),
-            "secret": secret.get("enable_password", ""),
-            "timeout": int(secret.get("timeout", 20)),
-            "port": int(secret.get("port", 22)),
-            "ssh_config_file": "/opt/NullRoute/backend/.ssh_config",
-        }
+        conn_params = _conn_params(device_type, management_address, secret)
+        is_junos = device_type == "juniper_junos"
 
         try:
             with ConnectHandler(**conn_params) as conn:
+                if is_junos:
+                    # Junos needs an explicit commit (save_config() is not
+                    # implemented and used to be silently skipped, so nothing
+                    # ever landed). `commit confirmed` auto-reverts the device
+                    # if we lose it; confirm_commit() finalises after verify.
+                    output = conn.send_config_set(config_lines, read_timeout=90, exit_config_mode=False)
+                    output += "\n" + conn.commit(confirm=True, confirm_delay=JUNOS_CONFIRM_MINUTES, comment="NetSecAuditor change request")
+                    try:
+                        conn.exit_config_mode()
+                    except Exception:  # noqa: BLE001
+                        pass
+                    return DeploymentResult(success=True, output=output, pending_confirm=True)
                 output = conn.send_config_set(config_lines, read_timeout=90)
                 try:
                     conn.save_config()
@@ -72,3 +77,43 @@ class SSHDeployer(BaseDeployer):
             return DeploymentResult(success=False, error=redact_secret_values(f"Connection timed out: {e}", secret))
 
         return DeploymentResult(success=True, output=output)
+
+    def confirm_commit(self, device: Device, credentials: DeviceCredentials) -> DeploymentResult:
+        if not NETMIKO_AVAILABLE:
+            return DeploymentResult(success=False, transport=self.transport, error="netmiko is not installed")
+        device_type = _VENDOR_DEVICE_TYPE.get((device.vendor or "").lower().replace(" ", "_"))
+        if device_type != "juniper_junos":
+            return DeploymentResult(success=True, transport=self.transport, output="nothing to confirm")
+        secret = credentials.secret
+        addr = getattr(device, "management_address", None) or device.hostname
+        try:
+            with ConnectHandler(**_conn_params(device_type, addr, secret)) as conn:
+                out = conn.commit(comment="NetSecAuditor confirm")
+                try:
+                    conn.exit_config_mode()
+                except Exception:  # noqa: BLE001
+                    pass
+            return DeploymentResult(success=True, transport=self.transport, output=out)
+        except Exception as e:  # noqa: BLE001
+            return DeploymentResult(success=False, transport=self.transport,
+                                    error=redact_secret_values(f"Commit confirm failed: {e}", secret))
+
+
+# Minutes the device waits for confirmation before auto-reverting (Junos).
+JUNOS_CONFIRM_MINUTES = int(os.getenv("JUNOS_COMMIT_CONFIRM_MINUTES", "5"))
+
+
+def _conn_params(device_type: str, host: str, secret: dict) -> dict:
+    params = {
+        "device_type": device_type,
+        "host": host,
+        "username": secret.get("username"),
+        "password": secret.get("password"),
+        "secret": secret.get("enable_password", ""),
+        "timeout": int(secret.get("timeout", 20)),
+        "port": int(secret.get("port", 22)),
+    }
+    ssh_cfg = os.getenv("SSH_CONFIG_FILE", "/opt/NullRoute/backend/.ssh_config")
+    if ssh_cfg and os.path.exists(ssh_cfg):
+        params["ssh_config_file"] = ssh_cfg
+    return params

@@ -136,29 +136,43 @@ def init_db():
                         ))
                     except Exception:
                         pass
-                        
-                    # Inject Phase 10 / UI Preview merge missing columns gracefully
-                    try:
-                        conn.execute(text("ALTER TABLE device_credential_refs ADD COLUMN secret_data JSON;"))
-                    except Exception:
-                        pass
-                        
-                    columns_to_add = [
-                        "ADD COLUMN snippet TEXT",
-                        "ADD COLUMN merge_style VARCHAR",
-                        "ADD COLUMN merge_confidence FLOAT",
-                        "ADD COLUMN merge_applied JSON",
-                        "ADD COLUMN merge_warnings JSON",
-                        "ADD COLUMN merge_commands JSON",
-                    ]
-                    for col in columns_to_add:
-                        try:
-                            conn.execute(text(f"ALTER TABLE change_requests {col};"))
-                        except Exception:
-                            pass
             except Exception as e:
                 import logging
-                logging.warning(f"Could not convert embedding column to pgvector: {e}")
+                logging.warning(f"pgvector column conversion skipped: {e}")
+
+            _ensure_postgres_columns()
+
+
+# One statement per transaction: on Postgres a failed statement aborts the whole
+# transaction, so batching these (as before) silently skipped everything after
+# the first one that already existed.
+_PG_SCHEMA_PATCHES = [
+    "ALTER TABLE device_credential_refs ADD COLUMN IF NOT EXISTS secret_data JSON",
+    "ALTER TABLE alert_channels ADD COLUMN IF NOT EXISTS secret_data JSON",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS snippet TEXT",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_style VARCHAR",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_confidence VARCHAR",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_applied JSON",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_warnings JSON",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_commands JSON",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS edited_by VARCHAR",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP",
+    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS revision INTEGER DEFAULT 1",
+    # merge_confidence was first created FLOAT but stores HIGH/MEDIUM/LOW
+    "ALTER TABLE change_requests ALTER COLUMN merge_confidence TYPE VARCHAR USING merge_confidence::text",
+    "ALTER TABLE evidence_records ALTER COLUMN scan_id DROP NOT NULL",
+]
+
+
+def _ensure_postgres_columns() -> None:
+    import logging
+    from sqlalchemy import text
+    for stmt in _PG_SCHEMA_PATCHES:
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+        except Exception as e:  # noqa: BLE001
+            logging.warning("schema patch skipped (%s): %s", stmt, str(e).splitlines()[0])
 
 
 def get_db():

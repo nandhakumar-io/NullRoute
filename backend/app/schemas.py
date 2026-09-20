@@ -377,24 +377,29 @@ class NetworkScanJobOut(BaseModel):
         from_attributes = True
 
 class AuditLogOut(BaseModel):
+    # Every column except id/created_at is nullable in the DB (rows written by
+    # audit_service.record_from_user(object_id=None), record_event() without a
+    # hostname, workers, legacy writers...). A required `str` here made ONE null
+    # `resource` 500 the whole /api/audit-log list (ResponseValidationError).
     id: str
-    actor: str
-    action: str
-    resource: str
-    details: Optional[Dict[str, Any]] = None
-    created_at: datetime
+    actor: Optional[str] = None
+    action: Optional[str] = None
+    resource: Optional[str] = None
+    details: Optional[Any] = None
+    created_at: Optional[datetime] = None
+    tenant_id: Optional[str] = None
+    user_id: Optional[str] = None
 
     # Section 12 columns -- populated by app.services.audit_service and
     # consumed directly by the Audit Log page's Who/Object/Source IP/Result
-    # columns. These were missing from this response_model, so FastAPI
-    # silently stripped them from every row even though the DB had them.
+    # columns.
     username: Optional[str] = None
     object_type: Optional[str] = None
     object_id: Optional[str] = None
     source_ip: Optional[str] = None
     result: Optional[str] = None
-    old_value: Optional[Dict[str, Any]] = None
-    new_value: Optional[Dict[str, Any]] = None
+    old_value: Optional[Any] = None
+    new_value: Optional[Any] = None
 
     class Config:
         from_attributes = True

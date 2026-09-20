@@ -113,7 +113,7 @@ def test_gnmi_deploy_end_to_end_through_router(client, monkeypatch):
             return CollectionResult(success=True, vendor="cisco", hostname="r1",
                                      raw_config=GNMI_UPDATE_PAYLOAD, transport="ssh")
 
-    monkeypatch.setattr(depsvc, "get_collector", lambda vendor: _FakeCollector())
+    monkeypatch.setattr(depsvc, "get_collector", lambda vendor, transport=None: _FakeCollector())
     monkeypatch.setattr(depsvc.minio_service, "get_object", lambda key: GNMI_UPDATE_PAYLOAD.encode("utf-8"))
 
     # Mock only the network-touching injector, not the deployer/bridge --
@@ -185,7 +185,7 @@ def test_gnmi_deploy_disabled_flag_returns_explicit_failure_not_silent_fallback(
             return CollectionResult(success=True, vendor="cisco", hostname="r1",
                                      raw_config=GNMI_UPDATE_PAYLOAD, transport="ssh")
 
-    monkeypatch.setattr(depsvc, "get_collector", lambda vendor: _FakeCollector())
+    monkeypatch.setattr(depsvc, "get_collector", lambda vendor, transport=None: _FakeCollector())
     monkeypatch.setattr(depsvc.minio_service, "get_object", lambda key: GNMI_UPDATE_PAYLOAD.encode("utf-8"))
 
     with respx.mock:
@@ -242,7 +242,7 @@ def test_gnmi_deploy_aborts_on_stale_pre_change_hash(client, monkeypatch):
                                      raw_config="hostname r1\n! SOMEONE CHANGED THIS OUT OF BAND",
                                      transport="ssh")
 
-    monkeypatch.setattr(depsvc, "get_collector", lambda vendor: _DriftedCollector())
+    monkeypatch.setattr(depsvc, "get_collector", lambda vendor, transport=None: _DriftedCollector())
     monkeypatch.setattr(depsvc.minio_service, "get_object", lambda key: GNMI_UPDATE_PAYLOAD.encode("utf-8"))
 
     from app.services.config_injection import registry as injector_registry
@@ -310,7 +310,7 @@ def test_gnmi_deploy_marks_drifted_on_post_verification_mismatch(client, monkeyp
                                      raw_config=GNMI_UPDATE_PAYLOAD + "\n! device only partially applied it",
                                      transport="ssh")
 
-    monkeypatch.setattr(depsvc, "get_collector", lambda vendor: _MismatchingCollector())
+    monkeypatch.setattr(depsvc, "get_collector", lambda vendor, transport=None: _MismatchingCollector())
     monkeypatch.setattr(depsvc.minio_service, "get_object", lambda key: GNMI_UPDATE_PAYLOAD.encode("utf-8"))
 
     from app.services.config_injection import registry as injector_registry

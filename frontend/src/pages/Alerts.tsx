@@ -171,7 +171,7 @@ function SimulateEventButtons({ onSimulated }: { onSimulated: () => void }) {
             disabled={busy !== null}
             title={c.title}
             className="px-3 py-2 rounded-lg text-xs font-medium border border-soc-border
-                       bg-soc-panel/60 backdrop-blur text-slate-300
+                       bg-soc-panel text-slate-300
                        hover:border-cyan-600/70 hover:text-cyan-300 hover:bg-cyan-950/30
                        transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -183,7 +183,7 @@ function SimulateEventButtons({ onSimulated }: { onSimulated: () => void }) {
       {error && <div className="mt-3 text-xs text-red-400">{error}</div>}
 
       {result && (
-        <div className="mt-4 mx-auto max-w-lg text-left rounded-lg border border-soc-border bg-soc-panel/50 p-3">
+        <div className="mt-4 mx-auto max-w-lg text-left rounded-lg border border-soc-border bg-soc-panel p-3">
           <div className="text-xs text-slate-300 font-medium mb-1.5">
             {result.category.replace(/_/g, " ")} dispatched — channel results:
           </div>
@@ -308,7 +308,7 @@ function FeedTab() {
       {!loading && alerts.length === 0 && (
         <div
           className="px-8 py-10 rounded-xl text-center border border-dashed border-soc-border
-                     bg-soc-panel/40 backdrop-blur-sm"
+                     bg-soc-panel"
         >
           <div className="text-slate-400 text-sm">
             {status || severity

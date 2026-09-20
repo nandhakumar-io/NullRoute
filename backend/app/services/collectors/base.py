@@ -54,7 +54,8 @@ class CollectionResult:
 
     def __post_init__(self):
         if self.success and self.raw_config and not self.config_hash:
-            self.config_hash = hashlib.sha256(self.raw_config.encode()).hexdigest()
+            from app.services.config_merge import config_hash
+            self.config_hash = config_hash(self.raw_config)
 
 
 class BaseCollector(ABC):

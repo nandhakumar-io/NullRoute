@@ -90,7 +90,7 @@ def to_dict(cr: ChangeRequest) -> Dict[str, Any]:
         "merge_applied": cr.merge_applied,
         "merge_warnings": cr.merge_warnings,
         "merge_commands": cr.merge_commands,
-        "edited_by": cr.edited_by, "edited_at": cr.edited_at, "revision": cr.revision or 1,
+        "edited_by": cr.edited_by, "edited_at": cr.edited_at, "revision": getattr(cr, "revision", 1) or 1,
     }
 
 

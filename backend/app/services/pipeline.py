@@ -558,7 +558,15 @@ def _apply_to_baseline(baseline: SecurityBaselineModel, norm_param) -> None:
             obj = getattr(obj, p)
         setattr(obj, parts[-1], norm_param.value)
     except (AttributeError, ValueError):
-        baseline.extra_parameters[norm_param.normalized_parameter] = norm_param.value
+        # Strip a leading 'extra_parameters.' so the AI/LLM normalization
+        # path lands values at the same clean keys the deterministic parser
+        # now uses (services/parsers.py::_set_dotted) -- e.g. 'domain_name',
+        # not the doubled-up 'extra_parameters.domain_name' this previously
+        # produced, which is exactly the key-mismatch bug already called out
+        # above for the 'unknown_evidence' sentinel.
+        param = norm_param.normalized_parameter
+        key = param[len("extra_parameters."):] if param.startswith("extra_parameters.") else param
+        baseline.extra_parameters[key] = norm_param.value
 
 
 def _queue_for_training(db: Session, vendor: str, interp) -> None:

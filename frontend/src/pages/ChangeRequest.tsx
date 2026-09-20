@@ -7,6 +7,7 @@ import SideBySideDiff from "../components/SideBySideDiff";
 import BatfishDeltaView from "../components/BatfishDeltaView";
 import { Chip, DeploymentPipelineCard, errText, verdictTone } from "../components/DeploymentPipeline";
 import { ApprovalPanel, DecisionSummary, DeployDialog, ReviewTrail } from "../components/ChangeReview";
+import { DecisionPipeline, PipelineStepData, opaTone, batfishTone, riskTone, decisionTone } from "../components/ui";
 
 const TRANSPORTS = [
   { value: "ssh", label: "SSH" },
@@ -21,6 +22,39 @@ const statusText = (s: string) => STATUS_LABEL[s] || s.replace(/_/g, " ").toLowe
 
 const fmt = (v?: string | null) => (v ? new Date(v.endsWith("Z") ? v : v + "Z").toLocaleString() : "—");
 
+// Same "Normalized -> OPA -> Batfish -> Risk -> Decision" pipeline used on the
+// Validation page, so a change request's verdict reads the same visual way
+// instead of as a row of standalone status chips.
+function buildCrSteps(cr: ChangeRequest): PipelineStepData[] {
+  return [
+    { label: "Normalized", value: "MODELED", tone: "pass", sublabel: "Proposed config -> common security model" },
+    { label: "OPA", value: (cr.opa_decision || "PENDING").replace(/_/g, " "), tone: opaTone(cr.opa_decision), sublabel: "Deterministic policy engine" },
+    { label: "Batfish", value: (cr.batfish_status || "N/A").replace(/_/g, " "), tone: batfishTone(cr.batfish_status), sublabel: "Network behavior verification" },
+    { label: "Risk", value: cr.risk_level || "N/A", tone: riskTone(cr.risk_level), sublabel: cr.risk_score != null ? `score ${cr.risk_score}` : undefined },
+    { label: "Decision", value: cr.final_decision || "PENDING", tone: decisionTone(cr.final_decision), sublabel: cr.final_reason || undefined },
+  ];
+}
+
+/** Reveals pipeline steps one at a time instead of snapping to the final
+ * state the instant data arrives, matching the stage-by-stage feel of the
+ * deployment pipeline stepper below it -- so validation doesn't look like
+ * it's skipping straight to the answer. */
+function useProgressiveReveal(total: number, key: string): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    setCount(0);
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      setCount(i);
+      if (i >= total) clearInterval(id);
+    }, 220);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, total]);
+  return count;
+}
+
 /** One consistent block: small caps heading, content, hairline divider. */
 function Section({ title, aside, children }: { title: string; aside?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -32,6 +66,15 @@ function Section({ title, aside, children }: { title: string; aside?: React.Reac
       {children}
     </section>
   );
+}
+
+// Verdict strip for one change request: a small, isolated component (rather
+// than inline in the list .map) so its own reveal-timer hook mounts fresh
+// per change request and doesn't get tangled with its siblings'.
+function CrVerdictPipeline({ cr }: { cr: ChangeRequest }) {
+  const steps = buildCrSteps(cr);
+  const revealed = useProgressiveReveal(steps.length, `${cr.id}-${cr.revision || 1}`);
+  return <DecisionPipeline size="md" steps={steps} revealedCount={revealed} />;
 }
 
 // Before/After config diff, fetched lazily from GET /{id}/configs.
@@ -373,12 +416,11 @@ export default function ChangeRequests() {
                 )}
               </div>
 
-              {/* Validation verdict */}
-              <div className="flex items-center gap-2 flex-wrap mt-3">
-                <Chip tone={verdictTone(cr.opa_decision)}>OPA {cr.opa_decision || "—"}</Chip>
-                <Chip tone={verdictTone(cr.batfish_status)}>Batfish {(cr.batfish_status || "—").replace(/_/g, " ")}</Chip>
-                <Chip tone={verdictTone(cr.risk_level)}>Risk {cr.risk_level || "—"}{cr.risk_score != null && ` (${cr.risk_score})`}</Chip>
-                <Chip tone={verdictTone(cr.final_decision)}>Final decision {cr.final_decision || "—"}</Chip>
+              {/* Validation verdict -- same pipeline visual as the Validation
+                  page (Normalized -> OPA -> Batfish -> Risk -> Decision)
+                  instead of a flat row of text chips. */}
+              <div className="mt-4">
+                <CrVerdictPipeline cr={cr} />
               </div>
               {cr.final_reason && <div className="text-sm ui-muted mt-2">{cr.final_reason}</div>}
 

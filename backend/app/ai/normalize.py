@@ -176,27 +176,33 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
         # can't clear, throwing 500s under the pile-up. Fail fast per attempt
         # instead and let the existing offline heuristic fallback below do
         # its job; both are env-overridable for slower hardware.
-        llm_timeout = float(os.getenv("AI_LLM_TIMEOUT_SECONDS", "20.0"))
-        max_attempts = int(os.getenv("AI_LLM_MAX_ATTEMPTS", "2"))
+        llm_timeout = float(os.getenv("AI_LLM_TIMEOUT_SECONDS", "60.0"))
+        max_attempts = int(os.getenv("AI_LLM_MAX_ATTEMPTS", "3"))
         async with httpx.AsyncClient(timeout=llm_timeout) as client:
             import asyncio
             for attempt in range(max_attempts):
-                resp = await client.post(
-                    f"{OLLAMA_HOST}/generate",
-                    json={
-                        "model": LLM_MODEL,
-                        "system": SYSTEM_PROMPT,
-                        "prompt": user_prompt,
-                        "stream": False,
-                        "format": "json",
-                        "options": {"temperature": 0.1},
-                    },
-                )
-                if resp.status_code == 500 and attempt < max_attempts - 1:
-                    await asyncio.sleep(0.75 * (attempt + 1))
-                    continue
-                resp.raise_for_status()
-                break
+                try:
+                    resp = await client.post(
+                        f"{OLLAMA_HOST}/generate",
+                        json={
+                            "model": LLM_MODEL,
+                            "system": SYSTEM_PROMPT,
+                            "prompt": user_prompt,
+                            "stream": False,
+                            "format": "json",
+                            "options": {"temperature": 0.1},
+                        },
+                    )
+                    if resp.status_code in (500, 502, 503, 504) and attempt < max_attempts - 1:
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                        continue
+                    resp.raise_for_status()
+                    break
+                except httpx.RequestError as req_e:
+                    if attempt < max_attempts - 1:
+                        await asyncio.sleep(1.0 * (attempt + 1))
+                        continue
+                    raise req_e
             text = resp.json().get("response", "{}")
             parsed = json.loads(text)
             

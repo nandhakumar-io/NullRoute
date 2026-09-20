@@ -224,7 +224,11 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
     _semaphore = asyncio.Semaphore(20)
 
     async def _generate(f: Finding) -> Dict[str, Any]:
-        template = remediation_templates.get_template(f.control_id, vendor)
+        # Match the template to this device's actual OS family (e.g. don't
+        # hand back IOS-XE syntax for an NX-OS or IOS-XR device just because
+        # both are "Cisco") -- see remediation_templates.get_template's
+        # resolution order for exactly how "correct version" is decided.
+        template = remediation_templates.get_template(f.control_id, vendor, os_family)
         if template:
             has_placeholder = any("<" in c and ">" in c for c in template.commands)
             cli_steps = list(template.commands)

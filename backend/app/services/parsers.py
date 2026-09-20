@@ -49,12 +49,22 @@ def set_or_append_dotted(model: SecurityBaselineModel, dotted_path: str, value, 
 def _rules_cisco() -> List[Rule]:
     return [
         (re.compile(r"^hostname\s+(\S+)", re.M), "device.hostname", lambda m: m.group(1)),
+        # `version 17.9` / `version 15.2` etc -- the first line of an IOS/IOS-XE
+        # running-config. This is the ONLY reliable in-band signal of the
+        # device's OS/firmware version, so the LLM/AI normalization stage and
+        # remediation template selection (remediation_templates.get_template)
+        # can key off the device's *actual* release rather than assuming
+        # every Cisco box is the same IOS-XE train.
+        (re.compile(r"^version\s+([\w.()]+)\s*$", re.M), "device.version", lambda m: m.group(1)),
         (re.compile(r"^ip domain-name\s+(\S+)", re.M), "extra_parameters.domain_name", lambda m: m.group(1)),
         (re.compile(r"^ip ssh version\s+(\d)", re.M), "management.ssh.version", lambda m: int(m.group(1))),
         (re.compile(r"^ip ssh time-out\s+(\d+)", re.M), "management.ssh.idle_timeout", lambda m: int(m.group(1)) * 60),
+        (re.compile(r"^ip ssh authentication-retries\s+(\d+)", re.M), "extra_parameters.ssh_auth_retries", lambda m: int(m.group(1))),
         (re.compile(r"^line vty.*\n(?:.*\n)*?\s*transport input (\S+)", re.M), "management.ssh.enabled",
          lambda m: "ssh" in m.group(1) and "telnet" not in m.group(1)),
         (re.compile(r"^line vty.*\n(?:.*\n)*?\s*transport input.*telnet", re.M), "management.telnet.enabled", lambda m: True),
+        (re.compile(r"^line vty.*\n(?:.*\n)*?\s*exec-timeout\s+(\d+)\s+(\d+)", re.M), "extra_parameters.vty_exec_timeout_seconds",
+         lambda m: int(m.group(1)) * 60 + int(m.group(2))),
         (re.compile(r"^no ip http server", re.M), "management.http.enabled", lambda m: False),
         (re.compile(r"^ip http server\b(?!.*secure)", re.M), "management.http.enabled", lambda m: True),
         (re.compile(r"^ip http secure-server", re.M), "management.http.https_only", lambda m: True),
@@ -62,11 +72,22 @@ def _rules_cisco() -> List[Rule]:
         (re.compile(r"^logging trap (\S+)", re.M), "logging.log_level", lambda m: m.group(1)),
         (re.compile(r"^aaa new-model", re.M), "aaa.enabled", lambda m: True),
         (re.compile(r"^aaa authentication login default (\S+)", re.M), "aaa.authentication_method", lambda m: m.group(1)),
+        (re.compile(r"^aaa accounting (?:exec|commands \d+) default.*group\s+\S+", re.M), "aaa.accounting_enabled", lambda m: True),
+        (re.compile(r"^login block-for\s+\d+\s+attempts\s+\d+\s+within\s+\d+", re.M), "extra_parameters.login_brute_force_protection", lambda m: True),
         (re.compile(r"^snmp-server community (\S+)", re.M), "snmp.community_strings_default",
          lambda m: m.group(1).lower() in ("public", "private")),
+        (re.compile(r"^snmp-server (?:host|user).*\bv3\b", re.M), "snmp.version", lambda m: "3"),
         (re.compile(r"^service password-encryption", re.M), "password_policy.encrypted_storage", lambda m: True),
+        (re.compile(r"^enable secret", re.M), "extra_parameters.enable_secret_configured", lambda m: True),
         (re.compile(r"^banner (?:motd|login)", re.M), "management.banner_configured", lambda m: True),
         (re.compile(r"^ntp server\s+(\S+)", re.M), "logging.ntp_synced", lambda m: True),
+        (re.compile(r"^ntp authenticate", re.M), "extra_parameters.ntp_authenticated", lambda m: True),
+        (re.compile(r"^no cdp run", re.M), "extra_parameters.cdp_disabled", lambda m: True),
+        (re.compile(r"^no ip source-route", re.M), "extra_parameters.source_routing_disabled", lambda m: True),
+        (re.compile(r"^no ip proxy-arp", re.M), "extra_parameters.proxy_arp_disabled", lambda m: True),
+        (re.compile(r"^no service pad", re.M), "extra_parameters.pad_service_disabled", lambda m: True),
+        (re.compile(r"^ip ssh server algorithm encryption\s+(.+)", re.M), "crypto.ssh_key_exchange_algorithms",
+         lambda m: [a.strip() for a in m.group(1).split()]),
     ]
 
 
@@ -86,7 +107,21 @@ def _rules_juniper() -> List[Rule]:
         (re.compile(r"^set snmp community (\S+)", re.M), "snmp.community_strings_default",
          lambda m: m.group(1).strip('"').lower() in ("public", "private")),
         (re.compile(r"^set system ntp server\s+(\S+)", re.M), "logging.ntp_synced", lambda m: True),
+        (re.compile(r"^set system ntp authentication-key", re.M), "extra_parameters.ntp_authenticated", lambda m: True),
         (re.compile(r"^set system login message", re.M), "management.banner_configured", lambda m: True),
+        (re.compile(r"^set system login retry-options tries-before-disconnect\s+(\d+)", re.M),
+         "extra_parameters.login_brute_force_protection", lambda m: True),
+        (re.compile(r"^set system services ssh root-login deny", re.M), "extra_parameters.ssh_root_login_denied", lambda m: True),
+        (re.compile(r"^delete system services ssh protocol-version v1|^set system services ssh protocol-version v2 only",
+                     re.M), "management.ssh.version", lambda m: 2),
+        (re.compile(r"^set system services ssh connection-limit\s+(\d+)", re.M),
+         "extra_parameters.ssh_connection_limit", lambda m: int(m.group(1))),
+        (re.compile(r"^set system syslog host \S+ structured-data", re.M), "extra_parameters.structured_syslog", lambda m: True),
+        (re.compile(r"^set system accounting events (login|change-log|interactive-commands)", re.M), "aaa.accounting_enabled", lambda m: True),
+        (re.compile(r"^set system radius-server", re.M), "extra_parameters.radius_configured", lambda m: True),
+        (re.compile(r"^set system tacplus-server", re.M), "extra_parameters.tacacs_configured", lambda m: True),
+        (re.compile(r"^set system services web-management https system-generated-certificate", re.M),
+         "management.http.https_only", lambda m: True),
         # Flattened JSON/XML rules to prevent AI hallucination
         (re.compile(r"^name\s+(?!admin|any|messages|\*|authorization|interactive-commands|public)(ge|xe|et|-|mgmt|PROXMOX|STUDENT|0)[^\s]*", re.I), "interfaces.name", lambda m: m.group(0).split()[-1]),
         (re.compile(r"^port-mode\s+access", re.M), "interfaces.port_security_enabled", lambda m: True),
@@ -99,6 +134,13 @@ def _rules_juniper() -> List[Rule]:
 
 def _rules_fortios() -> List[Rule]:
     return [
+        # FortiOS full-configuration exports (`show full-configuration`) start
+        # with a `#config-version=FGVM64-7.4.1-FW-build2464-...` header --
+        # the one reliable in-band FortiOS firmware/build signal, so it's
+        # captured for the same reason the Cisco `version` line is: so
+        # normalization and remediation template selection know the real
+        # device version instead of assuming a single "FortiOS" baseline.
+        (re.compile(r"^#config-version=\S*?-(\d+\.\d+\.\d+)-", re.M), "device.version", lambda m: m.group(1)),
         (re.compile(r"set hostname\s+\"?([\w-]+)\"?", re.M), "device.hostname", lambda m: m.group(1)),
         (re.compile(r"set admin-ssh-port\s+(\d+)", re.M), "management.ssh.port", lambda m: int(m.group(1))),
         (re.compile(r"set admin-ssh-v1\s+disable", re.M), "management.ssh.version", lambda m: 2),
@@ -109,6 +151,15 @@ def _rules_fortios() -> List[Rule]:
         (re.compile(r"set server\s+\"?([\d.]+)\"?\s*\n\s*set status enable", re.M), "logging.remote_syslog", lambda m: True),
         (re.compile(r"set password-policy\s+enable", re.M), "password_policy.complexity_required", lambda m: True),
         (re.compile(r"set minimum-length\s+(\d+)", re.M), "password_policy.min_length", lambda m: int(m.group(1))),
+        (re.compile(r"set strong-crypto\s+enable", re.M), "crypto.weak_ciphers_disabled", lambda m: True),
+        (re.compile(r"set admin-lockout-threshold\s+(\d+)", re.M), "extra_parameters.login_brute_force_protection", lambda m: True),
+        (re.compile(r"set admin-lockout-duration\s+(\d+)", re.M), "extra_parameters.lockout_duration_seconds", lambda m: int(m.group(1))),
+        (re.compile(r"set ssh-hostkey-algo\b|set ssh-kex-algo\b|set ssh-enc-algo\b", re.M), "extra_parameters.ssh_algorithms_hardened", lambda m: True),
+        (re.compile(r"set fail-open\s+disable", re.M), "extra_parameters.ips_fail_open_disabled", lambda m: True),
+        (re.compile(r"set two-factor\s+\S+", re.M), "extra_parameters.mfa_configured", lambda m: True),
+        (re.compile(r"set fortitoken-cloud\s+enable|set two-factor\s+fortitoken", re.M), "extra_parameters.mfa_configured", lambda m: True),
+        (re.compile(r"set alertemail\s+enable|set fds-license-expiring-days", re.M), "extra_parameters.alerting_configured", lambda m: True),
+        (re.compile(r"set auto-update\s+enable|set schedule-update\s+enable", re.M), "extra_parameters.auto_updates_enabled", lambda m: True),
     ]
 
 
@@ -197,7 +248,18 @@ VENDOR_RULES = {
 def _set_dotted(model: SecurityBaselineModel, dotted_path: str, value) -> bool:
     """Set a dotted path like 'management.ssh.version' on the baseline model.
     Returns True if the field is a known typed field; False if it should go
-    into extra_parameters instead (used by the AI pipeline for novel params)."""
+    into extra_parameters instead (used by the AI pipeline for novel params).
+
+    Falls back to extra_parameters on either AttributeError (walking into a
+    plain dict, e.g. `extra_parameters.foo`) or ValueError (pydantic v2
+    rejecting setattr on an undefined field on a typed model) -- catching
+    only AttributeError silently let an undotted, non-existent field name
+    crash the whole parse. The fallback key always has any leading
+    'extra_parameters.' stripped so the value lands at
+    baseline.extra_parameters['foo'], not the redundant/inconsistent
+    baseline.extra_parameters['extra_parameters.foo'] (see the equivalent
+    fix in services/pipeline.py::_apply_to_baseline for the AI-normalization
+    path, which hit the same bug)."""
     parts = dotted_path.split(".")
     obj = model
     try:
@@ -205,8 +267,9 @@ def _set_dotted(model: SecurityBaselineModel, dotted_path: str, value) -> bool:
             obj = getattr(obj, p)
         setattr(obj, parts[-1], value)
         return True
-    except AttributeError:
-        model.extra_parameters[dotted_path] = value
+    except (AttributeError, ValueError):
+        key = dotted_path[len("extra_parameters."):] if dotted_path.startswith("extra_parameters.") else dotted_path
+        model.extra_parameters[key] = value
         return False
 
 

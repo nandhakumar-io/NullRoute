@@ -297,11 +297,26 @@ function RollbackAction({ d, crId, canRollback, onChanged }: {
 
   return (
     <div className={`ui-callout ${recommended ? "ui-tone-bad" : "ui-tone-idle"} space-y-2`}>
-      <div className="font-bold">{recommended ? "Rollback recommended" : "Rollback available"}</div>
+      <div className="font-bold">
+        {recommended ? "Hash mismatch — rollback recommended" : "Rollback available"}
+      </div>
       <div className="ui-callout-body text-sm">
-        {recommended
-          ? "Post-change verification failed, so a rollback-required alert was raised. Nothing reverts automatically — an operator must decide."
-          : "This deployment verified successfully. You can still revert it to the pre-change config; the revert is verified by re-collecting and hashing the device."}
+        {recommended ? (
+          <>
+            The device's post-change config hash doesn't match what verification expected, so a
+            rollback-required alert was raised. Rolling back pushes a revert derived from the{" "}
+            <strong>pre-deployment config hash</strong> (<span className="ui-mono">{short(d.observed_pre_hash)}</span>) —
+            the snapshot collected from this device immediately before the change was pushed — and re-hashes
+            the device afterward to confirm it actually landed back on that state. Nothing reverts automatically;
+            an operator must decide.
+          </>
+        ) : (
+          <>
+            This deployment verified successfully. You can still revert it to the pre-deployment config
+            (hash <span className="ui-mono">{short(d.observed_pre_hash)}</span>, collected before this change was
+            pushed); the revert is verified by re-collecting and hashing the device afterward.
+          </>
+        )}
       </div>
       {!canRollback ? (
         <div className="text-sm italic ui-muted">Requires the admin or operator role.</div>

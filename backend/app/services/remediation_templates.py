@@ -56,11 +56,44 @@ def _normalize_vendor(vendor: Optional[str]) -> str:
 # deliberately left out so `remediation_service` falls back to prose
 # guidance instead of fabricating a plausible-looking placeholder.
 # ---------------------------------------------------------------------------
-_TEMPLATES: Dict[Tuple[str, str], CLITemplate] = {}
+def _normalize_os_family(os_family: Optional[str]) -> str:
+    """Collapse cosmetic variants ('IOS-XE', 'ios_xe', 'IOSXE') onto one key
+    so a device's recorded `device.os` string lines up with how templates
+    register themselves, without pretending two genuinely different OS
+    families (IOS-XE vs NX-OS vs IOS-XR) are interchangeable."""
+    v = (os_family or "").strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    aliases = {
+        "iosxe": "iosxe", "ios": "iosxe", "cisco": "iosxe",
+        "nxos": "nxos", "iosxr": "iosxr",
+        "junos": "junos", "juniper": "junos",
+        "fortios": "fortios", "forti": "fortios",
+        "eos": "eos", "arista": "eos",
+        "panos": "panos",
+    }
+    return aliases.get(v, v)
+
+
+# Keyed by (control_id, vendor, os_family) so a template's syntax is only
+# ever handed back for the OS family it was actually written for -- keying
+# on vendor alone risks silently returning e.g. Cisco IOS-XE syntax for a
+# Cisco NX-OS or IOS-XR device once more OS-specific templates are added.
+_TEMPLATES: Dict[Tuple[str, str, str], CLITemplate] = {}
+# Records which (control_id, vendor) pairs have exactly one os_family
+# registered -- those remain safe to serve as a last-resort fallback when
+# the device's own os_family isn't known or doesn't match anything, without
+# risking a cross-OS syntax mismatch (see get_template below).
+_SINGLE_OS_FAMILY: Dict[Tuple[str, str], str] = {}
 
 
 def _register(t: CLITemplate) -> None:
-    _TEMPLATES[(t.control_id, _normalize_vendor(t.vendor))] = t
+    vendor_key = _normalize_vendor(t.vendor)
+    os_key = _normalize_os_family(t.os_family)
+    _TEMPLATES[(t.control_id, vendor_key, os_key)] = t
+    pair = (t.control_id, vendor_key)
+    if pair in _SINGLE_OS_FAMILY and _SINGLE_OS_FAMILY[pair] != os_key:
+        _SINGLE_OS_FAMILY[pair] = ""  # more than one OS family now -- no safe fallback
+    else:
+        _SINGLE_OS_FAMILY.setdefault(pair, os_key)
 
 
 # CIS-TELNET-001 / STIG-NET-001 -- disable Telnet, require SSH on VTY lines
@@ -193,9 +226,37 @@ _register(CLITemplate(
 ))
 
 
-def get_template(control_id: str, vendor: Optional[str]) -> Optional[CLITemplate]:
-    return _TEMPLATES.get((control_id, _normalize_vendor(vendor)))
+def get_template(control_id: str, vendor: Optional[str], os_family: Optional[str] = None) -> Optional[CLITemplate]:
+    """Look up a validated CLI template for this finding, matched to the
+    device's actual OS family/version wherever that's known.
+
+    `os_family` should come from the device's real recorded OS (e.g.
+    `SecurityBaselineModel.device.os` / `Device.os`, populated during
+    normalization -- see services/parsers.py's `device.version` capture and
+    services/vendor_detect.py) -- never guessed here. Resolution order:
+
+      1. Exact (control_id, vendor, os_family) match -- the template written
+         for this device's actual OS.
+      2. If os_family is unknown/doesn't match, but exactly one os_family is
+         registered for this (control_id, vendor), that one is returned --
+         safe because there's no other OS-specific variant it could be
+         wrong against.
+      3. Otherwise None: multiple OS-specific templates exist for this
+         vendor and none matches this device's OS, so returning any one of
+         them risks handing back the wrong syntax. Callers fall back to
+         prose guidance (see remediation_service.py) rather than guess.
+    """
+    vendor_key = _normalize_vendor(vendor)
+    os_key = _normalize_os_family(os_family)
+    if os_key:
+        exact = _TEMPLATES.get((control_id, vendor_key, os_key))
+        if exact:
+            return exact
+    fallback_os = _SINGLE_OS_FAMILY.get((control_id, vendor_key))
+    if fallback_os:
+        return _TEMPLATES.get((control_id, vendor_key, fallback_os))
+    return None
 
 
-def has_template(control_id: str, vendor: Optional[str]) -> bool:
-    return (control_id, _normalize_vendor(vendor)) in _TEMPLATES
+def has_template(control_id: str, vendor: Optional[str], os_family: Optional[str] = None) -> bool:
+    return get_template(control_id, vendor, os_family) is not None

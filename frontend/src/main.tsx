@@ -12,6 +12,19 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   return <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>;
 }
+
+// Per-page boundary, nested INSIDE the <App> layout route rather than
+// wrapping the whole <Routes> tree. A page that throws during render used
+// to take the entire shell down with it -- sidebar, header, everything --
+// because the only ErrorBoundary sat above <App> itself, so React had
+// nothing left to unmount but the whole tree. Any single page (say,
+// DeviceDetail rendering bad data returned right after a scan) crashing
+// no longer blanks navigation for the rest of the app; it shows the error
+// card in the content pane and the sidebar stays usable to navigate away.
+function PageErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return <ErrorBoundary key={location.pathname}>{children}</ErrorBoundary>;
+}
 import Login from "./pages/Login";
 import { AuthProvider, ProtectedRoute } from "./context/AuthContext";
 import Dashboard from "./pages/Dashboard";
@@ -60,41 +73,41 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<ProtectedRoute><App /></ProtectedRoute>}>
-          <Route index element={<Dashboard />} />
-          <Route path="devices" element={<Devices />} />
-          <Route path="devices/:deviceId" element={<DeviceDetail />} />
-          <Route path="backups" element={<Backups />} />
-          <Route path="devices/:deviceId/compare" element={<SnapshotCompare />} />
-          <Route path="discovery" element={<NetworkScans initialTab="discovery" />} />
-          <Route path="network-scans" element={<NetworkScans />} />
-          <Route path="network-scans/:scanJobId" element={<NetworkScanDetail />} />
-          <Route path="config-search" element={<ConfigSearch />} />
-          <Route path="topology" element={<Topology />} />
-          <Route path="ingestion" element={<Ingestion />} />
-          <Route path="scans/:scanId" element={<ScanDetail />} />
-          <Route path="scans/:scanId/batfish" element={<BatfishAnalysis />} />
-          <Route path="scans/:scanId/opa" element={<PolicyEvaluation />} />
-          <Route path="validation" element={<Validation />} />
-          <Route path="compliance" element={<Compliance />} />
-          <Route path="findings/:findingId" element={<FindingDetail />} />
-          <Route path="training" element={<TrainingCenter />} />
-          <Route path="reports" element={<Reports />} />
-          <Route path="report-verification" element={<ReportVerification />} />
-          <Route path="knowledge-base" element={<KnowledgeBase />} />
-          <Route path="system/health" element={<SystemHealth />} />
-          <Route path="observability" element={<Observability />} />
-          <Route path="evidence" element={<EvidenceLedger />} />
-          <Route path="drift" element={<Drift />} />
-          <Route path="schedules" element={<Schedules />} />
-          <Route path="event-triggers" element={<EventTriggers />} />
-          <Route path="alerts" element={<Alerts />} />
-          <Route path="review-queue" element={<ReviewQueue />} />
-          <Route path="ai-analysis" element={<AIAnalysisOverview />} />
-          <Route path="audit-log" element={<AuditLog />} />
-          <Route path="gns3-integration" element={<Gns3Integration />} />
-          <Route path="control-library" element={<ControlLibrary />} />
-          <Route path="control-library/:controlId" element={<ControlDetail />} />
-          <Route path="vulnerabilities" element={<VulnerabilityDashboard />} />
+          <Route index element={<PageErrorBoundary><Dashboard /></PageErrorBoundary>} />
+          <Route path="devices" element={<PageErrorBoundary><Devices /></PageErrorBoundary>} />
+          <Route path="devices/:deviceId" element={<PageErrorBoundary><DeviceDetail /></PageErrorBoundary>} />
+          <Route path="backups" element={<PageErrorBoundary><Backups /></PageErrorBoundary>} />
+          <Route path="devices/:deviceId/compare" element={<PageErrorBoundary><SnapshotCompare /></PageErrorBoundary>} />
+          <Route path="discovery" element={<PageErrorBoundary><NetworkScans initialTab="discovery" /></PageErrorBoundary>} />
+          <Route path="network-scans" element={<PageErrorBoundary><NetworkScans /></PageErrorBoundary>} />
+          <Route path="network-scans/:scanJobId" element={<PageErrorBoundary><NetworkScanDetail /></PageErrorBoundary>} />
+          <Route path="config-search" element={<PageErrorBoundary><ConfigSearch /></PageErrorBoundary>} />
+          <Route path="topology" element={<PageErrorBoundary><Topology /></PageErrorBoundary>} />
+          <Route path="ingestion" element={<PageErrorBoundary><Ingestion /></PageErrorBoundary>} />
+          <Route path="scans/:scanId" element={<PageErrorBoundary><ScanDetail /></PageErrorBoundary>} />
+          <Route path="scans/:scanId/batfish" element={<PageErrorBoundary><BatfishAnalysis /></PageErrorBoundary>} />
+          <Route path="scans/:scanId/opa" element={<PageErrorBoundary><PolicyEvaluation /></PageErrorBoundary>} />
+          <Route path="validation" element={<PageErrorBoundary><Validation /></PageErrorBoundary>} />
+          <Route path="compliance" element={<PageErrorBoundary><Compliance /></PageErrorBoundary>} />
+          <Route path="findings/:findingId" element={<PageErrorBoundary><FindingDetail /></PageErrorBoundary>} />
+          <Route path="training" element={<PageErrorBoundary><TrainingCenter /></PageErrorBoundary>} />
+          <Route path="reports" element={<PageErrorBoundary><Reports /></PageErrorBoundary>} />
+          <Route path="report-verification" element={<PageErrorBoundary><ReportVerification /></PageErrorBoundary>} />
+          <Route path="knowledge-base" element={<PageErrorBoundary><KnowledgeBase /></PageErrorBoundary>} />
+          <Route path="system/health" element={<PageErrorBoundary><SystemHealth /></PageErrorBoundary>} />
+          <Route path="observability" element={<PageErrorBoundary><Observability /></PageErrorBoundary>} />
+          <Route path="evidence" element={<PageErrorBoundary><EvidenceLedger /></PageErrorBoundary>} />
+          <Route path="drift" element={<PageErrorBoundary><Drift /></PageErrorBoundary>} />
+          <Route path="schedules" element={<PageErrorBoundary><Schedules /></PageErrorBoundary>} />
+          <Route path="event-triggers" element={<PageErrorBoundary><EventTriggers /></PageErrorBoundary>} />
+          <Route path="alerts" element={<PageErrorBoundary><Alerts /></PageErrorBoundary>} />
+          <Route path="review-queue" element={<PageErrorBoundary><ReviewQueue /></PageErrorBoundary>} />
+          <Route path="ai-analysis" element={<PageErrorBoundary><AIAnalysisOverview /></PageErrorBoundary>} />
+          <Route path="audit-log" element={<PageErrorBoundary><AuditLog /></PageErrorBoundary>} />
+          <Route path="gns3-integration" element={<PageErrorBoundary><Gns3Integration /></PageErrorBoundary>} />
+          <Route path="control-library" element={<PageErrorBoundary><ControlLibrary /></PageErrorBoundary>} />
+          <Route path="control-library/:controlId" element={<PageErrorBoundary><ControlDetail /></PageErrorBoundary>} />
+          <Route path="vulnerabilities" element={<PageErrorBoundary><VulnerabilityDashboard /></PageErrorBoundary>} />
         </Route>
       </Routes>
       </RouteErrorBoundary>

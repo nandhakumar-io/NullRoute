@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { endpoints, Scan, Device } from "../api";
 import {
@@ -29,6 +29,29 @@ function buildSteps(s: Scan): PipelineStepData[] {
     { label: "Risk", value: s.risk_level || "N/A", tone: riskTone(s.risk_level), sublabel: s.risk_score != null ? `score ${s.risk_score}` : undefined },
     { label: "Decision", value: s.final_decision || "PENDING", tone: decisionTone(s.final_decision), sublabel: s.final_reason || undefined },
   ];
+}
+
+/** Row-level pipeline: reveals Normalized -> OPA -> Batfish -> Risk -> Decision
+ * one step at a time on first mount instead of rendering every step's final
+ * tone the instant the scan list loads, so the validation flow actually
+ * reads as a pipeline rather than a wall of dots that all light up at once. */
+function ScanPipelineRow({ scan }: { scan: Scan }) {
+  const steps = useMemo(() => buildSteps(scan), [scan]);
+  const [revealed, setRevealed] = useState(0);
+  const seen = useRef(false);
+  useEffect(() => {
+    if (seen.current) { setRevealed(steps.length); return; }
+    seen.current = true;
+    let i = 0;
+    const id = setInterval(() => {
+      i += 1;
+      setRevealed(i);
+      if (i >= steps.length) clearInterval(id);
+    }, 220);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <DecisionPipeline size="sm" steps={steps} revealedCount={revealed} />;
 }
 
 export default function Validation() {
@@ -204,7 +227,7 @@ export default function Validation() {
                   pipeline dots that show the same two values a third time.
                   Cut straight to the pipeline; it's the one place that adds
                   information (OPA/Batfish/Risk), not just re-states it. */}
-              <DecisionPipeline size="sm" steps={buildSteps(s)} />
+              <ScanPipelineRow scan={s} />
 
               {needsRemediation && (
                 <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-soc-border">

@@ -1637,12 +1637,22 @@ export const endpoints = {
   deviceComplianceHistory: (deviceId: string) =>
     api.get<CompliancePostureHistory>(`/api/devices/${deviceId}/compliance/history`),
   auditDeviceViaGateway: (deviceId: string) => api.post(`/api/devices/${deviceId}/audit`),
-  gatewayGetFacts: (deviceId: string, protocol?: string) =>
+  gatewayGetFacts: (deviceId: string, protocol?: string | null) =>
     api.post(`/api/devices/${deviceId}/gateway-get-facts`, { protocol }),
-  gatewayGetInterfaces: (deviceId: string, protocol?: string) =>
+  gatewayGetInterfaces: (deviceId: string, protocol?: string | null) =>
     api.post(`/api/devices/${deviceId}/gateway-get-interfaces`, { protocol }),
-  gatewayGetHealthMetrics: (deviceId: string, protocol?: string) =>
+  gatewayGetHealthMetrics: (deviceId: string, protocol?: string | null) =>
     api.post(`/api/devices/${deviceId}/gateway-get-health-metrics`, { protocol }),
+  // Was missing entirely -- DeviceDetail.tsx's pollLiveTelemetry() called
+  // endpoints.gatewayGetRoutes(...) (see backend routers/device_gateway.py's
+  // POST /{device_id}/gateway-get-routes, GET_ROUTES) even though no such
+  // method existed here. Calling an undefined property as a function throws
+  // synchronously the instant "Live Telemetry" is polled; the surrounding
+  // try/catch there kept it from crashing the page, but the panel could
+  // never actually show a routing table -- it always failed with
+  // "gatewayGetRoutes is not a function".
+  gatewayGetRoutes: (deviceId: string, protocol?: string | null) =>
+    api.post(`/api/devices/${deviceId}/gateway-get-routes`, { protocol }),
   gatewayGetNeighbors: (deviceId: string, protocol?: string) =>
     api.post<{ success: boolean; normalized_data?: { neighbors?: any[]; neighbor_count?: number }; links_stored?: number; error_message?: string }>(
       `/api/devices/${deviceId}/gateway-get-neighbors`, { protocol },

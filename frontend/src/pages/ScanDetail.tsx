@@ -61,52 +61,73 @@ export default function ScanDetail() {
   const [latestChangeRequest, setLatestChangeRequest] = useState<ChangeRequest | null | undefined>(undefined);
   const [latestDeployment, setLatestDeployment] = useState<DeploymentRecord | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   useEffect(() => {
     let isActive = true;
     let timeoutId: number;
+    let consecutiveErrors = 0;
+    const MAX_RETRIES = 5;
 
     async function tick() {
       if (!isActive || !scanId) return;
       try {
+        // The scan itself is the one call everything else depends on, so it
+        // goes first and its errors are handled specially (a 404 here means
+        // the scan genuinely doesn't exist -- retrying forever every 3s just
+        // hammers the backend and leaves the page stuck on a spinner, which
+        // is what made a bad/expired scan id look like "the app is frozen").
         const scanRes = await endpoints.scan(scanId);
         if (!isActive) return;
+        consecutiveErrors = 0;
+        setLoadError(null);
         setScan(scanRes.data);
 
         const pipelineDone = ["completed", "review", "blocked"].includes(scanRes.data.status);
 
-        const snaps = await endpoints.deviceSnapshots(scanRes.data.device_id);
-        if (isActive) {
-          setCurrentSnapshot(snaps.data.snapshots.find((s: any) => s.scan_id === scanId));
-          setDeviceHasBaseline(snaps.data.snapshots.some((s: any) => s.is_approved_baseline));
+        // The rest of these are independent of one another -- fetch them in
+        // parallel instead of one after another. Chaining 4-6 sequential
+        // round trips behind every 3s poll is what made this page feel slow
+        // to load and slow to update.
+        const [snapsRes, evRes, aiRes, crRes] = await Promise.allSettled([
+          endpoints.deviceSnapshots(scanRes.data.device_id),
+          endpoints.evidenceList(scanId),
+          endpoints.aiAnalysis(scanId),
+          endpoints.changeRequests({ device_id: scanRes.data.device_id }),
+        ]);
+        if (!isActive) return;
+
+        if (snapsRes.status === "fulfilled") {
+          setCurrentSnapshot(snapsRes.value.data.snapshots.find((s: any) => s.scan_id === scanId));
+          setDeviceHasBaseline(snapsRes.value.data.snapshots.some((s: any) => s.is_approved_baseline));
         }
-
-        const ev = await endpoints.evidenceList(scanId);
-        if (isActive) setEvidence(ev.data[0] ?? null);
-
-        const ai = await endpoints.aiAnalysis(scanId);
-        if (isActive) setAiAnalysis(ai.data);
+        if (evRes.status === "fulfilled") setEvidence(evRes.value.data[0] ?? null);
+        if (aiRes.status === "fulfilled") setAiAnalysis(aiRes.value.data);
 
         // Latest change request for this device (see state comment above) --
         // fetched every tick (not gated on pipelineDone) since approval/
         // deployment can progress well after the scan pipeline itself is done.
-        try {
-          const crRes = await endpoints.changeRequests({ device_id: scanRes.data.device_id });
-          const latest = (crRes.data.change_requests || [])
+        if (crRes.status === "fulfilled") {
+          const latest = (crRes.value.data.change_requests || [])
             .slice()
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-          if (isActive) setLatestChangeRequest(latest || null);
-          if (isActive && latest && (latest.status === "APPROVED" || latest.status === "DEPLOYED" || latest.status === "FAILED")) {
-            const depRes = await endpoints.changeRequestDeployments(latest.id);
-            const deployments = depRes.data.deployments || [];
-            const mostRecent = deployments
-              .slice()
-              .sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime())[0];
-            if (isActive) setLatestDeployment(mostRecent || null);
-          } else if (isActive) {
+          setLatestChangeRequest(latest || null);
+          if (latest && (latest.status === "APPROVED" || latest.status === "DEPLOYED" || latest.status === "FAILED")) {
+            try {
+              const depRes = await endpoints.changeRequestDeployments(latest.id);
+              const deployments = depRes.data.deployments || [];
+              const mostRecent = deployments
+                .slice()
+                .sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime())[0];
+              if (isActive) setLatestDeployment(mostRecent || null);
+            } catch {
+              if (isActive) setLatestDeployment(null);
+            }
+          } else {
             setLatestDeployment(null);
           }
-        } catch {
-          if (isActive) setLatestChangeRequest(null);
+        } else {
+          setLatestChangeRequest(null);
         }
 
         if (pipelineDone) {
@@ -116,11 +137,26 @@ export default function ScanDetail() {
           } catch (e) {
             if (isActive) setRemediations(null);
           }
-        } else {
+        } else if (isActive) {
           timeoutId = window.setTimeout(tick, 3000);
         }
-      } catch (err) {
-        if (isActive) timeoutId = window.setTimeout(tick, 3000);
+      } catch (err: any) {
+        if (!isActive) return;
+        const status = err?.response?.status;
+        if (status === 404) {
+          // Scan genuinely doesn't exist (bad/expired id, or the id we
+          // navigated to was never a real scan) -- stop polling instead of
+          // retrying forever every 3s.
+          setLoadError("Scan not found. It may have been removed, or the link is invalid.");
+          return;
+        }
+        consecutiveErrors += 1;
+        if (consecutiveErrors > MAX_RETRIES) {
+          setLoadError("Couldn't reach the server after several attempts. Check your connection and refresh to try again.");
+          return;
+        }
+        // Back off instead of hammering the backend every 3s on repeated failures.
+        timeoutId = window.setTimeout(tick, 3000 * consecutiveErrors);
       }
     }
 
@@ -228,7 +264,14 @@ export default function ScanDetail() {
   const sectionCls = (idx: number) =>
     `transition-all duration-500 ${sectionReveal > idx ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3 pointer-events-none"}`;
 
-  if (!scan) return <Loading />;
+  if (!scan) {
+    if (loadError) {
+      return (
+        <EmptyState message={loadError} />
+      );
+    }
+    return <Loading />;
+  }
 
   async function handleCreateChangeRequest() {
     if (!scan || !remediations?.remediations?.length) return;
@@ -270,8 +313,27 @@ export default function ScanDetail() {
     setPipelineActionPending(action);
     try {
       const call = action === "pause" ? endpoints.pauseScan : action === "stop" ? endpoints.stopScan : endpoints.resumeScan;
-      await call(scanId);
-      window.location.reload();
+      const res = await call(scanId);
+      // Apply the server's response straight away instead of a full page
+      // reload -- a reload re-fetches every asset and re-runs every effect
+      // on the page just to show a control_state change, which is what made
+      // clicking Pause/Stop feel like it "did nothing" for a second or two.
+      setScan(res.data);
+      // A request (PAUSE_REQUESTED/STOP_REQUESTED) only takes effect once
+      // the in-flight pipeline reaches its next checkpoint, which can land
+      // just after this response comes back. Poll a couple of times, a
+      // second apart, so the badge above flips to PAUSED/STOPPED as soon as
+      // it actually happens rather than waiting for the next 3s tick.
+      for (let i = 0; i < 3; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          const fresh = await endpoints.scan(scanId);
+          setScan(fresh.data);
+          if (fresh.data.control_state !== "PAUSE_REQUESTED" && fresh.data.control_state !== "STOP_REQUESTED") break;
+        } catch {
+          break;
+        }
+      }
     } catch (e: any) {
       alert(e?.response?.data?.detail || `Failed to ${action} the pipeline`);
     } finally {

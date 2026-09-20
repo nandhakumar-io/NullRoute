@@ -461,18 +461,38 @@ async def run_pipeline(
                     db.commit()
 
         # 9. Final scan status ------------------------------------------
+        previous_score = device.last_compliance_score  # before this scan overwrites it
         scan.compliance_score = score
         scan.status = {"PASS": "completed", "REVIEW": "review", "BLOCK": "blocked"}[compliance_decision.decision]
         scan.updated_at = datetime.utcnow()
         device.last_scan_at = datetime.utcnow()
         device.last_compliance_score = score
         db.commit()
+
+        # Compliance-score thresholds -> COMPLIANCE_SCORE_LOW alerts.
+        # Best-effort (the service swallows its own errors).
+        try:
+            from app.services import compliance_threshold_service
+            await compliance_threshold_service.evaluate_scan(db, scan, score, previous_score)
+        except Exception:  # noqa: BLE001
+            __import__("logging").getLogger("pipeline").exception("compliance threshold alerting failed for scan %s", scan.id)
         await events.publish("compliance.scan.completed", {"scan_id": scan.id, "score": score, "decision": compliance_decision.decision})
 
-        # User-configured "alert me when the score drops below X" thresholds.
-        # Best-effort inside evaluate_compliance_thresholds -- never fails a scan.
-        from app.services import alert_service
-        await alert_service.evaluate_compliance_thresholds(db, scan)
+        # Topology page data (interfaces / VLAN membership / VRFs / routes /
+        # L3 adjacency): Batfish-modelled from this config, regex fallback.
+        # Best-effort -- must never fail a completed scan.
+        try:
+            from app.services import topology_batfish_service
+            await topology_batfish_service.refresh_topology(
+                db, tenant_id=scan.tenant_id, devices_with_raw=[(device, raw_text)],
+                scan_ids={device.id: scan.id}, key=f"dev-{device.id}",
+            )
+        except Exception:  # noqa: BLE001
+            __import__("logging").getLogger("pipeline").exception("topology refresh failed for scan %s", scan.id)
+            try:
+                db.rollback()
+            except Exception:  # noqa: BLE001
+                pass
 
         # Keep the "Ask NetSecAuditor" RAG corpus current: incrementally
         # upsert this scan's device + failing findings rather than waiting

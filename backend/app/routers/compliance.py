@@ -22,6 +22,13 @@ from app.services.reports import (build_csv_report, build_json_report,
 
 from app.auth.dependencies import get_current_user
 
+# A scan that finished the pipeline ends as completed / review / blocked
+# (pipeline.py maps the PASS/REVIEW/BLOCK decision onto the status). A low
+# score is exactly what produces review/blocked, so filtering on "completed"
+# alone silently dropped every failing scan: the dashboard showed 0% and the
+# trend charts stayed empty while the scan itself showed e.g. 32%.
+SCORED_SCAN_STATUSES = ("completed", "review", "blocked")
+
 router = APIRouter(tags=["compliance"], dependencies=[Depends(get_current_user)])
 
 
@@ -56,7 +63,7 @@ def get_finding(finding_id: str, db: Session = Depends(get_db)):
 def dashboard(db: Session = Depends(get_db)):
     devices = db.query(Device).all()
     scans = db.query(Scan).all()
-    completed = [s for s in scans if s.status == "completed"]
+    completed = [s for s in scans if s.status in SCORED_SCAN_STATUSES]
     scores = [s.compliance_score for s in completed if s.compliance_score is not None]
     overall = round(sum(scores) / len(scores), 1) if scores else 0.0
 
@@ -146,7 +153,7 @@ def dashboard(db: Session = Depends(get_db)):
     from sqlalchemy import func as _func
     latest_scan_subq = (
         db.query(Scan.device_id, _func.max(Scan.created_at).label("max_created"))
-        .filter(Scan.status == "completed")
+        .filter(Scan.status.in_(SCORED_SCAN_STATUSES))
         .group_by(Scan.device_id)
         .subquery()
     )
@@ -284,7 +291,7 @@ def dashboard_metrics(range: str = "30d", db: Session = Depends(get_db)):
     for device in db.query(Device).all():
         last_two = (
             db.query(Scan)
-            .filter(Scan.device_id == device.id, Scan.status == "completed")
+            .filter(Scan.device_id == device.id, Scan.status.in_(SCORED_SCAN_STATUSES))
             .order_by(Scan.created_at.desc())
             .limit(2)
             .all()
@@ -304,7 +311,7 @@ def dashboard_metrics(range: str = "30d", db: Session = Depends(get_db)):
 
     scores_in_range = [
         s.compliance_score
-        for s in db.query(Scan).filter(Scan.status == "completed", Scan.created_at >= cutoff).all()
+        for s in db.query(Scan).filter(Scan.status.in_(SCORED_SCAN_STATUSES), Scan.created_at >= cutoff).all()
         if s.compliance_score is not None
     ]
     compliance_score = round(sum(scores_in_range) / len(scores_in_range), 1) if scores_in_range else 0.0
@@ -333,7 +340,7 @@ def dashboard_metrics(range: str = "30d", db: Session = Depends(get_db)):
 
     window_scans = (
         db.query(Scan)
-        .filter(Scan.status == "completed", Scan.created_at >= bucket_starts[0])
+        .filter(Scan.status.in_(SCORED_SCAN_STATUSES), Scan.created_at >= bucket_starts[0])
         .all()
     )
     window_scan_ids = [s.id for s in window_scans]

@@ -107,6 +107,9 @@ class BatfishAnalysisResult:
     reachability_checks: List[ReachabilityResult] = field(default_factory=list)
     critical_violation: bool = False
     detail: str = ""
+    # Structured topology (interfaces/VLANs/VRFs/routes/L3 edges) read from the
+    # same snapshot; persisted by services/topology_batfish_service.py.
+    topology: Optional[Any] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -120,6 +123,7 @@ class BatfishAnalysisResult:
             "reachability_checks": [rc.to_finding() for rc in self.reachability_checks],
             "critical_violation": self.critical_violation,
             "detail": self.detail,
+            "topology_summary": self.topology.summary() if self.topology is not None else None,
         }
 
     def findings(self) -> List[Dict[str, Any]]:
@@ -941,6 +945,12 @@ def analyze_network_group(
         nodes = get_nodes(bf)
         interfaces = get_interfaces(bf)
         routes = get_routes(bf)
+        try:
+            from app.services import topology_batfish_service
+            topology = topology_batfish_service.collect_topology(bf)
+        except Exception:  # noqa: BLE001 - topology is additive, never blocks the analysis
+            logger.warning("Topology collection failed for group %s", group_id, exc_info=True)
+            topology = None
 
         checks: List[ReachabilityResult] = []
 
@@ -990,7 +1000,7 @@ def analyze_network_group(
         return BatfishAnalysisResult(
             status=overall, network_name=network, snapshot_name=snapshot_name,
             init_issues=init_issues, nodes=nodes, interfaces=interfaces, routes=routes,
-            reachability_checks=checks, critical_violation=critical_violation,
+            reachability_checks=checks, critical_violation=critical_violation, topology=topology,
             detail=f"Group Batfish analysis complete for {len(device_configs)} device(s), {len(custom_questions or [])} custom question(s).",
         )
     except Exception as e:

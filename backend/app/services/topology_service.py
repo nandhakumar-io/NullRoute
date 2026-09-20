@@ -36,11 +36,11 @@ def refresh_device_topology(
     for iface in extraction.interfaces:
         db.add(NetworkInterface(
             tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
-            name=iface.name, description=iface.description, ip_address=iface.ip_address,
+            source="config", name=iface.name, description=iface.description, ip_address=iface.ip_address,
             subnet_mask=iface.subnet_mask, vlan=iface.vlan, vrf=iface.vrf, admin_state=iface.admin_state,
         ))
     for vlan in extraction.vlans:
-        db.add(VLAN(tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
+        db.add(VLAN(tenant_id=tenant_id, device_id=device_id, scan_id=scan_id, source="config",
                      vlan_id=vlan.vlan_id, name=vlan.name))
     for vrf in extraction.vrfs:
         db.add(VRF(tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
@@ -100,20 +100,20 @@ def persist_observed_links(db: Session, *, tenant_id: str, device_id: str, neigh
 def get_topology_links(db: Session, tenant_id: str, interfaces: List["NetworkInterface"]) -> List[Dict]:
     """Combined link list for the /api/topology endpoint: real,
     SNMP/LLDP-observed adjacency first (link_type="lldp_observed", from
-    persist_observed_links()), then subnet-inferred links for any device
+    persist_observed_links(), and Batfish layer-3 edges, link_type="batfish_l3"), then subnet-inferred links for any device
     pair not already covered by an observed link. Observed links are
     ground truth and always take priority over a same-subnet guess between
     the same two devices."""
     from app.models.db import NetworkLink
 
     observed_rows = db.query(NetworkLink).filter(
-        NetworkLink.tenant_id == tenant_id, NetworkLink.link_type == "lldp_observed",
+        NetworkLink.tenant_id == tenant_id, NetworkLink.link_type.in_(("lldp_observed", "batfish_l3")),
     ).all()
     observed = [
         {
             "source_device_id": r.source_device_id, "source_interface": r.source_interface,
             "target_device_id": r.target_device_id, "target_interface": r.target_interface,
-            "link_type": "lldp_observed",
+            "link_type": r.link_type,
         }
         for r in observed_rows
     ]

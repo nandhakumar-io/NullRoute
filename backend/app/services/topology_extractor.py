@@ -166,7 +166,13 @@ def extract_topology(vendor: Optional[str], raw_text: str) -> TopologyExtraction
     """Best-effort dispatch by vendor. Unknown/unsupported vendors (e.g.
     'Palo Alto Networks', whose set-based syntax needs its own patterns not
     yet written) return an empty TopologyExtraction rather than a guess."""
-    extractor = _EXTRACTORS.get(vendor or "")
+    # Device.vendor is free-form ("cisco", "Cisco IOS-XE", "juniper", "FortiGate"...);
+    # match on the normalised family, not the exact capitalised string.
+    from app.services.config_merge import normalize_vendor_key
+
+    family = {"cisco": "Cisco", "arista": "Arista", "juniper": "Juniper", "fortigate": "Fortinet"}.get(
+        normalize_vendor_key(vendor), vendor or "")
+    extractor = _EXTRACTORS.get(family)
     if not extractor:
         return TopologyExtraction()
     try:

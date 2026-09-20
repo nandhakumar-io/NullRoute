@@ -633,6 +633,31 @@ export interface NetworkInterface {
   vlan: string | null;
   vrf: string | null;
   admin_state: string | null;
+  switchport_mode?: string | null;
+  allowed_vlans?: string | null;
+  source?: string | null;
+}
+
+export interface VlanMapEntry {
+  vlan_id: string;
+  name: string | null;
+  devices: {
+    device_id: string;
+    hostname: string | null;
+    interfaces: string[];
+    layer3: { interface: string; ip_address: string; subnet_mask: string | null }[];
+    source: string | null;
+  }[];
+}
+
+export interface TopologyRefreshResult {
+  engine: "batfish" | "batfish+regex" | "regex" | "none" | "error";
+  detail?: string;
+  devices_updated: number;
+  links: number;
+  unmapped_nodes?: string[];
+  fallback_devices?: string[];
+  skipped_devices?: string[];
 }
 
 export interface NetworkRoute {
@@ -670,6 +695,7 @@ export interface Topology {
   has_interface_data?: boolean;
   observed_link_count?: number;
   inferred_link_count?: number;
+  batfish_link_count?: number;
 }
 
 export interface SimulateDriftResult {
@@ -986,32 +1012,6 @@ export interface AlertChannelCreate {
   secret?: Record<string, any>;
 }
 
-export interface ComplianceThreshold {
-  id: string;
-  name: string;
-  enabled: boolean;
-  threshold: number;
-  device_id: string | null;
-  framework: string | null;
-  severity: string;
-  channel_ids: string[];
-  only_on_crossing: boolean;
-  last_triggered_at: string | null;
-  trigger_count: number;
-  created_at: string | null;
-}
-
-export type ComplianceThresholdCreate = {
-  name: string;
-  threshold: number;
-  enabled?: boolean;
-  device_id?: string | null;
-  framework?: string | null;
-  severity?: string;
-  channel_ids: string[];
-  only_on_crossing?: boolean;
-};
-
 export interface AlertRule {
   id: string;
   name: string;
@@ -1029,6 +1029,33 @@ export interface AlertRuleCreate {
   match_categories?: string[];
   match_severities?: string[];
   channel_ids: string[];
+}
+
+export interface ComplianceThreshold {
+  id: string;
+  name: string;
+  enabled: boolean;
+  threshold: number;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  device_id: string | null;
+  framework: string | null;
+  channel_ids: string[];
+  only_on_crossing: boolean;
+  last_triggered_at: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ComplianceThresholdCreate {
+  name: string;
+  threshold: number;
+  enabled?: boolean;
+  severity?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  device_id?: string | null;
+  framework?: string | null;
+  channel_ids?: string[];
+  only_on_crossing?: boolean;
 }
 
 export interface PushSubscriptionSummary {
@@ -1066,33 +1093,35 @@ export interface ChangeRequest {
   rejected_by: string | null;
   rejected_at: string | null;
   rejection_reason: string | null;
-  created_at: string;
-  updated_at: string;
-  // Remediation-delta merge metadata / admin edits
+  // Present when the CR was created from a CLI delta (snippet) rather than a full config.
   snippet?: string | null;
   merge_style?: string | null;
-  merge_confidence?: string | null;
+  merge_confidence?: "HIGH" | "MEDIUM" | "LOW" | null;
   merge_warnings?: string[] | null;
   merge_commands?: string[] | null;
   edited_by?: string | null;
   edited_at?: string | null;
-  revision?: number;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface DeployPlan {
+export interface PushPlan {
   commands: string[];
+  source: "merge_commands" | "snippet" | "proposed_as_snippet" | "computed_diff" | null;
   warnings: string[];
-  safe: boolean;
-  style: string;
+  error: string | null;
 }
 
-export interface EditPreview {
+export interface MergePreview {
+  device_id: string;
   current_config: string | null;
   proposed_config: string;
-  commands: string[];
+  style: string;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
   warnings: string[];
-  confidence?: string;
-  diff_stats?: { added: number; removed: number };
+  commands: string[];
+  changed: boolean;
+  diff_stats: { added: number; removed: number; unchanged: number; total_after: number };
 }
 
 export interface DeploymentRecord {
@@ -1454,6 +1483,9 @@ export const endpoints = {
   evidenceSimulateTamper: (evidenceId: string) => api.post<EvidenceDetail>(`/api/evidence/${evidenceId}/simulate-tamper`),
   evidenceRestore: (evidenceId: string) => api.post<EvidenceDetail>(`/api/evidence/${evidenceId}/restore`),
   topology: () => api.get<Topology>("/api/topology"),
+  topologyVlans: () => api.get<{ count: number; vlans: VlanMapEntry[] }>("/api/topology/vlans"),
+  refreshTopology: (deviceIds?: string[]) =>
+    api.post<TopologyRefreshResult>("/api/topology/refresh", { device_ids: deviceIds ?? null }),
   deviceInterfaces: (deviceId: string) => api.get<NetworkInterface[]>(`/api/devices/${deviceId}/interfaces`),
   deviceRoutes: (deviceId: string) => api.get<NetworkRoute[]>(`/api/devices/${deviceId}/routes`),
 
@@ -1605,14 +1637,19 @@ export const endpoints = {
     api.get<{ current_config: string | null; proposed_config: string | null; current_config_hash: string | null; proposed_config_hash: string | null }>(
       `/api/change-requests/${id}/configs`,
     ),
-  /** Send a remediation DELTA as `snippet` -- the backend merges it onto the device's current config. */
-  createChangeRequest: (deviceId: string, snippet: string) =>
+  createChangeRequest: (deviceId: string, proposedConfig: string) =>
+    api.post<ChangeRequest>("/api/change-requests", { device_id: deviceId, proposed_config: proposedConfig }),
+  /** Create from a CLI delta: the backend merges it onto the device's current config. */
+  createChangeRequestFromSnippet: (deviceId: string, snippet: string) =>
     api.post<ChangeRequest>("/api/change-requests", { device_id: deviceId, snippet }),
-  changeRequestDeployPlan: (id: string) => api.get<DeployPlan>(`/api/change-requests/${id}/deploy-plan`),
-  previewChangeRequestEdit: (id: string, body: { snippet?: string; proposed_config?: string }) =>
-    api.post<EditPreview>(`/api/change-requests/${id}/preview-edit`, body),
+  previewChangeRequestMerge: (deviceId: string, snippet: string, currentConfig?: string | null) =>
+    api.post<MergePreview>("/api/change-requests/preview", {
+      device_id: deviceId, snippet, current_config: currentConfig ?? null,
+    }),
+  /** Admin-only: edit, re-merge, re-validate; forces re-approval. */
   editChangeRequest: (id: string, body: { snippet?: string; proposed_config?: string }) =>
     api.patch<ChangeRequest>(`/api/change-requests/${id}`, body),
+  changeRequestPushPlan: (id: string) => api.get<PushPlan>(`/api/change-requests/${id}/push-plan`),
   approveChangeRequest: (id: string) => api.post<ChangeRequest>(`/api/change-requests/${id}/approve`),
   rejectChangeRequest: (id: string, reason: string) =>
     api.post<ChangeRequest>(`/api/change-requests/${id}/reject`, { reason }),

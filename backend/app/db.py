@@ -94,6 +94,7 @@ def init_db():
     SessionLocal.refresh()
     if engine.url.get_backend_name() == "sqlite":
         Base.metadata.create_all(bind=engine)
+        _ensure_sqlite_columns()
         return
 
     import os as _os
@@ -125,30 +126,20 @@ def init_db():
         Base.metadata.create_all(bind=engine)
 
         if engine.url.get_backend_name() == "postgresql":
-            try:
-                from sqlalchemy import text
-                with engine.begin() as conn:
-                    # Convert the fallback JSON column created by create_all into an actual pgvector column
-                    try:
-                        conn.execute(text(
-                            "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
-                            "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END);"
-                        ))
-                    except Exception:
-                        pass
-            except Exception as e:
-                import logging
-                logging.warning(f"pgvector column conversion skipped: {e}")
-
-            _ensure_postgres_columns()
+            _run_postgres_migrations()
 
 
-# One statement per transaction: on Postgres a failed statement aborts the whole
-# transaction, so batching these (as before) silently skipped everything after
-# the first one that already existed.
-_PG_SCHEMA_PATCHES = [
+# Idempotent, additive DDL applied at startup (Alembic upgrade is disabled
+# above). Each statement runs in its OWN transaction: on Postgres a failed
+# statement aborts the surrounding transaction, so batching them in one
+# `engine.begin()` block and swallowing errors silently skipped every
+# statement after the first failure. Always use IF NOT EXISTS so a re-run is
+# a no-op rather than an error.
+_POSTGRES_MIGRATIONS = [
+    # pgvector column (create_all makes it JSON first).
+    "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
+    "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END)",
     "ALTER TABLE device_credential_refs ADD COLUMN IF NOT EXISTS secret_data JSON",
-    "ALTER TABLE alert_channels ADD COLUMN IF NOT EXISTS secret_data JSON",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS snippet TEXT",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_style VARCHAR",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_confidence VARCHAR",
@@ -157,22 +148,63 @@ _PG_SCHEMA_PATCHES = [
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_commands JSON",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS edited_by VARCHAR",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP",
-    "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS revision INTEGER DEFAULT 1",
-    # merge_confidence was first created FLOAT but stores HIGH/MEDIUM/LOW
-    "ALTER TABLE change_requests ALTER COLUMN merge_confidence TYPE VARCHAR USING merge_confidence::text",
+    "ALTER TABLE network_interfaces ADD COLUMN IF NOT EXISTS switchport_mode VARCHAR",
+    "ALTER TABLE network_interfaces ADD COLUMN IF NOT EXISTS allowed_vlans VARCHAR",
+    "ALTER TABLE network_interfaces ADD COLUMN IF NOT EXISTS source VARCHAR",
+    "ALTER TABLE vlans ADD COLUMN IF NOT EXISTS interfaces JSON",
+    "ALTER TABLE vlans ADD COLUMN IF NOT EXISTS source VARCHAR",
+    # evidence_records.scan_id must allow NULL (deploy/rollback events with no scan).
     "ALTER TABLE evidence_records ALTER COLUMN scan_id DROP NOT NULL",
+    # merge_confidence was first created as FLOAT but the merge engine
+    # returns HIGH / MEDIUM / LOW; convert an existing float column in place.
+    "DO $$ BEGIN "
+    "IF (SELECT data_type FROM information_schema.columns "
+    "    WHERE table_name = 'change_requests' AND column_name = 'merge_confidence' "
+    "    LIMIT 1) IN ('double precision', 'real') THEN "
+    "ALTER TABLE change_requests ALTER COLUMN merge_confidence TYPE VARCHAR USING NULL; "
+    "END IF; END $$",
 ]
 
 
-def _ensure_postgres_columns() -> None:
+# create_all() never alters an existing SQLite file, so columns added after a
+# dev database was first created are added here (table, column, DDL type).
+_SQLITE_COLUMNS = [
+    ("change_requests", "edited_by", "VARCHAR"),
+    ("change_requests", "edited_at", "DATETIME"),
+    ("network_interfaces", "switchport_mode", "VARCHAR"),
+    ("network_interfaces", "allowed_vlans", "VARCHAR"),
+    ("network_interfaces", "source", "VARCHAR"),
+    ("vlans", "interfaces", "JSON"),
+    ("vlans", "source", "VARCHAR"),
+]
+
+
+def _ensure_sqlite_columns() -> None:
     import logging
+
     from sqlalchemy import text
-    for stmt in _PG_SCHEMA_PATCHES:
+
+    for table, column, ddl in _SQLITE_COLUMNS:
+        try:
+            with engine.begin() as conn:
+                cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+                if cols and column not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+        except Exception as e:  # noqa: BLE001
+            logging.warning("SQLite column check skipped for %s.%s: %s", table, column, e)
+
+
+def _run_postgres_migrations() -> None:
+    import logging
+
+    from sqlalchemy import text
+
+    for stmt in _POSTGRES_MIGRATIONS:
         try:
             with engine.begin() as conn:
                 conn.execute(text(stmt))
-        except Exception as e:  # noqa: BLE001
-            logging.warning("schema patch skipped (%s): %s", stmt, str(e).splitlines()[0])
+        except Exception as e:  # noqa: BLE001 - one bad statement must not skip the rest
+            logging.warning("Startup migration skipped (%s): %s", stmt[:80], str(e).splitlines()[0] if str(e) else e)
 
 
 def get_db():

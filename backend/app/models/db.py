@@ -174,7 +174,7 @@ class OPAAnalysis(Base):
     historical evidence is never overwritten, per RULE 15)."""
     __tablename__ = "opa_analyses"
     id = Column(String, primary_key=True, default=gen_uuid)
-    scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
     policy_version = Column(String)
     decision = Column(String)  # PASS/REVIEW/BLOCK/OPA_UNAVAILABLE
     decision_id = Column(String)
@@ -209,7 +209,7 @@ class EvidenceRecord(Base):
     __tablename__ = "evidence_records"
     id = Column(String, primary_key=True, default=gen_uuid)
     evidence_id = Column(String, unique=True, nullable=False)
-    scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
+    scan_id = Column(String, ForeignKey("scans.id"), nullable=True)  # NULL for deploy/rollback events that never reached a scan
     device_id = Column(String)
     tenant_id = Column(String, index=True)
     event_type = Column(String, nullable=True)  # e.g. "compliance_scan" -- see services/evidence_service.py
@@ -381,6 +381,9 @@ class NetworkInterface(Base):
     vlan = Column(String, nullable=True)
     vrf = Column(String, nullable=True)
     admin_state = Column(String, nullable=True)  # up/down, only when explicitly stated in the config
+    switchport_mode = Column(String, nullable=True)  # ACCESS / TRUNK / NONE (Batfish-derived)
+    allowed_vlans = Column(String, nullable=True)    # trunk allowed-vlan spec, e.g. "10,20,30-40"
+    source = Column(String, nullable=True)           # "batfish" | "config" (regex extractor)
     scan_id = Column(String, ForeignKey("scans.id"), nullable=True)  # scan that produced this snapshot
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -392,6 +395,8 @@ class VLAN(Base):
     device_id = Column(String, ForeignKey("devices.id"), nullable=False, index=True)
     vlan_id = Column(String, nullable=False)
     name = Column(String, nullable=True)
+    interfaces = Column(JSON, nullable=True)  # member interfaces (Batfish switchedVlanProperties + SVIs)
+    source = Column(String, nullable=True)    # "batfish" | "config"
     scan_id = Column(String, ForeignKey("scans.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -695,16 +700,13 @@ class ChangeRequest(Base):
     # Merge metadata for remediation snippets (Phase 10 / UI Preview)
     snippet = Column(Text, nullable=True)
     merge_style = Column(String, nullable=True)
-    merge_confidence = Column(String, nullable=True)  # HIGH | MEDIUM | LOW
+    merge_confidence = Column(String, nullable=True)  # HIGH / MEDIUM / LOW (merge engine output)
     merge_applied = Column(JSON, nullable=True)
     merge_warnings = Column(JSON, nullable=True)
     merge_commands = Column(JSON, nullable=True)
-
-    # Admin fine-tuning of the proposal (see change_request_service.update_proposal)
     edited_by = Column(String, nullable=True)
     edited_at = Column(DateTime, nullable=True)
-    revision = Column(Integer, nullable=True, default=1)
-
+    
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

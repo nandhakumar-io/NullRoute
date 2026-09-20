@@ -4,6 +4,7 @@ import {
   endpoints,
   Topology as TopologyData,
   NetworkInterface,
+  VlanMapEntry,
   ChangeRequest,
   BlastRadius,
   BlastRadiusSection,
@@ -312,6 +313,85 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
   );
 }
 
+// Network-wide VLAN map (from Batfish switchedVlanProperties + SVIs): each VLAN,
+// the devices that carry it, member ports and the L3 addresses on it.
+function VlanMapPanel({ nodeCount, onRefreshed }: { nodeCount: number; onRefreshed: () => void }) {
+  const [vlans, setVlans] = useState<VlanMapEntry[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function load() {
+    endpoints.topologyVlans().then((r) => setVlans(r.data.vlans)).catch(() => setVlans([]));
+  }
+  useEffect(load, [nodeCount]);
+
+  async function rebuild() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await endpoints.refreshTopology();
+      const d = r.data;
+      setMsg(
+        `Engine: ${d.engine} — ${d.devices_updated} device(s) mapped, ${d.links} Batfish link(s).` +
+          (d.engine === "regex" && d.detail ? ` Batfish unavailable (${d.detail}); used config parsing.` : "") +
+          (d.skipped_devices?.length ? ` No config for: ${d.skipped_devices.join(", ")}.` : ""),
+      );
+      load();
+      onRefreshed();
+    } catch (e: any) {
+      setMsg(e?.response?.data?.detail || "Could not refresh topology.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="font-semibold text-slate-200">VLAN map</div>
+        <button onClick={rebuild} disabled={busy} className="btn-primary text-xs px-3 py-1.5 disabled:opacity-40">
+          {busy ? "Analysing with Batfish…" : "Rebuild from configs (Batfish)"}
+        </button>
+      </div>
+      {msg && <div className="text-xs text-slate-400 mt-2">{msg}</div>}
+      {vlans === null ? (
+        <div className="text-sm text-slate-500 mt-2">Loading…</div>
+      ) : vlans.length === 0 ? (
+        <div className="text-sm text-slate-500 mt-2">
+          No VLANs found in the uploaded configs. If they define VLANs, use “Rebuild” to re-run the analysis.
+        </div>
+      ) : (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-500">
+                <th className="pr-3 py-1">VLAN</th><th className="pr-3">Device</th>
+                <th className="pr-3">Member ports</th><th className="pr-3">L3</th>
+              </tr>
+            </thead>
+            <tbody>
+              {vlans.flatMap((v) =>
+                v.devices.map((d, i) => (
+                  <tr key={`${v.vlan_id}-${d.device_id}`} className="border-t border-soc-border align-top">
+                    <td className="pr-3 py-1 font-mono text-slate-300">
+                      {i === 0 ? `${v.vlan_id}${v.name ? ` (${v.name})` : ""}` : ""}
+                    </td>
+                    <td className="pr-3 text-slate-300">{d.hostname || d.device_id}</td>
+                    <td className="pr-3 font-mono text-slate-400">{d.interfaces.join(", ") || "—"}</td>
+                    <td className="pr-3 font-mono text-slate-400">
+                      {d.layer3.map((l) => `${l.interface} ${l.ip_address}${l.subnet_mask ? "/" + l.subnet_mask : ""}`).join("; ") || "—"}
+                    </td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Topology() {
   const navigate = useNavigate();
   const [topology, setTopology] = useState<TopologyData | null>(null);
@@ -513,16 +593,17 @@ export default function Topology() {
         title="Topology"
         subtitle={
           topology.has_interface_data
-            ? `${topology.observed_link_count ?? 0} SNMP/LLDP-observed link(s), ${topology.inferred_link_count ?? 0} subnet-inferred`
+            ? `${topology.observed_link_count ?? 0} observed link(s) (${topology.batfish_link_count ?? 0} Batfish L3, rest SNMP/LLDP), ${topology.inferred_link_count ?? 0} subnet-inferred`
             : "Devices and adjacencies, derived from collected interface data (Phase 9)"
         }
       />
       <div className="flex-1 px-8 pb-8 relative">
         <BuildTopologyPanel onBuilt={refresh} />
+        {nodes.length > 0 && <VlanMapPanel nodeCount={nodes.length} onRefreshed={refresh} />}
         {nodes.length === 0 ? (
           <EmptyState message="No devices yet. Upload configs above, or collect a configuration first." />
         ) : !topology.has_interface_data ? (
-          <EmptyState message="Devices exist but no interface data has been extracted yet. Run a scan (or collect a config via the gateway) so vendor interfaces/VLANs can be parsed, then reload this page." />
+          <EmptyState message="Devices exist but no interface data has been extracted yet. Use “Rebuild from configs (Batfish)” above, or run a scan, then reload this page." />
         ) : (
           <>
             {/* Pre/Post deployment state switch */}

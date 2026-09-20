@@ -336,6 +336,18 @@ def delete_question(question_id: str, db: Session = Depends(get_db), tenant_id: 
 # custom question.
 # ---------------------------------------------------------------------------
 
+def _latest_raw_and_scan(db: Session, device: Device):
+    scan = db.query(Scan).filter(
+        Scan.device_id == device.id, Scan.raw_config_path.isnot(None)
+    ).order_by(Scan.created_at.desc()).first()
+    if not scan or not scan.raw_config_path:
+        return None, None
+    try:
+        return minio_service.get_object(scan.raw_config_path).decode("utf-8", errors="replace"), scan.id
+    except Exception:
+        return None, None
+
+
 def _latest_raw_config(db: Session, device: Device) -> Optional[str]:
     scan = db.query(Scan).filter(
         Scan.device_id == device.id, Scan.raw_config_path.isnot(None)
@@ -361,15 +373,19 @@ def scan_group(group_id: str, db: Session = Depends(get_db), tenant_id: str = De
 
     device_configs: Dict[str, str] = {}
     skipped: List[str] = []
+    devices_with_raw = []
+    scan_ids: Dict[str, str] = {}
     for m in memberships:
-        device = db.query(Device).filter(Device.id == m.device_id).first()
+        device = db.query(Device).filter(Device.id == m.device_id, Device.tenant_id == tenant_id).first()
         if not device:
             continue
-        raw = _latest_raw_config(db, device)
+        raw, latest_scan_id = _latest_raw_and_scan(db, device)
         if not raw:
             skipped.append(device.hostname or device.id)
             continue
         device_configs[device.hostname or device.id] = raw
+        devices_with_raw.append((device, raw))
+        scan_ids[device.id] = latest_scan_id
 
     questions = [
         {
@@ -383,6 +399,20 @@ def scan_group(group_id: str, db: Session = Depends(get_db), tenant_id: str = De
 
     result = batfish_service.analyze_network_group(group_id, device_configs, questions)
     result_dict = result.to_dict()
+
+    # Persist what Batfish modelled (VLAN membership, interfaces, VRFs, routes,
+    # L3 adjacency) so the Topology page shows a real map of the uploaded
+    # configs; regex fallback if Batfish was unavailable.
+    try:
+        from app.services import topology_batfish_service
+        result_dict["topology"] = topology_batfish_service.apply_topology(
+            db, tenant_id=tenant_id, devices_with_raw=devices_with_raw, topo=result.topology,
+            engine="batfish" if result.topology is not None else "unavailable",
+            detail=result.detail, scan_ids=scan_ids,
+        )
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        result_dict["topology"] = {"engine": "error", "detail": str(e)}
     result_dict["skipped_devices"] = skipped
     result_dict["scanned_devices"] = list(device_configs.keys())
 

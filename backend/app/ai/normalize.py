@@ -144,9 +144,11 @@ async def retrieve_similar_mappings(db_session, vendor: str, line: str, top_k: i
     the caller has it (see services/pipeline.py) so one tenant's corrections
     never leak into another's interpretations."""
     from app.services import vector_search
+    import anyio
 
+    query_vector = await anyio.to_thread.run_sync(vector_search.embed_text, line)
     results = vector_search.find_similar_mappings(
-        db_session, tenant_id=tenant_id, query_text=line, vendor=vendor, status="approved", top_k=top_k,
+        db_session, tenant_id=tenant_id, query_text=line, vendor=vendor, status="approved", top_k=top_k, query_vector=query_vector
     )
     return [
         {"parameter": r["normalized_parameter"], "example_value": r["example_value"], "pattern": r["raw_command_pattern"]}

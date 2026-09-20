@@ -120,15 +120,19 @@ def test_scan_endpoint_feeds_pipeline(client, monkeypatch):
 
     monkeypatch.setattr(devices_mod, "get_collector", lambda vendor, transport=None: _FakeCollector())
 
+    import re
     with respx.mock:
-        respx.get(url__regex=r"http://openbao\.test/v1/secret/data/.*").mock(
+        respx.get(url__regex=re.compile(r".*/v1/secret/data/.*")).mock(
             return_value=httpx.Response(
                 200,
                 json={"data": {"data": {"credential_type": "ssh_password", "username": "admin", "password": "x"}}},
             )
         )
-        respx.post("http://opa.test/v1/data/compliance/evaluate").mock(
+        respx.post(url__regex=re.compile(r".*/v1/data/compliance/evaluate")).mock(
             return_value=httpx.Response(200, json={"result": {"decision": "PASS", "decision_id": "d1", "findings": []}})
+        )
+        respx.post(url__regex=re.compile(r".*/generate")).mock(
+            return_value=httpx.Response(200, json={"response": "{}"})
         )
         resp = client.post(f"/api/devices/{device_id}/scan", json={})
 

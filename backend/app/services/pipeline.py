@@ -214,31 +214,37 @@ async def run_pipeline(
             unknown_lines = baseline.extra_parameters.pop("_unknown_lines", [])
             if unknown_lines:
                 await events.publish("ai.mapping.required", {"scan_id": scan.id, "count": len(unknown_lines)})
-            for line in unknown_lines:
-                # 3a. Trained-AI intent classification (DistilBERT + MiniLM hybrid
-                #     decision engine) — purely an interpretation signal, persisted
-                #     for review; it never sets compliance PASS/FAIL and never
-                #     overrides the Ollama/RAG normalization result below.
-                ai_result = ai_service.analyze_command(line)
-                db.add(AIAnalysis(
-                    scan_id=scan.id,
-                    device_id=device.id,
-                    tenant_id=scan.tenant_id,
-                    raw_command_hash=hashlib.sha256(line.encode()).hexdigest(),
-                    intent=ai_result.intent,
-                    classifier_confidence=ai_result.classifier_confidence,
-                    semantic_similarity=ai_result.semantic_similarity,
-                    nearest_intent=ai_result.nearest_intent,
-                    nearest_vendor=ai_result.nearest_vendor,
-                    models_agree=ai_result.models_agree,
-                    decision=ai_result.decision,
-                    requires_review=ai_result.requires_review,
-                    reason=ai_result.reason,
-                    model_version=ai_result.model_version,
-                    inference_latency_ms=ai_result.inference_latency_ms,
-                ))
-
             import asyncio
+            import anyio
+            
+            async def _analyze(curr_line: str):
+                res = await anyio.to_thread.run_sync(ai_service.analyze_command, curr_line)
+                return curr_line, res
+
+            _analysis_tasks = [_analyze(l) for l in unknown_lines]
+            for batch_start in range(0, len(_analysis_tasks), 20):
+                batch = _analysis_tasks[batch_start: batch_start + 20]
+                results = await asyncio.gather(*batch)
+                for line, ai_result in results:
+                    db.add(AIAnalysis(
+                        scan_id=scan.id,
+                        device_id=device.id,
+                        tenant_id=scan.tenant_id,
+                        raw_command_hash=hashlib.sha256(line.encode()).hexdigest(),
+                        intent=ai_result.intent,
+                        classifier_confidence=ai_result.classifier_confidence,
+                        semantic_similarity=ai_result.semantic_similarity,
+                        nearest_intent=ai_result.nearest_intent,
+                        nearest_vendor=ai_result.nearest_vendor,
+                        models_agree=ai_result.models_agree,
+                        decision=ai_result.decision,
+                        requires_review=ai_result.requires_review,
+                        reason=ai_result.reason,
+                        model_version=ai_result.model_version,
+                        inference_latency_ms=ai_result.inference_latency_ms,
+                    ))
+                # Optional: checkpoint here? Let's just do it fast.
+
             # Bound *concurrency*, not coverage: every unknown line must still be
             # normalized (and therefore eligible for remediation) no matter how
             # large the uploaded config is. The old `unknown_lines[:60]` slice

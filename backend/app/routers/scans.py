@@ -1,7 +1,8 @@
-from typing import List, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
+import asyncio
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal, get_db
@@ -17,19 +18,33 @@ router = APIRouter(prefix="/api/scans", tags=["scans"], dependencies=[Depends(ge
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5MB safety cap for uploaded config files
 
+# Scan statuses a pipeline never leaves once reached -- everything else
+# means it's queued, actively running, or paused/stop-requested and
+# therefore belongs in the "running pipelines" list below.
+TERMINAL_SCAN_STATUSES = {"completed", "review", "blocked", "failed", "stopped"}
+
+# Tracks the live asyncio.Task for each scan currently being processed in
+# the background, so an "immediate" stop can cancel it directly instead of
+# only flipping control_state and waiting for run_pipeline's own
+# checkpoint to notice (see stop_scan(..., immediate=True) below). Populated
+# in upload_config/bulk_upload, cleared by _run_scan_pipeline_in_own_session
+# itself once it finishes (normally, on failure, or on cancellation).
+RUNNING_SCAN_TASKS: Dict[str, asyncio.Task] = {}
+
 
 async def _run_scan_pipeline_in_own_session(scan_id: str, raw_text: str, framework: str) -> None:
-    """BackgroundTasks run after the response has already been sent, on a
-    different async context than the request's `db` dependency (which is
-    closed by then) -- open a fresh session here, matching how
+    """Runs off the request's async context (which is gone by the time this
+    executes) -- open a fresh session here, matching how
     document_ingestion's _run_job_in_own_session handles the same problem.
 
     run_pipeline() already persists status="failed" + scan.error on a
-    genuine failure (see services/pipeline.py) before re-raising, so this
-    just needs to swallow that re-raise -- an unhandled exception in a
-    BackgroundTask only ends up in the server log, never in front of the
-    user, so leaving it uncaught wouldn't surface anything extra; it would
-    just log a traceback for something the scan row already recorded.
+    genuine failure (see services/pipeline.py) before re-raising, so a plain
+    Exception here just needs to be swallowed -- the scan row already
+    recorded it. asyncio.CancelledError (from stop_scan(..., immediate=True)
+    cancelling this task directly) is handled separately: it isn't an
+    Exception subclass, so it isn't caught below, and run_pipeline's own
+    stage-boundary checkpoints never got a chance to see it -- this is the
+    one place that persists the STOPPED state for that path.
     """
     db = SessionLocal()
     try:
@@ -38,15 +53,27 @@ async def _run_scan_pipeline_in_own_session(scan_id: str, raw_text: str, framewo
             return
         try:
             await run_pipeline(db, scan, raw_text, framework=framework)
+        except asyncio.CancelledError:
+            try:
+                db.rollback()
+                scan = db.query(Scan).get(scan_id)
+                if scan and scan.control_state != "STOPPED":
+                    scan.status = "stopped"
+                    scan.control_state = "STOPPED"
+                    scan.stopped_at = datetime.utcnow()
+                    db.commit()
+            except Exception:
+                pass
+            raise
         except Exception:
             pass
     finally:
+        RUNNING_SCAN_TASKS.pop(scan_id, None)
         db.close()
 
 
 @router.post("/upload", response_model=ScanDetailOut)
 async def upload_config(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     framework: str = Form("ALL"),
     hostname: Optional[str] = Form(None),
@@ -120,7 +147,8 @@ async def upload_config(
     # control_state="RUNNING" by default) and the frontend's existing
     # scan-detail polling picks up progress from there -- same shape it
     # already treats a scan as being in-progress.
-    background_tasks.add_task(_run_scan_pipeline_in_own_session, scan.id, raw_text, framework)
+    task = asyncio.create_task(_run_scan_pipeline_in_own_session(scan.id, raw_text, framework))
+    RUNNING_SCAN_TASKS[scan.id] = task
 
     findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
     return ScanDetailOut(
@@ -132,7 +160,6 @@ async def upload_config(
 
 @router.post("/bulk-upload", response_model=List[ScanDetailOut])
 async def bulk_upload(
-    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     framework: str = Form("ALL"),
     db: Session = Depends(get_db),
@@ -191,7 +218,8 @@ async def bulk_upload(
         db.refresh(scan)
         # Same fix as upload_config() above: don't block this loop (and the
         # whole request) on the pipeline for every file in the batch.
-        background_tasks.add_task(_run_scan_pipeline_in_own_session, scan.id, raw_text, framework)
+        task = asyncio.create_task(_run_scan_pipeline_in_own_session(scan.id, raw_text, framework))
+        RUNNING_SCAN_TASKS[scan.id] = task
         findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
         results.append(ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings))
     return results
@@ -200,6 +228,26 @@ async def bulk_upload(
 @router.get("", response_model=List[ScanOut])
 def list_scans(db: Session = Depends(get_db)):
     return db.query(Scan).order_by(Scan.created_at.desc()).limit(100).all()
+
+
+@router.get("/running", response_model=List[ScanOut])
+def list_running_scans(db: Session = Depends(get_db)):
+    """Scans whose pipeline is still in flight, paused, or has a pending
+    pause/stop request -- i.e. anything not in a terminal state. Backs the
+    'Running Pipelines' panel so an operator can see and stop these without
+    hunting through the full scan list.
+
+    NOTE: this must stay declared before GET /{scan_id} below -- a route
+    here that fell after the dynamic path would have scan_id="running"
+    matched by /{scan_id} instead of this one, 404ing every time.
+    """
+    return (
+        db.query(Scan)
+        .filter(~Scan.status.in_(TERMINAL_SCAN_STATUSES))
+        .order_by(Scan.created_at.desc())
+        .limit(100)
+        .all()
+    )
 
 
 @router.get("/{scan_id}", response_model=ScanDetailOut)
@@ -335,14 +383,28 @@ async def pause_scan(
 @router.post("/{scan_id}/stop", response_model=ScanDetailOut)
 async def stop_scan(
     scan_id: str,
+    immediate: bool = Query(
+        False,
+        description="Cancel the in-flight pipeline task right away instead of waiting for its next "
+        "stage checkpoint. Whatever the current stage had already committed is kept; anything it "
+        "was mid-write on when cancelled is not.",
+    ),
     db: Session = Depends(get_db),
     _user=Depends(require_role("admin", "operator", "security_analyst")),
 ):
-    """Request that a running scan's pipeline stop at its next stage
-    checkpoint. A stopped scan is not discarded -- its checkpoint (raw
-    config in MinIO, baseline once normalization has completed, findings
-    already persisted) is kept, and it can be restarted later via
-    /{scan_id}/resume from wherever it stopped."""
+    """Request that a running scan's pipeline stop. By default this stops at
+    its next stage checkpoint (usually near-instant, but not guaranteed
+    synchronous with this call returning) -- a stopped scan is not discarded,
+    its checkpoint (raw config in MinIO, baseline once normalization has
+    completed, findings already persisted) is kept, and it can be restarted
+    later via /{scan_id}/resume from wherever it stopped.
+
+    With immediate=True, the backing asyncio task is cancelled directly
+    (see RUNNING_SCAN_TASKS) rather than waiting for run_pipeline to reach
+    its own checkpoint -- for the 'Stop now' action on a Running Pipelines
+    panel, where the operator wants the pipeline to actually die right now,
+    not at its own convenience.
+    """
     scan = db.query(Scan).get(scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
@@ -351,6 +413,22 @@ async def stop_scan(
     was_paused = scan.control_state == "PAUSED"
     scan.control_state = "STOP_REQUESTED"
     db.commit()
+
+    if immediate:
+        task = RUNNING_SCAN_TASKS.get(scan_id)
+        if task and not task.done():
+            task.cancel()
+            # Give the cancelled task a moment to persist STOPPED itself
+            # (see _run_scan_pipeline_in_own_session's CancelledError
+            # handler) before we read the scan back below -- best-effort;
+            # if it doesn't finish in time control_state is at least
+            # already STOP_REQUESTED and the next poll will pick up STOPPED
+            # once it lands.
+            try:
+                await asyncio.wait_for(task, timeout=2)
+            except (Exception, asyncio.CancelledError):
+                pass
+
     if was_paused:
         # A PAUSED scan has no in-flight coroutine left to reach a
         # checkpoint and flip this to STOPPED for us -- do it directly.

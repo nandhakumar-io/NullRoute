@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { useTheme } from "./theme";
 import { useAuth } from "./context/AuthContext";
+import RunningPipelines from "./components/RunningPipelines";
 
 type NavItem = { to: string; label: string; end?: boolean; roles?: string[] };
 type NavGroup = { key: string; label: string; icon: IconName; items: NavItem[] };
@@ -251,6 +252,8 @@ export default function App() {
           </div>
 
           <div className="flex-1" />
+
+          <RunningPipelines />
 
           <button
             onClick={toggleTheme}

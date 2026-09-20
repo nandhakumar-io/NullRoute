@@ -1500,10 +1500,12 @@ export const endpoints = {
   createNetworkScan: (payload: NetworkScanJobCreate) =>
     api.post<NetworkScanJob>("/api/network-scans", payload),
   scans: () => api.get<Scan[]>("/api/scans"),
+  runningScans: () => api.get<Scan[]>("/api/scans/running"),
   scan: (id: string) => api.get<ScanDetail>(`/api/scans/${id}`),
   rerunScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/rerun`),
   pauseScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/pause`),
-  stopScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/stop`),
+  stopScan: (id: string, immediate = false) =>
+    api.post<ScanDetail>(`/api/scans/${id}/stop`, undefined, { params: immediate ? { immediate: true } : undefined }),
   resumeScan: (id: string) => api.post<ScanDetail>(`/api/scans/${id}/resume`),
   pipelineStatus: (id: string) => api.get<PipelineStatus>(`/api/scans/${id}/pipeline-status`),
   batfishAnalysis: (scanId: string) => api.get<BatfishAnalysis>(`/api/scans/${scanId}/batfish`),

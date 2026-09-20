@@ -115,13 +115,15 @@ def find_similar_mappings(
     vendor: Optional[str] = None,
     status: str = "approved",
     top_k: int = 5,
+    query_vector: Optional[List[float]] = None,
 ) -> List[Dict[str, Any]]:
     """CommandMapping -> embedding -> pgvector -> cosine similarity ->
     similar `status` mappings, scoped to `tenant_id` (plus tenant-agnostic
     seeded mappings, tenant_id IS NULL) and optionally `vendor` -- same
     tenant-isolation boundary as every other CommandMapping query in this
     codebase (Phase 5)."""
-    query_vector = embed_text(query_text)
+    if query_vector is None:
+        query_vector = embed_text(query_text)
     bind = db.get_bind()
 
     if query_vector and bind.dialect.name == "postgresql":

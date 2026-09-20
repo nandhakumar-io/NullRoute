@@ -1,10 +1,10 @@
 from typing import List, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import SessionLocal, get_db
 from app.models.db import BatfishAnalysis, Device, Finding, Scan
 from app.routers.devices import get_or_create_demo_tenant
 from app.schemas import ScanDetailOut, ScanOut
@@ -18,8 +18,35 @@ router = APIRouter(prefix="/api/scans", tags=["scans"], dependencies=[Depends(ge
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5MB safety cap for uploaded config files
 
 
+async def _run_scan_pipeline_in_own_session(scan_id: str, raw_text: str, framework: str) -> None:
+    """BackgroundTasks run after the response has already been sent, on a
+    different async context than the request's `db` dependency (which is
+    closed by then) -- open a fresh session here, matching how
+    document_ingestion's _run_job_in_own_session handles the same problem.
+
+    run_pipeline() already persists status="failed" + scan.error on a
+    genuine failure (see services/pipeline.py) before re-raising, so this
+    just needs to swallow that re-raise -- an unhandled exception in a
+    BackgroundTask only ends up in the server log, never in front of the
+    user, so leaving it uncaught wouldn't surface anything extra; it would
+    just log a traceback for something the scan row already recorded.
+    """
+    db = SessionLocal()
+    try:
+        scan = db.query(Scan).get(scan_id)
+        if not scan:
+            return
+        try:
+            await run_pipeline(db, scan, raw_text, framework=framework)
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 @router.post("/upload", response_model=ScanDetailOut)
 async def upload_config(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     framework: str = Form("ALL"),
     hostname: Optional[str] = Form(None),
@@ -82,9 +109,19 @@ async def upload_config(
     db.commit()
     db.refresh(scan)
 
-    await run_pipeline(db, scan, raw_text, framework=framework)
+    # Run the actual pipeline (parse/normalize/OPA/Batfish/risk/correlate/
+    # evidence) as a background task instead of awaiting it here. It used
+    # to run synchronously inside this request, so the upload call itself
+    # blocked for however long the whole pipeline took -- on a slow config
+    # (or one that hit a flaky downstream service) that meant a long-hanging
+    # HTTP request the browser could time out on, which is what made a
+    # config upload occasionally look like it "bugs out the app". Now the
+    # request returns as soon as the Scan row exists (status="uploaded",
+    # control_state="RUNNING" by default) and the frontend's existing
+    # scan-detail polling picks up progress from there -- same shape it
+    # already treats a scan as being in-progress.
+    background_tasks.add_task(_run_scan_pipeline_in_own_session, scan.id, raw_text, framework)
 
-    db.refresh(scan)
     findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
     return ScanDetailOut(
         **ScanOut.model_validate(scan).model_dump(),
@@ -95,6 +132,7 @@ async def upload_config(
 
 @router.post("/bulk-upload", response_model=List[ScanDetailOut])
 async def bulk_upload(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     framework: str = Form("ALL"),
     db: Session = Depends(get_db),
@@ -151,8 +189,9 @@ async def bulk_upload(
         db.add(scan)
         db.commit()
         db.refresh(scan)
-        await run_pipeline(db, scan, raw_text, framework=framework)
-        db.refresh(scan)
+        # Same fix as upload_config() above: don't block this loop (and the
+        # whole request) on the pipeline for every file in the batch.
+        background_tasks.add_task(_run_scan_pipeline_in_own_session, scan.id, raw_text, framework)
         findings = db.query(Finding).filter(Finding.scan_id == scan.id).all()
         results.append(ScanDetailOut(**ScanOut.model_validate(scan).model_dump(), baseline_json=scan.baseline_json, findings=findings))
     return results

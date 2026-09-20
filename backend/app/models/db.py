@@ -708,7 +708,17 @@ class ChangeRequest(Base):
     edited_by = Column(String, nullable=True)
     edited_at = Column(DateTime, nullable=True)
     revision = Column(Integer, nullable=False, default=1, server_default="1")
-    
+
+    # Human-in-the-loop binding (see change_request_service.approve/reject).
+    # An approval is only valid for the exact revision/hash the reviewer was
+    # shown; `review_events` is the append-only trail of every human decision
+    # (created / edited / approved / rejected / override / deploy / rollback).
+    approved_revision = Column(Integer, nullable=True)
+    approved_hash = Column(String, nullable=True)
+    review_comment = Column(Text, nullable=True)
+    override_justification = Column(Text, nullable=True)
+    review_events = Column(JSON, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -750,6 +760,19 @@ class DeploymentRecord(Base):
     verification_engine = Column(String, nullable=True)
     verification_result = Column(String, nullable=True)
     verification_metadata = Column(JSON, nullable=True)
+    # Ordered per-stage progress (credentials -> connect -> precheck -> plan ->
+    # commit -> verify -> postval); see services/stage_tracker.py. Lets the UI
+    # show exactly where a deployment stopped.
+    stages = Column(JSON, nullable=True)
+    # Post-validation: did the controls this change targeted actually flip to
+    # PASS, and what did a real Batfish before/after diff say about the
+    # device's behaviour? (columns match alembic b4c5d6e7f8a9)
+    target_control_ids = Column(JSON, nullable=True)
+    target_controls_result = Column(JSON, nullable=True)
+    target_controls_passed = Column(Boolean, nullable=True)
+    batfish_diff_status = Column(String, nullable=True)
+    batfish_diff_summary = Column(Text, nullable=True)
+    batfish_diff_detail = Column(JSON, nullable=True)
 
 
 class ComplianceException(Base):
@@ -1326,3 +1349,5 @@ class RollbackRecord(Base):
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
+    # Ordered per-stage progress, same shape as DeploymentRecord.stages.
+    stages = Column(JSON, nullable=True)

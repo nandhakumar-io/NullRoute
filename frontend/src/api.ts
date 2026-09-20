@@ -1102,15 +1102,110 @@ export interface ChangeRequest {
   merge_commands?: string[] | null;
   edited_by?: string | null;
   edited_at?: string | null;
+  revision?: number;
+  // Human-in-the-loop binding + trail (see backend change_request_service).
+  approved_revision?: number | null;
+  approved_hash?: string | null;
+  review_comment?: string | null;
+  override_justification?: string | null;
+  review_events?: ReviewEvent[];
+  hitl?: HitlRequirements;
   created_at: string;
   updated_at: string;
 }
 
+export interface HitlRequirements {
+  note_required: boolean;
+  min_note_chars: number;
+  /** The validator said BLOCK: approving is an explicit, justified override. */
+  override_required: boolean;
+  four_eyes_required: boolean;
+  four_eyes_mode: "off" | "high_risk" | "always";
+  approval_expires_at: string | null;
+  approval_ttl_hours: number | null;
+}
+
+export interface ReviewEvent {
+  at: string;
+  action: string; // submitted | edited | approved | override_approved | rejected | deployed | deploy_failed | rolled_back | rollback_failed
+  actor: string;
+  revision?: number;
+  comment?: string | null;
+  [k: string]: unknown;
+}
+
+export type StageStatus = "pending" | "running" | "passed" | "warning" | "failed" | "skipped";
+
+export interface PipelineStage {
+  key: string;
+  label: string;
+  status: StageStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  detail: string | null;
+  error: string | null;
+  kind: string | null;
+}
+
+export interface PostValidation {
+  scan_id: string | null;
+  opa_decision: string | null;
+  batfish_status: string | null;
+  risk_level: string | null;
+  risk_score: number | null;
+  final_decision: string | null;
+  final_reason: string | null;
+  findings_total?: number;
+  findings_failed?: number;
+  failed_controls?: { control_id: string; title: string; severity: string }[];
+  target_control_ids?: string[] | null;
+  target_controls_result?: { control_id: string; result: string }[] | null;
+  target_controls_passed?: boolean | null;
+  batfish_diff_status?: string | null;
+  batfish_diff_summary?: string | null;
+  batfish_diff?: SnapshotDiff | null;
+}
+
+export interface RollbackRecord {
+  id: string;
+  deployment_record_id: string;
+  initiated_by: string | null;
+  reason: string | null;
+  transport: string | null;
+  target_config_hash: string | null;
+  status: string; // PENDING | ROLLED_BACK | VERIFIED | CRITICAL_MANUAL_INTERVENTION_REQUIRED
+  post_rollback_hash: string | null;
+  post_rollback_verified: boolean | null;
+  post_rollback_scan_id: string | null;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  stages: PipelineStage[];
+  stages_derived?: boolean;
+  failed_stage: string | null;
+  failure_label: string | null;
+  post_validation?: PostValidation | null;
+}
+
 export interface PushPlan {
   commands: string[];
-  source: "merge_commands" | "snippet" | "proposed_as_snippet" | "computed_diff" | null;
+  source?: "merge_commands" | "snippet" | "proposed_as_snippet" | "computed_diff" | null;
   warnings: string[];
-  error: string | null;
+  error?: string | null;
+  /** True when a safe, minimal command set could be derived (backend `deploy_plan`). */
+  safe: boolean;
+  style?: string | null;
+}
+
+export interface EditPreview {
+  current_config: string | null;
+  proposed_config: string;
+  commands: string[];
+  warnings?: string[];
+  safe?: boolean;
+  style?: string | null;
+  confidence?: string | null;
+  diff_stats?: { added: number; removed: number; unchanged?: number; total_after?: number };
 }
 
 export interface MergePreview {
@@ -1152,6 +1247,19 @@ export interface DeploymentRecord {
   verification_engine: string | null;
   verification_result: string | null;
   verification_metadata: Record<string, unknown> | null;
+  /** Ordered pipeline: credentials → connect → precheck → plan → commit → verify → postval. */
+  stages: PipelineStage[];
+  /** True for records created before per-stage tracking (reconstructed from status/error). */
+  stages_derived?: boolean;
+  failed_stage: string | null;
+  failure_kind: string | null;
+  failure_label: string | null;
+  rollback_recommended?: boolean;
+  post_validation?: PostValidation | null;
+  rollbacks?: RollbackRecord[];
+  target_control_ids?: string[] | null;
+  batfish_diff_status?: string | null;
+  batfish_diff_summary?: string | null;
 }
 
 export interface DiscoveredHost {
@@ -1535,8 +1643,6 @@ export const endpoints = {
     api.post(`/api/devices/${deviceId}/gateway-get-interfaces`, { protocol }),
   gatewayGetHealthMetrics: (deviceId: string, protocol?: string) =>
     api.post(`/api/devices/${deviceId}/gateway-get-health-metrics`, { protocol }),
-  gatewayGetRoutes: (deviceId: string, protocol?: string) =>
-    api.post(`/api/devices/${deviceId}/gateway-get-routes`, { protocol }),
   gatewayGetNeighbors: (deviceId: string, protocol?: string) =>
     api.post<{ success: boolean; normalized_data?: { neighbors?: any[]; neighbor_count?: number }; links_stored?: number; error_message?: string }>(
       `/api/devices/${deviceId}/gateway-get-neighbors`, { protocol },
@@ -1653,8 +1759,15 @@ export const endpoints = {
   /** Admin-only: edit, re-merge, re-validate; forces re-approval. */
   editChangeRequest: (id: string, body: { snippet?: string; proposed_config?: string }) =>
     api.patch<ChangeRequest>(`/api/change-requests/${id}`, body),
+  /** Admin-only, read-only: what would this edit push? */
+  previewChangeRequestEdit: (id: string, body: { snippet?: string; proposed_config?: string }) =>
+    api.post<EditPreview>(`/api/change-requests/${id}/preview-edit`, body),
   changeRequestDeployPlan: (id: string) => api.get<PushPlan>(`/api/change-requests/${id}/deploy-plan`),
-  approveChangeRequest: (id: string) => api.post<ChangeRequest>(`/api/change-requests/${id}/approve`),
+  /** `revision`/`proposed_config_hash` bind the approval to what the reviewer saw. */
+  approveChangeRequest: (
+    id: string,
+    body: { comment?: string; revision?: number; proposed_config_hash?: string } = {},
+  ) => api.post<ChangeRequest>(`/api/change-requests/${id}/approve`, body),
   rejectChangeRequest: (id: string, reason: string) =>
     api.post<ChangeRequest>(`/api/change-requests/${id}/reject`, { reason }),
   deployChangeRequest: (id: string, opts: { transport?: string; credential_ref_id?: string } = {}) =>

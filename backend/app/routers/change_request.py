@@ -230,10 +230,19 @@ def get_change_request_blast_radius(
     return blast_radius_service.build(cr, device, current_config, proposed_config)
 
 
+def _hitl_http(e: change_request_service.HitlError) -> HTTPException:
+    """Policy refusals carry a machine-readable code so the UI can react
+    (e.g. re-fetch on `stale_revision`, prompt for a note on `note_required`)."""
+    return HTTPException(e.http_status, detail={"code": e.code, "message": str(e)})
+
+
 @router.post("/{cr_id}/approve")
 def approve(
     cr_id: str,
     request: Request,
+    comment: Optional[str] = Body(default=None, embed=True, description="Reviewer note; required for risky / BLOCKed changes"),
+    revision: Optional[int] = Body(default=None, embed=True, description="The revision the reviewer was shown"),
+    proposed_config_hash: Optional[str] = Body(default=None, embed=True, description="The proposed-config hash the reviewer was shown"),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
     user: CurrentUser = Depends(require_permission(Permission.APPROVE_REMEDIATION)),
@@ -241,18 +250,25 @@ def approve(
     cr = _get_owned(db, tenant_id, cr_id)
     prior_status = cr.status
     try:
-        cr = change_request_service.approve(db, cr, approved_by=user.username)
+        cr = change_request_service.approve(
+            db, cr, approved_by=user.username, comment=comment,
+            expected_revision=revision, expected_hash=proposed_config_hash,
+        )
     except ValueError as e:
         audit_service.record_from_user(
             db, user, action="change_request.approve", request=request, result="FAILURE",
             object_type="change_request", object_id=cr_id,
             old_value={"status": prior_status}, new_value={"error": str(e)},
         )
+        if isinstance(e, change_request_service.HitlError):
+            raise _hitl_http(e)
         raise HTTPException(409, str(e))
     audit_service.record_from_user(
         db, user, action="change_request.approve", request=request, result="SUCCESS",
         object_type="change_request", object_id=cr_id,
-        old_value={"status": prior_status}, new_value={"status": cr.status},
+        old_value={"status": prior_status},
+        new_value={"status": cr.status, "revision": cr.approved_revision,
+                   "override": cr.final_decision == "BLOCK", "comment": cr.review_comment},
     )
     return change_request_service.to_dict(cr)
 
@@ -276,6 +292,8 @@ def reject(
             object_type="change_request", object_id=cr_id,
             old_value={"status": prior_status}, new_value={"error": str(e)},
         )
+        if isinstance(e, change_request_service.HitlError):
+            raise _hitl_http(e)
         raise HTTPException(409, str(e))
     audit_service.record_from_user(
         db, user, action="change_request.reject", request=request, result="SUCCESS",
@@ -309,7 +327,11 @@ async def deploy(
             credential_ref_id=credential_ref_id, transport=transport, framework=framework,
             target_control_ids=target_control_ids,
         )
-        return deployment_service.to_dict(dr)
+        change_request_service.add_event(
+            db, cr, "deployed" if dr.status in ("DEPLOYED", "VERIFIED") else "deploy_failed",
+            user.username, dr.error, deployment_id=dr.id, transport=dr.transport, outcome=dr.status,
+        )
+        return deployment_service.to_dict_full(db, dr)
     except ValueError as e:
         raise HTTPException(409, str(e))
     except Exception as e:
@@ -328,7 +350,7 @@ def list_deployments(cr_id: str, db: Session = Depends(get_db), tenant_id: str =
         .order_by(DeploymentRecord.started_at.desc())
         .all()
     )
-    return {"count": len(rows), "deployments": [deployment_service.to_dict(d) for d in rows]}
+    return {"count": len(rows), "deployments": [deployment_service.to_dict_full(db, d) for d in rows]}
 
 
 def _get_owned_deployment(db: Session, tenant_id: str, cr_id: str, deployment_id: str) -> DeploymentRecord:
@@ -447,6 +469,13 @@ async def simulate_drift(
     dr.completed_at = datetime.utcnow()
     db.commit()
     db.refresh(dr)
+    # Keep the stage view honest: the simulated drift fails "verify", and says so.
+    if dr.stages:
+        from app.services.stage_tracker import DEPLOY_STAGES, StageTracker
+        StageTracker(db, dr, DEPLOY_STAGES).fail(
+            "verify", detail, kind="verification_mismatch", skip_rest=False,
+            detail="Simulated by the developer drift injector — no device was contacted.",
+        )
 
     # The real alert path -- same call deployment_service makes on genuine drift.
     alert_dispatched = False
@@ -465,7 +494,7 @@ async def simulate_drift(
     )
 
     return {
-        "deployment": deployment_service.to_dict(dr),
+        "deployment": deployment_service.to_dict_full(db, dr),
         "simulated": True,
         "alert_dispatched": alert_dispatched,
         # The next step is a human action, not an automatic one.
@@ -495,8 +524,12 @@ async def rollback(
     post-deploy verification didn't match the approved config) back to the
     change request's archived pre-change configuration. Same human-approval
     gate as /deploy: never triggered automatically (RULE 4/5)."""
-    _get_owned(db, tenant_id, cr_id)
+    cr = _get_owned(db, tenant_id, cr_id)
     dr = _get_owned_deployment(db, tenant_id, cr_id, deployment_id)
+    # A rollback pushes to a production device: a human must say why.
+    if len((reason or "").strip()) < 3:
+        raise HTTPException(422, detail={"code": "reason_required",
+                                         "message": "A reason is required to roll back a deployment."})
     try:
         rb = await rollback_service.rollback_deployment(
             db, dr, initiated_by=user.username, reason=reason,
@@ -510,7 +543,11 @@ async def rollback(
         object_type="deployment_record", object_id=deployment_id,
         old_value={"deployment_status": dr.status}, new_value={"rollback_status": rb.status},
     )
-    return rollback_service.to_dict(rb)
+    change_request_service.add_event(
+        db, cr, "rolled_back" if rb.status == "VERIFIED" else "rollback_failed", user.username, reason,
+        deployment_id=deployment_id, rollback_id=rb.id, outcome=rb.status,
+    )
+    return rollback_service.to_dict_full(db, rb)
 
 
 @router.get("/{cr_id}/deployments/{deployment_id}/rollbacks")
@@ -526,4 +563,4 @@ def list_rollbacks(
         .order_by(RollbackRecord.started_at.desc())
         .all()
     )
-    return {"count": len(rows), "rollbacks": [rollback_service.to_dict(r) for r in rows]}
+    return {"count": len(rows), "rollbacks": [rollback_service.to_dict_full(db, r) for r in rows]}

@@ -20,9 +20,11 @@ generation are Phase 15/18, not here):
 """
 from __future__ import annotations
 
+import copy
 import logging
-from datetime import datetime
-from typing import Any, Dict, Optional
+import os
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -91,7 +93,120 @@ def to_dict(cr: ChangeRequest) -> Dict[str, Any]:
         "merge_warnings": cr.merge_warnings,
         "merge_commands": cr.merge_commands,
         "edited_by": cr.edited_by, "edited_at": cr.edited_at, "revision": getattr(cr, "revision", 1) or 1,
+        # Human-in-the-loop state -- everything the approval UI needs to decide
+        # what to demand from the reviewer, in one place.
+        "approved_revision": cr.approved_revision, "approved_hash": cr.approved_hash,
+        "review_comment": cr.review_comment, "override_justification": cr.override_justification,
+        "review_events": cr.review_events or [],
+        "hitl": hitl_requirements(cr),
     }
+
+
+# ---------------------------------------------------------------------------
+# Human-in-the-loop policy
+# ---------------------------------------------------------------------------
+# The platform's founding rule (RULE 4/5) is that AI proposes and a human
+# disposes. These functions are where "a human disposed" is made *meaningful*
+# rather than a single unconditional button:
+#
+#  * an approval is bound to the exact revision + hash the reviewer was shown,
+#    so an edit landing between "open" and "click" cannot be approved unseen;
+#  * a change the validator BLOCKed can still be approved (a human may know
+#    better) but only with a written justification that is stored on the record;
+#  * risky changes (REVIEW/BLOCK, HIGH/CRITICAL risk) need a reviewer note;
+#  * four-eyes: for the risky class the approver must not be the author
+#    (HITL_FOUR_EYES = off | high_risk (default) | always). Skipped in the
+#    single-implicit-user demo mode, where "different person" is meaningless;
+#  * approvals can expire (HITL_APPROVAL_TTL_HOURS, default 0 = never);
+#  * rejection requires a reason; every decision lands in `review_events`.
+
+MIN_NOTE_CHARS = 10
+
+
+class HitlError(ValueError):
+    """A human-in-the-loop policy refusal. Carries a machine-readable `code`
+    and the HTTP status the router should answer with."""
+
+    def __init__(self, message: str, code: str, http_status: int = 409):
+        super().__init__(message)
+        self.code = code
+        self.http_status = http_status
+
+
+def _four_eyes_mode() -> str:
+    mode = os.environ.get("HITL_FOUR_EYES", "high_risk").strip().lower()
+    return mode if mode in ("off", "high_risk", "always") else "high_risk"
+
+
+def _approval_ttl_hours() -> float:
+    try:
+        return max(0.0, float(os.environ.get("HITL_APPROVAL_TTL_HOURS", "0")))
+    except ValueError:
+        return 0.0
+
+
+def _is_risky(cr: ChangeRequest) -> bool:
+    return (cr.final_decision in ("REVIEW", "BLOCK")) or (cr.risk_level in ("HIGH", "CRITICAL"))
+
+
+def _auth_enforced() -> bool:
+    from app.auth import dependencies as deps_mod
+    return bool(deps_mod.AUTH_ENABLED)
+
+
+def hitl_requirements(cr: ChangeRequest) -> Dict[str, Any]:
+    """What approving THIS change demands of the reviewer (also drives the UI)."""
+    mode = _four_eyes_mode()
+    four_eyes = _auth_enforced() and (mode == "always" or (mode == "high_risk" and _is_risky(cr)))
+    ttl = _approval_ttl_hours()
+    expires = None
+    if ttl and cr.approved_at and cr.status == "APPROVED":
+        expires = (cr.approved_at + timedelta(hours=ttl)).isoformat()
+    return {
+        "note_required": _is_risky(cr),
+        "min_note_chars": MIN_NOTE_CHARS,
+        "override_required": cr.final_decision == "BLOCK",
+        "four_eyes_required": bool(four_eyes),
+        "four_eyes_mode": mode,
+        "approval_expires_at": expires,
+        "approval_ttl_hours": ttl or None,
+    }
+
+
+def add_event(db: Session, cr: ChangeRequest, action: str, actor: Optional[str],
+              comment: Optional[str] = None, commit: bool = True, **extra: Any) -> None:
+    """Append one entry to the CR's human-decision trail. Append-only; never
+    raises (an audit-trail hiccup must not block the decision it records)."""
+    try:
+        events: List[Dict[str, Any]] = copy.deepcopy(cr.review_events or [])
+        events.append({
+            "at": datetime.utcnow().isoformat(), "action": action, "actor": actor or "unknown",
+            "revision": getattr(cr, "revision", 1) or 1, "comment": comment, **extra,
+        })
+        cr.review_events = events  # reassign so SQLAlchemy sees the JSON change
+        if commit:
+            db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not append review event %s to change request %s", action, cr.id, exc_info=True)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def approval_still_valid(cr: ChangeRequest) -> Optional[str]:
+    """None if the standing approval may be acted on (deployed); otherwise the
+    reason it may not. Called by deployment before a single command is sent."""
+    if cr.approved_hash and cr.approved_hash != cr.proposed_config_hash:
+        return ("The proposed configuration changed after it was approved; "
+                "the approval no longer applies. Re-approve the current revision.")
+    if cr.approved_revision and cr.approved_revision != (cr.revision or 1):
+        return (f"Approval was granted for revision {cr.approved_revision} but the change is now at revision "
+                f"{cr.revision}. Re-approve the current revision.")
+    ttl = _approval_ttl_hours()
+    if ttl and cr.approved_at and datetime.utcnow() > cr.approved_at + timedelta(hours=ttl):
+        return f"The approval expired after {ttl:g} hour(s). Re-approve before deploying."
+    return None
 
 
 def preview_merge(
@@ -294,16 +409,67 @@ async def create_and_validate(
     await _validate(db, cr, device, proposed_config, current_config)
 
     db.commit()
+    add_event(db, cr, "submitted", created_by or ("ai" if source == "ai_suggestion" else "unknown"),
+              source=source, decision=cr.final_decision, risk=cr.risk_level, status=cr.status)
     db.refresh(cr)
     return cr
 
 
-def approve(db: Session, cr: ChangeRequest, approved_by: str) -> ChangeRequest:
+def approve(
+    db: Session, cr: ChangeRequest, approved_by: str,
+    comment: Optional[str] = None,
+    expected_revision: Optional[int] = None,
+    expected_hash: Optional[str] = None,
+) -> ChangeRequest:
     if cr.status != "PENDING_APPROVAL":
-        raise ValueError(f"Change request {cr.id} is not pending approval (status={cr.status})")
+        raise HitlError(f"Change request {cr.id} is not pending approval (status={cr.status})", "wrong_status", 409)
+
+    # 1. The reviewer must be approving what they actually looked at.
+    current_rev = cr.revision or 1
+    if expected_revision is not None and expected_revision != current_rev:
+        raise HitlError(
+            f"This change was edited while you were reviewing it (you saw revision {expected_revision}, "
+            f"it is now revision {current_rev}). Reload and review the new version before approving.",
+            "stale_revision", 409,
+        )
+    if expected_hash is not None and expected_hash != cr.proposed_config_hash:
+        raise HitlError(
+            "The proposed configuration no longer matches what you reviewed. Reload and review it again.",
+            "stale_revision", 409,
+        )
+
+    # 2. Four-eyes: the author cannot wave through their own risky change.
+    req = hitl_requirements(cr)
+    if req["four_eyes_required"] and cr.created_by and cr.created_by == approved_by:
+        raise HitlError(
+            "Four-eyes rule: you created this change request, so a different reviewer must approve it "
+            f"(policy: {req['four_eyes_mode']}).",
+            "four_eyes", 403,
+        )
+
+    # 3. Risky changes need a written reason; a validator BLOCK needs a
+    #    justification for overriding it. Both are stored on the record.
+    note = (comment or "").strip()
+    if req["note_required"] and len(note) < MIN_NOTE_CHARS:
+        what = ("overriding the validator's BLOCK verdict" if req["override_required"]
+                else "approving a change flagged for review / elevated risk")
+        raise HitlError(
+            f"A reviewer note of at least {MIN_NOTE_CHARS} characters is required when {what}.",
+            "note_required", 422,
+        )
+
+    override = cr.final_decision == "BLOCK"
     cr.status = "APPROVED"
     cr.approved_by = approved_by
     cr.approved_at = datetime.utcnow()
+    cr.approved_revision = current_rev
+    cr.approved_hash = cr.proposed_config_hash
+    cr.review_comment = note or None
+    cr.override_justification = note if override else None
+    # An approval clears any earlier rejection on this record.
+    cr.rejected_by = cr.rejected_at = cr.rejection_reason = None
+    add_event(db, cr, "override_approved" if override else "approved", approved_by, note or None,
+              commit=False, decision=cr.final_decision, risk=cr.risk_level, hash=cr.proposed_config_hash)
     db.commit()
     db.refresh(cr)
     return cr
@@ -311,11 +477,17 @@ def approve(db: Session, cr: ChangeRequest, approved_by: str) -> ChangeRequest:
 
 def reject(db: Session, cr: ChangeRequest, rejected_by: str, reason: Optional[str] = None) -> ChangeRequest:
     if cr.status not in ("PENDING_APPROVAL", "APPROVED"):
-        raise ValueError(f"Change request {cr.id} cannot be rejected from status={cr.status}")
+        raise HitlError(f"Change request {cr.id} cannot be rejected from status={cr.status}", "wrong_status", 409)
+    reason = (reason or "").strip()
+    if len(reason) < 3:
+        raise HitlError("A reason is required to reject a change request.", "reason_required", 422)
     cr.status = "REJECTED"
     cr.rejected_by = rejected_by
     cr.rejected_at = datetime.utcnow()
     cr.rejection_reason = reason
+    cr.review_comment = reason
+    cr.approved_revision = cr.approved_hash = None
+    add_event(db, cr, "rejected", rejected_by, reason, commit=False)
     db.commit()
     db.refresh(cr)
     return cr
@@ -399,8 +571,12 @@ async def update_proposal(db: Session, cr: ChangeRequest, device: Device, edited
     cr.approved_by = cr.approved_at = cr.rejected_by = cr.rejected_at = cr.rejection_reason = None
     cr.edited_by, cr.edited_at = edited_by, datetime.utcnow()
     cr.revision = (cr.revision or 1) + 1
+    # ...including the HITL binding: whatever was approved is not this.
+    cr.approved_revision = cr.approved_hash = cr.review_comment = cr.override_justification = None
     db.commit()
     await _validate(db, cr, device, proposed, current)
     db.commit()
+    add_event(db, cr, "edited", edited_by, "Proposal edited; validation re-run and approval reset.",
+              decision=cr.final_decision, risk=cr.risk_level)
     db.refresh(cr)
     return cr

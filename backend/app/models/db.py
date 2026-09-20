@@ -464,6 +464,7 @@ class AuditSchedule(Base):
     # schedule was created are automatically included when scope=="all".
     scope = Column(JSON, nullable=False, default=dict)
     frequency = Column(String, nullable=False, default="manual")  # manual|hourly|daily|weekly
+    time_of_day = Column(String, nullable=True)  # "HH:MM", 24h UTC -- anchors daily/weekly runs to a clock time
     enabled = Column(Boolean, default=True)
     framework = Column(String, default="ALL")
     created_by = Column(String, nullable=True)

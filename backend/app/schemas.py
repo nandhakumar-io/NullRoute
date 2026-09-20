@@ -295,6 +295,7 @@ class ScheduleCreate(BaseModel):
     # 400 error message can reference the canonical list in one place.
     scope: Dict[str, Any]
     frequency: str = "manual"  # manual|hourly|daily|weekly
+    time_of_day: Optional[str] = None  # "HH:MM", 24h UTC; anchors daily/weekly runs to a clock time
     enabled: bool = True
     framework: str = "ALL"
 
@@ -303,6 +304,7 @@ class ScheduleUpdate(BaseModel):
     name: Optional[str] = None
     scope: Optional[Dict[str, Any]] = None
     frequency: Optional[str] = None
+    time_of_day: Optional[str] = None
     enabled: Optional[bool] = None
     framework: Optional[str] = None
 
@@ -313,6 +315,7 @@ class ScheduleOut(BaseModel):
     name: str
     scope: Dict[str, Any]
     frequency: str
+    time_of_day: Optional[str] = None
     enabled: bool
     framework: str
     created_by: Optional[str] = None

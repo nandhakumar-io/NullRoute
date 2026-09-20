@@ -60,6 +60,16 @@ export default function DeviceDetail() {
   const [metricsHistory, setMetricsHistory] = useState<Record<string, any>[]>([]);
   const [snmpError, setSnmpError] = useState<string | null>(null);
   const [snmpLoading, setSnmpLoading] = useState(false);
+  // True when the gateway served this poll from the offline MockConnector
+  // instead of a real SNMP walk -- either GATEWAY_MOCK_CONNECTOR=true
+  // globally, or (far more likely to surprise someone in production) this
+  // device's own `vendor` field is literally "mock" (case-insensitive),
+  // which permanently forces every gateway operation on it to fabricated
+  // data with no other signal in the API response. The panel below used to
+  // render that fabricated data identically to a real poll, indistinguishable
+  // from the genuine article -- flag it instead so it can't be mistaken for
+  // live telemetry again.
+  const [snmpIsMock, setSnmpIsMock] = useState(false);
   const [snmpNeighbors, setSnmpNeighbors] = useState<Record<string, any>[]>([]);
   const [neighborsLoading, setNeighborsLoading] = useState(false);
   const [neighborsMsg, setNeighborsMsg] = useState<string | null>(null);
@@ -171,6 +181,7 @@ export default function DeviceDetail() {
     if (!deviceId) return;
     setSnmpLoading(true);
     setSnmpError(null);
+    setSnmpIsMock(false);
     try {
       const [factsRes, ifacesRes] = await Promise.all([
         endpoints.gatewayGetFacts(deviceId, "snmp"),
@@ -183,6 +194,7 @@ export default function DeviceDetail() {
       // itself succeeded.
       setSnmpFacts((factsRes.data as any)?.normalized_data ?? null);
       setSnmpInterfaces((ifacesRes.data as any)?.normalized_data?.interfaces ?? []);
+      setSnmpIsMock((factsRes.data as any)?.protocol === "mock" || (ifacesRes.data as any)?.protocol === "mock");
     } catch (e: any) {
       // Most common cause: no snmp_community/snmp_v3 credential stored for
       // this device yet (Devices page -> Authentication -> add SNMP), or
@@ -458,7 +470,17 @@ export default function DeviceDetail() {
 
         <div className="card">
           <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold text-slate-200">Live SNMP Metrics</div>
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-slate-200">Live SNMP Metrics</div>
+              {snmpIsMock && (
+                <span
+                  className="badge bg-amber-900/40 text-amber-300 border border-amber-800/60"
+                  title="This device's gateway operations are being served by the offline mock connector, not a real SNMP poll."
+                >
+                  SIMULATED DATA
+                </span>
+              )}
+            </div>
             <button
               className="text-xs px-3 py-1.5 rounded border border-soc-border text-cyan-400 hover:border-cyan-600 disabled:opacity-50"
               disabled={snmpLoading}
@@ -467,6 +489,13 @@ export default function DeviceDetail() {
               {snmpLoading ? "Polling…" : "Poll via SNMP"}
             </button>
           </div>
+          {snmpIsMock && (
+            <div className="text-xs text-amber-400 mb-2">
+              These values are fabricated by the gateway's offline mock connector, not read from the
+              device. This happens when this device's Vendor field is literally set to "mock" (check
+              Devices → Edit → Vendor), or when the backend's GATEWAY_MOCK_CONNECTOR is enabled.
+            </div>
+          )}
           {snmpError && (
             <div className="text-xs text-red-400 mb-2">{snmpError}</div>
           )}

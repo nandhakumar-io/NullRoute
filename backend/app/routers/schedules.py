@@ -49,15 +49,21 @@ def create_schedule(
 ):
     if payload.frequency not in scheduling_service.VALID_FREQUENCIES:
         raise HTTPException(400, f"frequency must be one of {scheduling_service.VALID_FREQUENCIES}")
+    if payload.time_of_day:
+        try:
+            scheduling_service.validate_time_of_day(payload.time_of_day)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     schedule = AuditSchedule(
         tenant_id=tenant_id,
         name=payload.name,
         scope=payload.scope,
         frequency=payload.frequency,
+        time_of_day=payload.time_of_day,
         enabled=payload.enabled,
         framework=payload.framework,
         created_by=user.username,
-        next_run=scheduling_service.compute_next_run(payload.frequency) if payload.enabled else None,
+        next_run=scheduling_service.compute_next_run(payload.frequency, time_of_day=payload.time_of_day) if payload.enabled else None,
     )
     db.add(schedule)
     db.commit()
@@ -84,13 +90,22 @@ def update_schedule(
     data = payload.model_dump(exclude_unset=True)
     if "frequency" in data and data["frequency"] not in scheduling_service.VALID_FREQUENCIES:
         raise HTTPException(400, f"frequency must be one of {scheduling_service.VALID_FREQUENCIES}")
+    if data.get("time_of_day"):
+        try:
+            scheduling_service.validate_time_of_day(data["time_of_day"])
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     for field, value in data.items():
         setattr(schedule, field, value)
-    # Re-derive next_run whenever frequency/enabled changes so a disabled
-    # schedule can't silently keep a stale next_run that would fire the
-    # instant it's re-enabled.
-    if "frequency" in data or "enabled" in data:
-        schedule.next_run = scheduling_service.compute_next_run(schedule.frequency) if schedule.enabled else None
+    # Re-derive next_run whenever frequency/time_of_day/enabled changes so a
+    # disabled schedule can't silently keep a stale next_run that would fire
+    # the instant it's re-enabled, and so editing the time actually moves
+    # the next occurrence instead of only taking effect after the next run.
+    if "frequency" in data or "time_of_day" in data or "enabled" in data:
+        schedule.next_run = (
+            scheduling_service.compute_next_run(schedule.frequency, time_of_day=schedule.time_of_day)
+            if schedule.enabled else None
+        )
     db.commit()
     db.refresh(schedule)
     return schedule

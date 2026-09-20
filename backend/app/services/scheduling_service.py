@@ -33,16 +33,40 @@ _FREQUENCY_DELTA = {
 }
 
 
-def compute_next_run(frequency: str, from_time: Optional[datetime] = None) -> Optional[datetime]:
+def validate_time_of_day(time_of_day: str) -> None:
+    """Raises ValueError via HTTPException-friendly message if not 'HH:MM' 24h."""
+    try:
+        hour, minute = (int(p) for p in time_of_day.split(":", 1))
+        assert 0 <= hour <= 23 and 0 <= minute <= 59
+    except (ValueError, AssertionError):
+        raise ValueError(f"Invalid time_of_day: {time_of_day!r}, expected 'HH:MM' (24h, UTC)")
+
+
+def compute_next_run(
+    frequency: str, from_time: Optional[datetime] = None, time_of_day: Optional[str] = None,
+) -> Optional[datetime]:
     """Manual schedules have no automatic next_run -- they only execute when
     explicitly triggered via POST /api/schedules/{id}/run. Everything else
-    is `from_time` (default: now) plus the frequency's fixed interval."""
+    is `from_time` (default: now) plus the frequency's fixed interval --
+    unless `time_of_day` ("HH:MM", 24h, UTC) is given for daily/weekly, in
+    which case the run is anchored to that clock time instead of drifting
+    to whatever time of day the schedule happened to be created/last run
+    at: the next occurrence of that HH:MM (today if it hasn't passed yet,
+    otherwise the next day/week), so "daily at 02:00" actually means
+    02:00 every day rather than "24h after whenever I clicked Create"."""
     if frequency not in VALID_FREQUENCIES:
         raise ValueError(f"Unknown frequency: {frequency!r}")
     if frequency == "manual":
         return None
     base = from_time or datetime.utcnow()
-    return base + _FREQUENCY_DELTA[frequency]
+    if frequency == "hourly" or not time_of_day:
+        return base + _FREQUENCY_DELTA[frequency]
+    validate_time_of_day(time_of_day)
+    hour, minute = (int(p) for p in time_of_day.split(":", 1))
+    candidate = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if candidate <= base:
+        candidate += _FREQUENCY_DELTA[frequency]
+    return candidate
 
 
 def to_dict(s: AuditSchedule) -> Dict[str, Any]:
@@ -52,6 +76,7 @@ def to_dict(s: AuditSchedule) -> Dict[str, Any]:
         "name": s.name,
         "scope": s.scope,
         "frequency": s.frequency,
+        "time_of_day": s.time_of_day,
         "enabled": s.enabled,
         "framework": s.framework,
         "created_by": s.created_by,
@@ -165,7 +190,7 @@ async def execute_schedule(db: Session, schedule: AuditSchedule) -> Dict[str, An
         f"{len(results) - len(failures)}/{len(results)} device(s) scanned successfully"
         if results else "No devices in scope"
     )
-    schedule.next_run = compute_next_run(schedule.frequency, from_time=now)
+    schedule.next_run = compute_next_run(schedule.frequency, from_time=now, time_of_day=schedule.time_of_day)
     db.commit()
 
     return {"schedule_id": schedule.id, "status": schedule.last_run_status,

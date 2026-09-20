@@ -957,6 +957,7 @@ export interface AuditSchedule {
   name: string;
   scope: { all?: boolean; device_ids?: string[] };
   frequency: "manual" | "hourly" | "daily" | "weekly";
+  time_of_day: string | null;
   enabled: boolean;
   framework: string;
   created_by: string | null;
@@ -1554,10 +1555,11 @@ export const endpoints = {
     name: string;
     scope: { all?: boolean; device_ids?: string[] };
     frequency: string;
+    time_of_day?: string | null;
     enabled: boolean;
     framework: string;
   }) => api.post<AuditSchedule>("/api/schedules", payload),
-  updateSchedule: (id: string, payload: Partial<{ name: string; enabled: boolean; frequency: string; scope: unknown; framework: string }>) =>
+  updateSchedule: (id: string, payload: Partial<{ name: string; enabled: boolean; frequency: string; time_of_day: string | null; scope: unknown; framework: string }>) =>
     api.patch<AuditSchedule>(`/api/schedules/${id}`, payload),
   deleteSchedule: (id: string) => api.delete(`/api/schedules/${id}`),
 

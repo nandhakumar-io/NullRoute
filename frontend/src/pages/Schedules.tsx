@@ -19,6 +19,7 @@ export default function Schedules() {
 
   const [name, setName] = useState("");
   const [frequency, setFrequency] = useState("daily");
+  const [timeOfDay, setTimeOfDay] = useState("02:00");
   const [framework, setFramework] = useState("ALL");
   const [scopeAll, setScopeAll] = useState(true);
   const [deviceIds, setDeviceIds] = useState("");
@@ -46,7 +47,16 @@ export default function Schedules() {
       const scope = scopeAll
         ? { all: true }
         : { device_ids: deviceIds.split(",").map((s) => s.trim()).filter(Boolean) };
-      await endpoints.createSchedule({ name, frequency, framework, enabled: true, scope });
+      await endpoints.createSchedule({
+        name,
+        frequency,
+        // Only daily/weekly have a meaningful clock time to anchor to --
+        // hourly just repeats every hour and manual never auto-runs.
+        time_of_day: frequency === "daily" || frequency === "weekly" ? timeOfDay : null,
+        framework,
+        enabled: true,
+        scope,
+      });
       setName("");
       setDeviceIds("");
       load();
@@ -126,6 +136,17 @@ export default function Schedules() {
                 </option>
               ))}
             </select>
+            {(frequency === "daily" || frequency === "weekly") && (
+              <label className="flex items-center gap-2 text-sm text-slate-400">
+                Time (UTC)
+                <input
+                  type="time"
+                  className="input w-full"
+                  value={timeOfDay}
+                  onChange={(e) => setTimeOfDay(e.target.value)}
+                />
+              </label>
+            )}
             <input
               className="input w-full"
               placeholder="Framework (e.g. ALL, CIS, NIST)"
@@ -161,6 +182,7 @@ export default function Schedules() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-slate-200">{s.name}</span>
                     <span className="badge badge-na">{s.frequency}</span>
+                    {s.time_of_day && <span className="badge badge-na">{s.time_of_day} UTC</span>}
                     <span className={`badge ${s.enabled ? "badge-pass" : "badge-na"}`}>
                       {s.enabled ? "ENABLED" : "DISABLED"}
                     </span>

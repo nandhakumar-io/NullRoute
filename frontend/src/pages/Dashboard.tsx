@@ -36,6 +36,27 @@ function ScoreBar({ score }: { score: number | null }) {
   );
 }
 
+function LiveClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div
+      className="flex flex-col items-end px-3 py-1 rounded-lg border border-soc-border bg-slate-900/60 leading-tight"
+      title="Local time"
+    >
+      <span className="text-sm font-semibold text-slate-200 tabular-nums">
+        {now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      </span>
+      <span className="text-[11px] text-slate-500">
+        {now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+      </span>
+    </div>
+  );
+}
+
 /** Small chip used for the top-of-page "posture" summary row. */
 function PostureChip({ label, value, tone }: { label: string; value: ReactNode; tone: "critical" | "high" | "medium" | "good" | "neutral" }) {
   const toneStyles: Record<string, string> = {
@@ -221,18 +242,21 @@ export default function Dashboard() {
         title="Security Operations Dashboard"
         subtitle="Multi-vendor network compliance, risk, and drift posture at a glance"
         action={
-          <div className="flex gap-1 bg-slate-900/60 border border-soc-border rounded-lg p-1">
-            {RANGES.map((r) => (
-              <button
-                key={r.value}
-                onClick={() => setRange(r.value)}
-                className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-                  range === r.value ? "bg-cyan-600 text-white" : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            <LiveClock />
+            <div className="flex gap-1 bg-slate-900/60 border border-soc-border rounded-lg p-1">
+              {RANGES.map((r) => (
+                <button
+                  key={r.value}
+                  onClick={() => setRange(r.value)}
+                  className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                    range === r.value ? "bg-cyan-600 text-white" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
           </div>
         }
       />

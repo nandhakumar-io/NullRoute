@@ -30,13 +30,11 @@ def _juniper_set_rpc(config_lines: List[str]) -> str:
     """Build a Juniper load-override RPC from a list of set-format lines."""
     set_text = "\n".join(config_lines)
     return f"""
-<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-  <load-configuration action="set" format="text">
-    <configuration-set>
+<load-configuration action="set" format="text">
+  <configuration-set>
 {set_text}
-    </configuration-set>
-  </load-configuration>
-</rpc>
+  </configuration-set>
+</load-configuration>
 """
 
 

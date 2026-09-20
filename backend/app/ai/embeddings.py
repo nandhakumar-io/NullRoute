@@ -152,11 +152,15 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
 
 
 def load_embedder() -> LoadedEmbedder:
-    model_path = os.getenv("AI_EMBEDDING_MODEL_PATH", "")
-    dataset_path = os.getenv("AI_REFERENCE_DATASET", "/home/kenpachi-zaraki/NetSecAuditor/backend/ai_reference_dataset.json")
+    model_path = os.getenv("AI_EMBEDDING_MODEL_PATH") or ""
+    
+    # Use relative resolution so it works both in /app (Docker) and locally
+    default_dataset = os.path.join(os.path.dirname(__file__), "..", "..", "ai_reference_dataset.json")
+    dataset_path = os.getenv("AI_REFERENCE_DATASET") or default_dataset
+    
     embeddings_path = os.getenv("AI_REFERENCE_EMBEDDINGS") or None
 
-    remote_url = os.getenv("AI_EMBEDDING_REMOTE_URL", "")
+    remote_url = os.getenv("AI_EMBEDDING_REMOTE_URL") or ""
     if remote_url:
         api_key = os.getenv("AI_REMOTE_API_KEY", "")
         timeout = float(os.getenv("AI_REMOTE_TIMEOUT_SECONDS", "10.0"))

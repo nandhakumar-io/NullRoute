@@ -34,7 +34,7 @@ DEFAULT_JOB_TTL_SECONDS = int(os.getenv("JOB_TTL_SECONDS", "120"))
 # explicitly adds them here (Part 1: "do not enable automatic remediation
 # deployment by default").
 READ_ONLY_OPERATIONS = frozenset(
-    {"AUDIT", "FETCH_CONFIG", "GET_FACTS", "GET_VERSION", "GET_INTERFACES", "GET_NEIGHBORS", "GET_HEALTH_METRICS"}
+    {"AUDIT", "FETCH_CONFIG", "GET_FACTS", "GET_VERSION", "GET_INTERFACES", "GET_NEIGHBORS", "GET_HEALTH_METRICS", "GET_ROUTES"}
 )
 # Reserved for a later phase; any operation in this set requires a valid,
 # non-self approval_id even once implemented.

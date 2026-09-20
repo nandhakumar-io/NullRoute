@@ -188,6 +188,17 @@ async def get_neighbors(
     return result
 
 
+@router.post("/{device_id}/gateway-get-routes")
+async def get_routes(
+    device_id: str,
+    request: Request,
+    payload: Optional[GatewayJobRequest] = None,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Retrieve this device's routing table facts via GET_ROUTES."""
+    return await _run_operation(request, device_id, "GET_ROUTES", payload, db, tenant_id, user)
 @router.get("/gateway/metrics")
 def gateway_metrics_endpoint():
     return gateway_metrics.snapshot()

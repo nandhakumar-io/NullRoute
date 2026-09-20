@@ -1535,6 +1535,8 @@ export const endpoints = {
     api.post(`/api/devices/${deviceId}/gateway-get-interfaces`, { protocol }),
   gatewayGetHealthMetrics: (deviceId: string, protocol?: string) =>
     api.post(`/api/devices/${deviceId}/gateway-get-health-metrics`, { protocol }),
+  gatewayGetRoutes: (deviceId: string, protocol?: string) =>
+    api.post(`/api/devices/${deviceId}/gateway-get-routes`, { protocol }),
   gatewayGetNeighbors: (deviceId: string, protocol?: string) =>
     api.post<{ success: boolean; normalized_data?: { neighbors?: any[]; neighbor_count?: number }; links_stored?: number; error_message?: string }>(
       `/api/devices/${deviceId}/gateway-get-neighbors`, { protocol },

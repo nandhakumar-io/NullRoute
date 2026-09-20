@@ -99,6 +99,11 @@ class BaseCollector(ABC):
         (HOST-RESOURCES-MIB + IF-MIB high-capacity counters)."""
         raise NotImplementedError
 
+    def get_routes(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        """Optional: return structured routing table (destination, next_hop,
+        protocol, interface, metric). Same fallback contract as get_facts()."""
+        raise NotImplementedError
+
     def get_neighbors(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
         """Optional: return this device's directly-observed Layer-2
         neighbors (local port -> remote system name + remote port) from a

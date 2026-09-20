@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 from app.models.db import Device
-from app.services.collectors.base import BaseCollector, CollectionResult, timed
+from app.services.collectors.base import BaseCollector, CollectionResult, StructuredResult, timed, timed_structured
 from app.services.openbao_service import DeviceCredentials, redact_secret_values
 
 try:
@@ -255,4 +255,83 @@ class NetconfCollector(BaseCollector):
             vendor=device.vendor,
             hostname=device.hostname,
             raw_config=raw_config,
+        )
+
+    @timed_structured
+    def get_interfaces(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        if not NCCLIENT_AVAILABLE:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error="ncclient is not installed; NETCONF collection unavailable in this environment",
+            )
+        vendor_key = (device.vendor or "").lower().replace(" ", "_")
+        if vendor_key not in _NETCONF_VENDORS:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=f"NETCONF collection not supported for vendor '{device.vendor}'",
+            )
+        management_address = getattr(device, "management_address", None) or device.hostname
+        if not management_address:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error="Device has no management address/hostname to connect to",
+            )
+        secret = credentials.secret
+        device_params = _DEVICE_PARAMS.get(vendor_key)
+        connect_timeout = int(secret.get("timeout", 20))
+
+        def _connect_and_collect():
+            with ncclient_manager.connect(
+                host=management_address, port=int(secret.get("port", 830)),
+                username=secret.get("username"), password=secret.get("password"),
+                hostkey_verify=False, allow_agent=False, look_for_keys=False,
+                device_params=device_params, timeout=connect_timeout,
+            ) as m:
+                rpc_filter = ('subtree', '<interfaces-state xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>')
+                reply = m.get(filter=rpc_filter)
+                return reply.data_xml
+
+        last_error: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                raw_xml = _connect_and_collect()
+                last_error = None
+                break
+            except Exception as e:  # noqa: BLE001
+                last_error = e
+                if attempt == 0 and any(s in str(e).lower() for s in _RETRYABLE_ERROR_SUBSTRINGS):
+                    time.sleep(1.5)
+                    continue
+                break
+        if last_error is not None:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"{type(last_error).__name__}: {last_error}", secret),
+            )
+
+        interfaces = []
+        try:
+            # Remove namespaces so we can use simple XPath
+            clean_xml = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", raw_xml)
+            root = ET.fromstring(clean_xml.encode("utf-8"))
+            for iface in root.findall(".//interfaces-state/interface"):
+                name = (iface.findtext("name") or "").strip()
+                if not name:
+                    continue
+                interfaces.append({
+                    "name": name,
+                    "admin_status": (iface.findtext("admin-status") or "unknown").strip(),
+                    "oper_status": (iface.findtext("oper-status") or "unknown").strip(),
+                    "mac_address": (iface.findtext("phys-address") or "").strip(),
+                    "speed_bps": int(iface.findtext("speed") or 0) if (iface.findtext("speed") or "").strip().isdigit() else 0,
+                })
+        except Exception as e:  # noqa: BLE001
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=f"Failed to parse ietf-interfaces XML: {e}",
+            )
+
+        return StructuredResult(
+            success=True, vendor=device.vendor, hostname=device.hostname,
+            data={"interfaces": interfaces, "interface_count": len(interfaces)},
         )

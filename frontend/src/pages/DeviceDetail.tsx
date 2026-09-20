@@ -55,6 +55,7 @@ export default function DeviceDetail() {
   // SSH/NETCONF instead of the SNMP MIBs this panel is about.
   const [snmpFacts, setSnmpFacts] = useState<Record<string, any> | null>(null);
   const [snmpInterfaces, setSnmpInterfaces] = useState<Record<string, any>[]>([]);
+  const [liveRoutes, setLiveRoutes] = useState<Record<string, any>[]>([]);
   const [snmpHealth, setSnmpHealth] = useState<Record<string, any> | null>(null);
   const [latestMetricsSnapshot, setLatestMetricsSnapshot] = useState<Record<string, any> | null>(null);
   const [metricsHistory, setMetricsHistory] = useState<Record<string, any>[]>([]);
@@ -141,7 +142,10 @@ export default function DeviceDetail() {
       .catch((e) => {
         if (e?.response?.status === 404) setNotFound(true);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        pollLiveTelemetry();
+      });
       
     const interval = setInterval(() => {
       reload()!.catch(() => {});
@@ -177,15 +181,16 @@ export default function DeviceDetail() {
     }
   }
 
-  async function pollSnmp() {
+  async function pollLiveTelemetry() {
     if (!deviceId) return;
     setSnmpLoading(true);
     setSnmpError(null);
     setSnmpIsMock(false);
     try {
-      const [factsRes, ifacesRes] = await Promise.all([
+      const [factsRes, ifacesRes, routesRes] = await Promise.all([
         endpoints.gatewayGetFacts(deviceId, "snmp"),
-        endpoints.gatewayGetInterfaces(deviceId, "snmp"),
+        endpoints.gatewayGetInterfaces(deviceId, device?.protocol),
+        endpoints.gatewayGetRoutes(deviceId, device?.protocol),
       ]);
       // Gateway responses carry their payload under `normalized_data`, not
       // `data` (see backend/app/gateway/worker.py::process_job) -- reading
@@ -194,6 +199,7 @@ export default function DeviceDetail() {
       // itself succeeded.
       setSnmpFacts((factsRes.data as any)?.normalized_data ?? null);
       setSnmpInterfaces((ifacesRes.data as any)?.normalized_data?.interfaces ?? []);
+      setLiveRoutes((routesRes.data as any)?.normalized_data?.routes ?? []);
       setSnmpIsMock((factsRes.data as any)?.protocol === "mock" || (ifacesRes.data as any)?.protocol === "mock");
     } catch (e: any) {
       // Most common cause: no snmp_community/snmp_v3 credential stored for
@@ -201,7 +207,8 @@ export default function DeviceDetail() {
       // the device is unreachable on UDP/161 (firewalled/ACL'd).
       setSnmpFacts(null);
       setSnmpInterfaces([]);
-      setSnmpError(extractGatewayError(e, "SNMP poll failed"));
+      setLiveRoutes([]);
+      setSnmpError(extractGatewayError(e, "Live telemetry poll failed"));
     } finally {
       setSnmpLoading(false);
     }
@@ -466,6 +473,36 @@ export default function DeviceDetail() {
               </tbody>
             </table>
           )}
+
+          {snmpInterfaces.length > 0 && (
+            <div className="mt-6">
+              <div className="font-semibold text-slate-300 text-xs uppercase mb-2">Live Interface State</div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b border-soc-border">
+                    <th className="py-2 pr-4">ifIndex</th>
+                    <th className="py-2 pr-4">Name</th>
+                    <th className="py-2 pr-4">Admin</th>
+                    <th className="py-2 pr-4">Oper</th>
+                    <th className="py-2 pr-4">Speed (bps)</th>
+                    <th className="py-2 pr-4">MAC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {snmpInterfaces.map((row) => (
+                    <tr key={row.if_index} className="border-b border-soc-border/50">
+                      <td className="py-2 pr-4 font-mono">{row.if_index}</td>
+                      <td className="py-2 pr-4 font-mono">{row.name || "—"}</td>
+                      <td className="py-2 pr-4">{row.admin_status || "—"}</td>
+                      <td className="py-2 pr-4">{row.oper_status || "—"}</td>
+                      <td className="py-2 pr-4 font-mono">{row.speed_bps || "—"}</td>
+                      <td className="py-2 pr-4 font-mono">{row.mac_address || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="card">
@@ -484,9 +521,9 @@ export default function DeviceDetail() {
             <button
               className="text-xs px-3 py-1.5 rounded border border-soc-border text-cyan-400 hover:border-cyan-600 disabled:opacity-50"
               disabled={snmpLoading}
-              onClick={pollSnmp}
+              onClick={pollLiveTelemetry}
             >
-              {snmpLoading ? "Polling…" : "Poll via SNMP"}
+              {snmpLoading ? "Polling…" : "Poll Live Telemetry"}
             </button>
           </div>
           {snmpIsMock && (
@@ -687,31 +724,6 @@ export default function DeviceDetail() {
               </div>
             </div>
           )}
-          {snmpInterfaces.length > 0 && (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-500 border-b border-soc-border">
-                  <th className="py-2 pr-4">ifIndex</th>
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Admin</th>
-                  <th className="py-2 pr-4">Oper</th>
-                  <th className="py-2 pr-4">Speed (bps)</th>
-                  <th className="py-2 pr-4">MAC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snmpInterfaces.map((row) => (
-                  <tr key={row.if_index} className="border-b border-soc-border/50">
-                    <td className="py-2 pr-4 font-mono">{row.if_index}</td>
-                    <td className="py-2 pr-4 font-mono">{row.name || "—"}</td>
-                    <td className="py-2 pr-4">{row.admin_status || "—"}</td>
-                    <td className="py-2 pr-4">{row.oper_status || "—"}</td>
-                    <td className="py-2 pr-4 font-mono">{row.speed_bps || "—"}</td>
-                    <td className="py-2 pr-4 font-mono">{row.mac_address || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           )}
         </div>
 
@@ -741,6 +753,35 @@ export default function DeviceDetail() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {liveRoutes.length > 0 && (
+            <div className="mt-6">
+              <div className="font-semibold text-slate-300 text-xs uppercase mb-2">Live Route Inventory</div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-slate-500 border-b border-soc-border">
+                    <th className="py-2 pr-4">Destination</th>
+                    <th className="py-2 pr-4">Next Hop</th>
+                    <th className="py-2 pr-4">Type</th>
+                    <th className="py-2 pr-4">Proto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveRoutes.map((r, i) => (
+                    <tr key={i} className="border-b border-soc-border/50">
+                      <td className="py-2 pr-4 font-mono">
+                        {r.destination}
+                        {r.mask && r.mask !== "undefined" ? `/${r.mask}` : ""}
+                      </td>
+                      <td className="py-2 pr-4 font-mono">{r.next_hop || "—"}</td>
+                      <td className="py-2 pr-4">{r.type || "—"}</td>
+                      <td className="py-2 pr-4">{r.proto || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
 

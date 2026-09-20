@@ -115,7 +115,7 @@ class MockConnector:
             protocol="mock",
             operation=operation,
             success=True,
-            raw_config=raw if operation not in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS", "GET_NEIGHBORS") else None,
+            raw_config=raw if operation not in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS", "GET_NEIGHBORS", "GET_ROUTES") else None,
             normalized_data=normalized,
             duration_ms=round((time.perf_counter() - start) * 1000.0, 2),
         )
@@ -151,7 +151,7 @@ def _operation_to_collection(device: Device, operation: str, protocol: str, cred
     # ------------------------------------------------------------------ #
     # Structured operation dispatch (GET_FACTS / GET_INTERFACES)          #
     # ------------------------------------------------------------------ #
-    if operation in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS", "GET_NEIGHBORS"):
+    if operation in ("GET_FACTS", "GET_INTERFACES", "GET_HEALTH_METRICS", "GET_NEIGHBORS", "GET_ROUTES"):
         structured_result = None
         try:
             if operation == "GET_FACTS":
@@ -160,6 +160,8 @@ def _operation_to_collection(device: Device, operation: str, protocol: str, cred
                 structured_result = collector.get_interfaces(device, credentials)
             elif operation == "GET_NEIGHBORS":
                 structured_result = collector.get_neighbors(device, credentials)
+            elif operation == "GET_ROUTES":
+                structured_result = collector.get_routes(device, credentials)
             else:
                 structured_result = collector.get_health_metrics(device, credentials)
         except NotImplementedError:

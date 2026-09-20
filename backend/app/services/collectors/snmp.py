@@ -37,7 +37,7 @@ try:
     from pysnmp.hlapi.asyncio import (  # type: ignore[import]
         CommunityData, ContextData, ObjectIdentity, ObjectType,
         SnmpEngine, UdpTransportTarget, UsmUserData,
-        get_cmd, bulk_cmd,
+        get_cmd, bulk_walk_cmd,
         usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol,
         usmAesCfb128Protocol, usmDESPrivProtocol,
         usmNoAuthProtocol, usmNoPrivProtocol,
@@ -130,8 +130,8 @@ def _auth_data(secret: Dict[str, Any]):
     return CommunityData(secret.get("community", "public"), mpModel=1)
 
 
-def _transport(secret: Dict[str, Any], management_address: str):
-    return UdpTransportTarget(
+async def _transport(secret: Dict[str, Any], management_address: str):
+    return await UdpTransportTarget.create(
         (management_address, int(secret.get("port", 161))),
         timeout=int(secret.get("timeout", 5)),
     )
@@ -163,10 +163,11 @@ class SNMPCollector(BaseCollector):
             return CollectionResult(success=False, vendor=device.vendor, hostname=device.hostname, error=str(e))
 
         async def _get():
+            target = await _transport(secret, management_address)
             error_indication, error_status, error_index, var_binds = await get_cmd(
                 SnmpEngine(),
                 _auth_data(secret),
-                _transport(secret, management_address),
+                target,
                 ContextData(),
                 ObjectType(ObjectIdentity(SYS_DESCR_OID)),
             )
@@ -211,10 +212,11 @@ class SNMPCollector(BaseCollector):
         oids = [SYS_DESCR_OID, SYS_OBJECT_ID_OID, SYS_UPTIME_OID, SYS_NAME_OID]
 
         async def _get():
+            target = await _transport(secret, management_address)
             return await get_cmd(
                 SnmpEngine(),
                 _auth_data(secret),
-                _transport(secret, management_address),
+                target,
                 ContextData(),
                 *(ObjectType(ObjectIdentity(oid)) for oid in oids),
             )
@@ -271,10 +273,11 @@ class SNMPCollector(BaseCollector):
         for field_name, base_oid in _IF_MIB_COLUMNS.items():
             async def _walk(base=base_oid):
                 results = []
-                async for (error_indication, error_status, error_index, var_binds) in bulk_cmd(
+                target = await _transport(secret, management_address)
+                async for (error_indication, error_status, error_index, var_binds) in bulk_walk_cmd(
                     SnmpEngine(),
                     _auth_data(secret),
-                    _transport(secret, management_address),
+                    target,
                     ContextData(),
                     0, 25,
                     ObjectType(ObjectIdentity(base)),
@@ -330,6 +333,88 @@ class SNMPCollector(BaseCollector):
         )
 
     @timed_structured
+    def get_routes(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        """IP-MIB (RFC1213) ipRouteTable walk for basic IPv4 route inventory."""
+        if not PYSNMP_AVAILABLE:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error="pysnmp is not installed; SNMP probing unavailable in this environment",
+            )
+        secret = credentials.secret
+        try:
+            management_address = _validate_target(device)
+        except ValueError as e:
+            return StructuredResult(success=False, vendor=device.vendor, hostname=device.hostname, error=str(e))
+
+        def _walk_column(base_oid: str) -> Dict[str, str]:
+            async def _walk():
+                results = []
+                target = await _transport(secret, management_address)
+                async for (error_indication, error_status, error_index, var_binds) in bulk_walk_cmd(
+                    SnmpEngine(),
+                    _auth_data(secret),
+                    target,
+                    ContextData(),
+                    0, 25,
+                    ObjectType(ObjectIdentity(base_oid)),
+                    lexicographicMode=False,
+                ):
+                    results.append((error_indication, error_status, error_index, var_binds))
+                return results
+
+            rows = _run_async(_walk())
+            out: Dict[str, str] = {}
+            for error_indication, error_status, error_index, var_binds in rows:
+                if error_indication or error_status:
+                    return {}
+                for oid, value in var_binds:
+                    oid_str = str(oid)
+                    if not oid_str.startswith(base_oid + "."):
+                        continue
+                    out[oid_str[len(base_oid) + 1:]] = value.prettyPrint() if hasattr(value, "prettyPrint") else str(value)
+            return out
+
+        try:
+            # 1.3.6.1.2.1.4.21.1 (ipRouteEntry)
+            dest_dict = _walk_column("1.3.6.1.2.1.4.21.1.1")
+            ifindex_dict = _walk_column("1.3.6.1.2.1.4.21.1.2")
+            metric_dict = _walk_column("1.3.6.1.2.1.4.21.1.3")
+            nexthop_dict = _walk_column("1.3.6.1.2.1.4.21.1.7")
+            proto_dict = _walk_column("1.3.6.1.2.1.4.21.1.9")
+            mask_dict = _walk_column("1.3.6.1.2.1.4.21.1.11")
+        except Exception as e:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"SNMP error walking ipRouteTable: {e}", secret),
+            )
+
+        routes: List[Dict[str, Any]] = []
+        _PROTO_MAP = {
+            1: "other", 2: "local", 3: "netmgmt", 4: "icmp", 8: "rip", 9: "is-is", 13: "ospf", 14: "bgp",
+        }
+        for idx, dest in dest_dict.items():
+            proto_raw = proto_dict.get(idx)
+            proto_name = str(proto_raw)
+            if proto_raw and proto_raw.isdigit():
+                proto_name = _PROTO_MAP.get(int(proto_raw), proto_raw)
+
+            routes.append({
+                "destination": dest,
+                "mask": mask_dict.get(idx, ""),
+                "next_hop": nexthop_dict.get(idx, ""),
+                "interface_index": ifindex_dict.get(idx, ""),
+                "metric": metric_dict.get(idx, ""),
+                "protocol": proto_name,
+            })
+
+        return StructuredResult(
+            success=True,
+            vendor=device.vendor,
+            hostname=device.hostname,
+            data={"routes": routes, "route_count": len(routes)},
+        )
+
+    @timed_structured
     def get_neighbors(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
         """LLDP-MIB walk (IEEE 802.1AB) -- vendor-agnostic Layer-2 neighbor
         discovery, same rationale as get_health_metrics() using
@@ -355,10 +440,11 @@ class SNMPCollector(BaseCollector):
         def _walk_column(base_oid: str) -> Dict[str, str]:
             async def _walk():
                 results = []
-                async for (error_indication, error_status, error_index, var_binds) in bulk_cmd(
+                target = await _transport(secret, management_address)
+                async for (error_indication, error_status, error_index, var_binds) in bulk_walk_cmd(
                     SnmpEngine(),
                     _auth_data(secret),
-                    _transport(secret, management_address),
+                    target,
                     ContextData(),
                     0, 25,
                     ObjectType(ObjectIdentity(base_oid)),
@@ -444,10 +530,11 @@ class SNMPCollector(BaseCollector):
         def _walk_column(base_oid: str):
             async def _walk():
                 rows = []
-                async for (error_indication, error_status, error_index, var_binds) in bulk_cmd(
+                target = await _transport(secret, management_address)
+                async for (error_indication, error_status, error_index, var_binds) in bulk_walk_cmd(
                     SnmpEngine(),
                     _auth_data(secret),
-                    _transport(secret, management_address),
+                    target,
                     ContextData(),
                     0, 25,
                     ObjectType(ObjectIdentity(base_oid)),

@@ -1651,7 +1651,7 @@ export const endpoints = {
   /** Admin-only: edit, re-merge, re-validate; forces re-approval. */
   editChangeRequest: (id: string, body: { snippet?: string; proposed_config?: string }) =>
     api.patch<ChangeRequest>(`/api/change-requests/${id}`, body),
-  changeRequestPushPlan: (id: string) => api.get<PushPlan>(`/api/change-requests/${id}/push-plan`),
+  changeRequestDeployPlan: (id: string) => api.get<PushPlan>(`/api/change-requests/${id}/deploy-plan`),
   approveChangeRequest: (id: string) => api.post<ChangeRequest>(`/api/change-requests/${id}/approve`),
   rejectChangeRequest: (id: string, reason: string) =>
     api.post<ChangeRequest>(`/api/change-requests/${id}/reject`, { reason }),

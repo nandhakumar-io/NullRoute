@@ -113,7 +113,7 @@ function DeployPlanPanel({ crId, revision }: { crId: string; revision?: number }
     setPlan(null);
     setErr(false);
     endpoints
-      .changeRequestPushPlan(crId)
+      .changeRequestDeployPlan(crId)
       .then((r) => !cancelled && setPlan(r.data))
       .catch(() => !cancelled && setErr(true));
     return () => {

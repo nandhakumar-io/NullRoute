@@ -49,7 +49,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsername(null);
     // Best-effort: invalidate the token server-side (bumps token_version).
     // Fire-and-forget -- logging out client-side must succeed either way.
-    api.post("/api/auth/logout").catch(() => {});
+    api.post("/api/auth/logout").finally(() => {
+      window.location.href = "/login";
+    });
   }, []);
 
   useEffect(() => {

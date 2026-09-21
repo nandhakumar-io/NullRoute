@@ -45,12 +45,7 @@ export default function Login() {
     <div style={{ minHeight: "100vh", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <form onSubmit={submit} style={{ width: "100%", maxWidth: 400 }} aria-labelledby="login-title">
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: BRAND, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="30" height="30" fill="none" viewBox="0 0 24 24" stroke="#fff" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
+          <img src="/nullroute.jpg" alt="NullRoute Logo" style={{ width: 64, height: 64, borderRadius: 16, margin: "0 auto 14px", display: "block", objectFit: "cover", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }} />
           <h1 id="login-title" style={{ fontSize: "1.75rem", fontWeight: 800, color: INK, margin: 0 }}>NetSecAuditor</h1>
           <p style={{ color: MUTED, marginTop: 6, fontSize: "0.95rem" }}>Sign in to continue</p>
         </div>

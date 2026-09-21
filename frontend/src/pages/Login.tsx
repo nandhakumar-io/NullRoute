@@ -70,7 +70,7 @@ export default function Login() {
           </div>
           <h1 className="text-5xl font-extrabold tracking-tight text-white mb-3"
             style={{ textShadow: "0 0 40px rgba(6,182,212,0.25)" }}>
-            NetSecAuditor
+            NullRoute
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
             AI-driven multi-vendor network security compliance. OPA-deterministic, Batfish-verified, LLM-assisted.

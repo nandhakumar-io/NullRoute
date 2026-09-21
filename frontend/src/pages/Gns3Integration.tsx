@@ -151,7 +151,7 @@ export default function Gns3Integration() {
     <div>
       <PageHeader
         title="GNS3 Integration"
-        subtitle="Synchronize NetSecAuditor with live GNS3 validation sandboxes."
+        subtitle="Synchronize NullRoute with live GNS3 validation sandboxes."
         action={
           <button onClick={() => setShowAdd(!showAdd)} className="btn-primary">
             {showAdd ? "Cancel" : "Add GNS3 Server"}
@@ -261,7 +261,7 @@ export default function Gns3Integration() {
                         {labs.find(l => l.project_id === selectedLab)?.name}
                       </h3>
                       <div className="text-xs text-slate-400 mt-1">
-                        Select nodes to import into NetSecAuditor Device Inventory for scanning.
+                        Select nodes to import into NullRoute Device Inventory for scanning.
                       </div>
                     </div>
                     

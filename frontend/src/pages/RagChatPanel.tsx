@@ -114,10 +114,10 @@ export default function RagChatPanel() {
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium pl-4 pr-5 py-3 rounded-full shadow-lg shadow-cyan-900/30 transition-all hover:scale-[1.03]"
-        title={`Ask NetSecAuditor (RAG chat) — LLM ${llmStatus === "active" ? "active" : llmStatus === "down" ? "unavailable" : "checking…"}`}
+        title={`Ask NullRoute (RAG chat) — LLM ${llmStatus === "active" ? "active" : llmStatus === "down" ? "unavailable" : "checking…"}`}
       >
         <ChatIcon />
-        <span className="text-sm">Ask NetSecAuditor</span>
+        <span className="text-sm">Ask NullRoute</span>
         <LlmStatusDot status={llmStatus} />
       </button>
     );
@@ -132,7 +132,7 @@ export default function RagChatPanel() {
             <ChatIcon size={15} />
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-200 truncate">Ask NetSecAuditor</div>
+            <div className="text-sm font-semibold text-slate-200 truncate">Ask NullRoute</div>
             <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5">
               RAG over your compliance data · beta
               <span className="flex items-center gap-1" title={llmDetail || undefined}>

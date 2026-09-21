@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, FormEvent } from "react";
+import React, { useRef, useState, useEffect, FormEvent } from "react";
 import { endpoints, RagSource } from "../api";
 
 type ChatMessage = {
@@ -28,6 +28,33 @@ export default function RagChatPanel() {
   const [loading, setLoading] = useState(false);
   const [reindexing, setReindexing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Dragging state
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0, posX: 0, posY: 0 });
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      setPosition({ x: dragStart.current.posX + dx, y: dragStart.current.posY + dy });
+    };
+    const handleMouseUp = () => setIsDragging(false);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY, posX: position.x, posY: position.y };
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -88,9 +115,15 @@ export default function RagChatPanel() {
   }
 
   return (
-    <div className={`fixed bottom-6 right-6 z-40 bg-soc-panel border border-soc-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col overflow-hidden transition-all duration-300 ${isMaximized ? "w-[90vw] md:w-[800px] h-[90vh] md:h-[800px] max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)]" : "w-[380px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-4rem)]"}`}>
+    <div 
+      className={`fixed bottom-6 right-6 z-40 bg-soc-panel border border-soc-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col overflow-hidden ${!isDragging ? "transition-all duration-300" : ""} ${isMaximized ? "w-[90vw] md:w-[800px] h-[90vh] md:h-[800px] max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)]" : "w-[380px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-4rem)]"} ${isDragging ? "select-none" : ""}`}
+      style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-soc-border bg-slate-900/40">
+      <div 
+        className="flex items-center justify-between px-4 py-3 border-b border-soc-border bg-slate-900/40 cursor-move"
+        onMouseDown={handleMouseDown}
+      >
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-7 h-7 rounded-lg bg-cyan-600/15 text-cyan-400 flex items-center justify-center shrink-0">
             <ChatIcon size={15} />

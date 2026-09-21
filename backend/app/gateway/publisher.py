@@ -61,7 +61,8 @@ async def submit_job(
         # covered by the signature -- no secret material.
         await events.publish(request_subject, envelope.to_dict())
 
-    result = process_job(db, envelope)
+    import asyncio
+    result = await asyncio.to_thread(process_job, db, envelope)
 
     if result_subject:
         subject = result_subject if result.get("success") else ERROR_SUBJECT

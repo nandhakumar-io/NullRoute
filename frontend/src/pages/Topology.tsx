@@ -11,6 +11,7 @@ import {
   BlastRadiusNodeState,
 } from "../api";
 import { PageHeader, Loading, EmptyState, SeverityBadge } from "../components/ui";
+import { usePersistedState } from "../lib/usePersistedState";
 import ForceGraph2D from "react-force-graph-2d";
 
 /** Node ring colours for each projected post-deployment state. */
@@ -219,20 +220,37 @@ function BlastRadiusPanel({
 
 function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // `files` (raw File objects) can't survive a refresh -- the browser drops
+  // the underlying file handles regardless, so this one stays plain state.
+  // Everything about what a build DID (log, result, the group it produced)
+  // persists, so navigating away and back -- or refreshing mid-review --
+  // doesn't lose the record of the last build.
   const [files, setFiles] = useState<File[]>([]);
-  const [groupName, setGroupName] = useState("Demo Network Block");
-  // "Build Network" (upload + group) and "Scan" (Batfish over the resulting
-  // group) are now separate steps/buttons instead of one combined action:
-  // building a large group of configs no longer has to sit through a
-  // Batfish run just to get the devices created and grouped, and a group
-  // can be re-scanned later without re-uploading anything.
-  const [status, setStatus] = useState<"idle" | "uploading" | "grouping" | "scanning" | "built" | "done" | "error">("idle");
-  const [log, setLog] = useState<string[]>([]);
-  const [result, setResult] = useState<any>(null);
-  const [builtGroup, setBuiltGroup] = useState<{ id: string; name: string } | null>(null);
+  const [groupName, setGroupName] = usePersistedState<string>("topology.build.groupName", "Demo Network Block");
+  const [log, setLog] = usePersistedState<string[]>("topology.build.log", []);
+  const [result, setResult] = usePersistedState<any>("topology.build.result", null);
+  const [builtGroup, setBuiltGroup] = usePersistedState<{ id: string; name: string } | null>(
+    "topology.build.builtGroup", null,
+  );
+  // "uploading"/"grouping"/"scanning" are only ever true while a request is
+  // actually in flight in THIS tab -- a refresh kills that request, so
+  // those statuses are never persisted. Resume instead from what we know
+  // definitely finished: a builtGroup means the last build succeeded.
+  const [status, setStatus] = useState<"idle" | "uploading" | "grouping" | "scanning" | "built" | "done" | "error">(
+    () => (builtGroup ? "built" : "idle"),
+  );
 
   function addLog(line: string) {
     setLog((l) => [...l, line]);
+  }
+
+  function resetBuild() {
+    setFiles([]);
+    setLog([]);
+    setResult(null);
+    setBuiltGroup(null);
+    setStatus("idle");
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function buildNetwork() {
@@ -330,6 +348,14 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
             className="px-3 py-1.5 rounded-lg text-sm font-medium bg-sky-900/40 text-sky-300 border border-sky-800/60 hover:bg-sky-900/60 disabled:opacity-40"
           >
             {status === "scanning" ? "Scanning…" : `Scan "${builtGroup.name}"`}
+          </button>
+        )}
+        {(log.length > 0 || builtGroup) && !busy && (
+          <button
+            onClick={resetBuild}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 border border-transparent hover:border-soc-border"
+          >
+            Clear
           </button>
         )}
       </div>
@@ -431,20 +457,23 @@ function VlanMapPanel({ nodeCount, onRefreshed }: { nodeCount: number; onRefresh
 export default function Topology() {
   const navigate = useNavigate();
   const [topology, setTopology] = useState<TopologyData | null>(null);
-  const [selectedNode, setSelectedNode] = useState<any | null>(null);
+  // The clicked node itself isn't persisted (it's a snapshot of graph data
+  // that goes stale) -- only which node id was selected, so it can be
+  // re-resolved against the freshly-fetched topology after a refresh/nav.
+  const [selectedNodeId, setSelectedNodeId] = usePersistedState<string | null>("topology.selectedNodeId", null);
   const [nodeInterfaces, setNodeInterfaces] = useState<NetworkInterface[] | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [discoverMsg, setDiscoverMsg] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
 
   // --- Pre/Post deployment evaluation -------------------------------------
-  const [view, setView] = useState<"pre" | "post">("pre");
+  const [view, setView] = usePersistedState<"pre" | "post">("topology.view", "pre");
   const [changeRequests, setChangeRequests] = useState<ChangeRequest[] | null>(null);
-  const [selectedCrId, setSelectedCrId] = useState<string>("");
+  const [selectedCrId, setSelectedCrId] = usePersistedState<string>("topology.selectedCrId", "");
   const [blast, setBlast] = useState<BlastRadius | null>(null);
   const [blastLoading, setBlastLoading] = useState(false);
   const [blastError, setBlastError] = useState<string | null>(null);
-  const [showPanel, setShowPanel] = useState(true);
+  const [showPanel, setShowPanel] = usePersistedState<boolean>("topology.showPanel", true);
   // Drives the pulsing ring animation on at-risk nodes.
   const [pulse, setPulse] = useState(0);
 
@@ -464,9 +493,9 @@ export default function Topology() {
   }, []);
 
   useEffect(() => {
-    if (!selectedNode) { setNodeInterfaces(null); return; }
-    endpoints.deviceInterfaces(selectedNode.id).then((r) => setNodeInterfaces(r.data)).catch(() => setNodeInterfaces([]));
-  }, [selectedNode]);
+    if (!selectedNodeId) { setNodeInterfaces(null); return; }
+    endpoints.deviceInterfaces(selectedNodeId).then((r) => setNodeInterfaces(r.data)).catch(() => setNodeInterfaces([]));
+  }, [selectedNodeId]);
 
   // Change requests that are still pending a decision are the ones worth
   // evaluating on the canvas -- an already-deployed CR has no "projected"
@@ -523,6 +552,7 @@ export default function Topology() {
   if (!topology) return <Loading />;
 
   const { nodes, links } = topology;
+  const selectedNode = selectedNodeId ? nodes.find((n: any) => n.id === selectedNodeId) ?? null : null;
 
   const graphData = {
     nodes: nodes.map(n => ({ ...n, val: 5 })),
@@ -530,7 +560,7 @@ export default function Topology() {
   };
 
   const handleNodeClick = (node: any) => {
-    setSelectedNode(node);
+    setSelectedNodeId(node.id);
     setDiscoverMsg(null);
   };
 

@@ -46,7 +46,7 @@ export default function Login() {
       <form onSubmit={submit} style={{ width: "100%", maxWidth: 400 }} aria-labelledby="login-title">
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <img src="/nullroute.jpg" alt="NullRoute Logo" style={{ width: 64, height: 64, borderRadius: 16, margin: "0 auto 14px", display: "block", objectFit: "cover", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)" }} />
-          <h1 id="login-title" style={{ fontSize: "1.75rem", fontWeight: 800, color: INK, margin: 0 }}>NetSecAuditor</h1>
+          <h1 id="login-title" style={{ fontSize: "1.75rem", fontWeight: 800, color: INK, margin: 0 }}>NullRoute</h1>
           <p style={{ color: MUTED, marginTop: 6, fontSize: "0.95rem" }}>Sign in to continue</p>
         </div>
 

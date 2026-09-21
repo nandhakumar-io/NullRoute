@@ -286,9 +286,14 @@ class NetconfCollector(BaseCollector):
                 hostkey_verify=False, allow_agent=False, look_for_keys=False,
                 device_params=device_params, timeout=connect_timeout,
             ) as m:
-                rpc_filter = ('subtree', '<interfaces-state xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>')
-                reply = m.get(filter=rpc_filter)
-                return reply.data_xml
+                if vendor_key == "juniper":
+                    from ncclient.xml_ import to_ele
+                    reply = m.dispatch(to_ele('<get-interface-information><terse/></get-interface-information>'))
+                    return str(reply)
+                else:
+                    rpc_filter = ('subtree', '<interfaces-state xmlns="urn:ietf:params:xml:ns:yang:ietf-interfaces"/>')
+                    reply = m.get(filter=rpc_filter)
+                    return reply.data_xml
 
         last_error: Optional[Exception] = None
         for attempt in range(2):
@@ -310,27 +315,131 @@ class NetconfCollector(BaseCollector):
 
         interfaces = []
         try:
-            # Remove namespaces so we can use simple XPath
             clean_xml = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", raw_xml)
             root = ET.fromstring(clean_xml.encode("utf-8"))
-            for iface in root.findall(".//interfaces-state/interface"):
-                name = (iface.findtext("name") or "").strip()
-                if not name:
-                    continue
-                interfaces.append({
-                    "name": name,
-                    "admin_status": (iface.findtext("admin-status") or "unknown").strip(),
-                    "oper_status": (iface.findtext("oper-status") or "unknown").strip(),
-                    "mac_address": (iface.findtext("phys-address") or "").strip(),
-                    "speed_bps": int(iface.findtext("speed") or 0) if (iface.findtext("speed") or "").strip().isdigit() else 0,
-                })
+            if vendor_key == "juniper":
+                for ph in root.findall(".//physical-interface"):
+                    name = ph.findtext("name", "").strip()
+                    if name:
+                        interfaces.append({
+                            "name": name,
+                            "admin_status": ph.findtext("admin-status", "unknown").lower(),
+                            "oper_status": ph.findtext("oper-status", "unknown").lower(),
+                        })
+                for lo in root.findall(".//logical-interface"):
+                    name = lo.findtext("name", "").strip()
+                    if name:
+                        ip_text = lo.findtext(".//ifa-local", "")
+                        interfaces.append({
+                            "name": name,
+                            "admin_status": lo.findtext("admin-status", "unknown").lower(),
+                            "oper_status": lo.findtext("oper-status", "unknown").lower(),
+                            "ip_address": ip_text.split("/")[0] if ip_text else None,
+                        })
+            else:
+                for iface in root.findall(".//interfaces-state/interface"):
+                    name = (iface.findtext("name") or "").strip()
+                    if not name:
+                        continue
+                    interfaces.append({
+                        "name": name,
+                        "admin_status": (iface.findtext("admin-status") or "unknown").strip(),
+                        "oper_status": (iface.findtext("oper-status") or "unknown").strip(),
+                        "mac_address": (iface.findtext("phys-address") or "").strip(),
+                        "speed_bps": int(iface.findtext("speed") or 0) if (iface.findtext("speed") or "").strip().isdigit() else 0,
+                    })
         except Exception as e:  # noqa: BLE001
             return StructuredResult(
                 success=False, vendor=device.vendor, hostname=device.hostname,
-                error=f"Failed to parse ietf-interfaces XML: {e}",
+                error=f"Failed to parse interfaces XML: {e}",
             )
 
         return StructuredResult(
             success=True, vendor=device.vendor, hostname=device.hostname,
             data={"interfaces": interfaces, "interface_count": len(interfaces)},
+        )
+
+    @timed_structured
+    def get_routes(self, device: Device, credentials: DeviceCredentials) -> StructuredResult:
+        if not NCCLIENT_AVAILABLE:
+            raise NotImplementedError
+        vendor_key = (device.vendor or "").lower().replace(" ", "_")
+        if vendor_key != "juniper":
+            raise NotImplementedError
+        
+        management_address = getattr(device, "management_address", None) or device.hostname
+        if not management_address:
+            raise NotImplementedError
+            
+        secret = credentials.secret
+        device_params = _DEVICE_PARAMS.get(vendor_key)
+        connect_timeout = int(secret.get("timeout", 20))
+
+        def _connect_and_collect():
+            with ncclient_manager.connect(
+                host=management_address, port=int(secret.get("port", 830)),
+                username=secret.get("username"), password=secret.get("password"),
+                hostkey_verify=False, allow_agent=False, look_for_keys=False,
+                device_params=device_params, timeout=connect_timeout,
+            ) as m:
+                from ncclient.xml_ import to_ele
+                reply = m.dispatch(to_ele("<get-route-information/>"))
+                return str(reply)
+
+        last_error = None
+        for attempt in range(2):
+            try:
+                raw_xml = _connect_and_collect()
+                last_error = None
+                break
+            except Exception as e:  # noqa: BLE001
+                last_error = e
+                if attempt == 0 and any(s in str(e).lower() for s in _RETRYABLE_ERROR_SUBSTRINGS):
+                    time.sleep(1.5)
+                    continue
+                break
+        
+        if last_error:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=redact_secret_values(f"{type(last_error).__name__}: {last_error}", secret),
+            )
+            
+        routes = []
+        try:
+            clean_xml = re.sub(r'\s+xmlns(?::\w+)?="[^"]*"', "", raw_xml)
+            root = ET.fromstring(clean_xml.encode("utf-8"))
+            for rt in root.findall(".//rt"):
+                dest = rt.findtext("rt-destination", "").strip()
+                if not dest:
+                    continue
+                for entry in rt.findall("rt-entry"):
+                    protocol = entry.findtext("protocol-name", "unknown").strip()
+                    preference = entry.findtext("preference", "255").strip()
+                    
+                    nh = entry.find("nh")
+                    via = ""
+                    to = ""
+                    if nh is not None:
+                        to = nh.findtext("to", "").strip()
+                        via = nh.findtext("via", "").strip()
+                        if not via:
+                            via = nh.findtext("nh-local-interface", "").strip()
+                    
+                    routes.append({
+                        "destination": dest,
+                        "protocol": protocol,
+                        "metric": preference,
+                        "next_hop": to or "Direct",
+                        "interface": via,
+                    })
+        except Exception as e:
+            return StructuredResult(
+                success=False, vendor=device.vendor, hostname=device.hostname,
+                error=f"Failed to parse routes XML: {e}",
+            )
+            
+        return StructuredResult(
+            success=True, vendor=device.vendor, hostname=device.hostname,
+            data={"routes": routes, "route_count": len(routes)},
         )

@@ -218,10 +218,10 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
     )
 
     import asyncio
-    # Bound concurrency (not coverage) for large configs with many FAIL
-    # findings -- every finding still gets a remediation entry, we just
-    # avoid firing hundreds of simultaneous Ollama requests at once.
-    _semaphore = asyncio.Semaphore(20)
+    # Bound concurrency to prevent HTTP read timeouts while queries wait
+    # their turn inside the AI. A much lower limit keeps waiting inside
+    # asyncio rather than httpx queues.
+    _semaphore = asyncio.Semaphore(2)
 
     async def _generate(f: Finding) -> Dict[str, Any]:
         # Match the template to this device's actual OS family (e.g. don't
@@ -272,7 +272,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     + vuln_prompt_suffix
                 )
                 async with _semaphore:
-                    async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with httpx.AsyncClient(timeout=300.0) as client:
                         resp = await client.post(
                             f"{OLLAMA_HOST}/generate",
                             json={

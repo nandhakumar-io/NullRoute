@@ -242,20 +242,28 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
     setBuiltGroup(null);
     try {
       setStatus("uploading");
-      addLog(`Uploading ${files.length} configuration file(s)…`);
-      const uploadRes = await endpoints.bulkUploadConfigs(files);
-      const deviceIds = uploadRes.data.map((s) => s.device_id);
+      addLog(`Parsing ${files.length} configuration file(s) into interfaces, VLANs, VRFs and routes…`);
+      const buildRes = await endpoints.buildTopology(files, groupName || "Demo Network Block");
+
+      for (const d of buildRes.data.devices) {
+        if (d.error) {
+          addLog(`${d.filename}: failed — ${d.error}`);
+          continue;
+        }
+        const llmNote = d.unexplained_lines > 0 ? `, ${d.unexplained_lines} line(s) still unexplained` : "";
+        addLog(
+          `${d.filename} → ${d.hostname} (${d.family ?? "unrecognized"}): ` +
+          `${d.interfaces} interface(s), ${d.vlans} VLAN(s), ${d.vrfs} VRF(s), ${d.routes} route(s)${llmNote}.`
+        );
+      }
+      const deviceIds = buildRes.data.devices.filter((d) => !d.error).map((d) => d.device_id);
       addLog(`Created ${deviceIds.length} device(s) from uploaded configs.`);
 
-      setStatus("grouping");
-      const groupRes = await endpoints.createTopologyGroup({
-        name: groupName || "Demo Network Block",
-        description: "Auto-built from uploaded configs for a Batfish demo run.",
-        device_ids: deviceIds,
-      });
-      addLog(`Created network group "${groupRes.data.name}" with ${deviceIds.length} member device(s).`);
+      if (buildRes.data.group_id) {
+        addLog(`Created network group "${buildRes.data.group_name}" with ${deviceIds.length} member device(s).`);
+        setBuiltGroup({ id: buildRes.data.group_id, name: buildRes.data.group_name || groupName });
+      }
 
-      setBuiltGroup({ id: groupRes.data.id, name: groupRes.data.name });
       setStatus("built");
       setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -289,9 +297,9 @@ function BuildTopologyPanel({ onBuilt }: { onBuilt: () => void }) {
       <div className="font-semibold text-slate-200 mb-1">Build a Batfish Topology from Configs</div>
       <div className="text-xs text-slate-500 mb-3">
         Upload two or more vendor configs (see <code className="font-mono">sample_configs/</code> for
-        ready-made multi-vendor examples) to create devices and group them into one Batfish snapshot —
-        no live device access required. Scanning (the built-in segmentation checks) is a separate step
-        so building a large group doesn't have to wait on it.
+        ready-made multi-vendor examples) to deterministically parse interfaces, VLANs, VRFs and static
+        routes into an actual topology — no live device access required, and no compliance scan runs as
+        part of this step. Scanning (Batfish behavioral/segmentation checks) is a separate step below.
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <input

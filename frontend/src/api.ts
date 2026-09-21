@@ -789,6 +789,29 @@ export interface TopologyGroup {
   created_at: string;
 }
 
+export interface BuildTopologyFileResult {
+  filename: string;
+  device_id: string;
+  hostname: string | null;
+  vendor: string | null;
+  vendor_review_required: boolean;
+  family: string | null;
+  interfaces: number;
+  vlans: number;
+  vrfs: number;
+  routes: number;
+  llm_fallback: { interfaces: number; vlans: number; vrfs: number; routes: number };
+  unexplained_lines: number;
+  total_lines: number;
+  error: string | null;
+}
+
+export interface BuildTopologyResult {
+  devices: BuildTopologyFileResult[];
+  group_id: string | null;
+  group_name: string | null;
+}
+
 export interface BatfishFlowDiff {
   control_id: string;
   title: string;
@@ -1556,6 +1579,14 @@ export const endpoints = {
   createTopologyGroup: (payload: { name: string; description?: string; device_ids: string[] }) =>
     api.post<TopologyGroup>("/api/topology/groups", payload),
   scanTopologyGroup: (id: string) => api.post<any>(`/api/topology/groups/${id}/scan`),
+  buildTopology: (files: File[], groupName?: string) => {
+    const form = new FormData();
+    files.forEach((f) => form.append("files", f));
+    if (groupName) form.append("group_name", groupName);
+    return api.post<BuildTopologyResult>("/api/topology/build", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
   
   // Training Center Layer 3+
   pendingMappings: () => api.get<CommandMapping[]>("/api/training/pending"),

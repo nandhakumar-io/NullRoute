@@ -33,7 +33,11 @@ def test_cisco_extraction_finds_interfaces_vlans_vrfs_routes():
     assert gi.ip_address == "10.10.10.1"
     assert gi.subnet_mask == "255.255.255.252"
     assert gi.description == "Uplink-to-Distribution"
-    assert gi.admin_state == "up"
+    # structure_parser.py's contract (RULE 10) is stricter than the old
+    # extractor's: admin_state is only ever set from an explicit
+    # "shutdown"/"no shutdown" line, never assumed "up" by default when the
+    # config simply doesn't say. This config has no shutdown line at all.
+    assert gi.admin_state is None
 
     assert len(result.vlans) == 1
     assert result.vlans[0].vlan_id == "100"

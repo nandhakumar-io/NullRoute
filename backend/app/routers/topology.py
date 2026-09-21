@@ -15,18 +15,24 @@ Previously this router was a stub that fabricated a straight-line chain of
 that has been replaced with the real data path below (RULE 10: never
 fabricate a result).
 """
+import os
+import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_tenant, get_current_user, require_role
+from app.auth.dependencies import CurrentUser, get_current_tenant, get_current_user, require_role
 from app.db import get_db
-from app.models.db import VLAN, VRF, Device, NetworkInterface, NetworkRoute
-from app.services import topology_service
+from app.models.db import VLAN, VRF, Device, NetworkInterface, NetworkRoute, Scan, Tenant
+from app.services import minio_service, topology_service
+from app.services.vendor_detect import detect_vendor
 
 router = APIRouter(tags=["topology"], dependencies=[Depends(get_current_user)])
+
+MAX_BUILD_FILES = int(os.getenv("TOPOLOGY_BUILD_MAX_FILES", "50"))
+MAX_BUILD_FILE_BYTES = 5 * 1024 * 1024
 
 
 class InterfaceOut(BaseModel):
@@ -66,6 +72,154 @@ class RouteOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class BuildFileResult(BaseModel):
+    filename: str
+    device_id: str
+    hostname: Optional[str] = None
+    vendor: Optional[str] = None
+    vendor_review_required: bool = False
+    family: Optional[str] = None
+    interfaces: int = 0
+    vlans: int = 0
+    vrfs: int = 0
+    routes: int = 0
+    llm_fallback: dict
+    unexplained_lines: int = 0
+    total_lines: int = 0
+    error: Optional[str] = None
+
+
+class BuildTopologyOut(BaseModel):
+    devices: List[BuildFileResult]
+    group_id: Optional[str] = None
+    group_name: Optional[str] = None
+
+
+def _clean_hostname(name: str) -> str:
+    name = re.sub(r"\.(cfg|conf|txt|config)$", "", name, flags=re.I)
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_") or "device"
+
+
+@router.post("/api/topology/build", response_model=BuildTopologyOut,
+             dependencies=[Depends(require_role("admin", "operator", "security_analyst"))])
+async def build_topology(
+    files: List[UploadFile] = File(...),
+    group_name: Optional[str] = Form(None),
+    use_llm_fallback: bool = Form(True),
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+):
+    """Build an actual topology (interfaces, VLANs, VRFs, static routes)
+    from uploaded configs -- structural parsing only, deterministic first
+    (services/structure_parser.py) with genuinely unrecognized lines handed
+    to the LLM fallback (services/topology_llm_fallback.py).
+
+    Deliberately does NOT run the compliance-scan pipeline
+    (scan_runner.start_scan_task / AI security-parameter normalization /
+    OPA findings) -- that is what POST /api/topology/groups/{id}/scan is
+    for. This endpoint only answers "what does this network look like",
+    not "is it compliant". Each uploaded file becomes its own Device (never
+    collapsed into one shared ad-hoc device), so multi-file uploads produce
+    an actual multi-node topology instead of one device's snapshot
+    overwriting another's.
+    """
+    if not files:
+        raise HTTPException(400, "No files were uploaded")
+    if len(files) > MAX_BUILD_FILES:
+        raise HTTPException(413, f"Too many files: {len(files)} (max {MAX_BUILD_FILES} per batch)")
+
+    results: List[BuildFileResult] = []
+    device_ids: List[str] = []
+
+    for f in files:
+        filename = f.filename or "config"
+        raw_bytes = await f.read(MAX_BUILD_FILE_BYTES + 1)
+        if len(raw_bytes) > MAX_BUILD_FILE_BYTES:
+            results.append(BuildFileResult(
+                filename=filename, device_id="", llm_fallback={},
+                error=f"File too large (max {MAX_BUILD_FILE_BYTES // (1024 * 1024)}MB)",
+            ))
+            continue
+        raw_text = raw_bytes.decode("utf-8", errors="replace")
+
+        guess = detect_vendor(raw_text)
+        hostname_m = (
+            re.search(r"^hostname\s+(\S+)", raw_text, re.M)
+            or re.search(r"^sysname\s+(\S+)", raw_text, re.M)
+            or re.search(r"^set system host-name\s+(\S+)", raw_text, re.M)
+        )
+        hostname = hostname_m.group(1) if hostname_m else _clean_hostname(filename)
+
+        device = Device(
+            tenant_id=tenant_id, hostname=hostname,
+            vendor=None if guess.review_required else guess.vendor,
+            os=None if guess.review_required else guess.os,
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
+
+        # A lightweight Scan row purely so raw_config_path / scan_id linkage
+        # (minio object key, NetworkInterface.scan_id FK) works the same way
+        # it does for the compliance-scan upload path -- but never handed to
+        # scan_runner, so no findings/AI-normalization pipeline runs.
+        scan = Scan(
+            tenant_id=tenant_id, device_id=device.id, framework="ALL",
+            status="structural_only", source_filename=filename,
+        )
+        db.add(scan)
+        db.commit()
+        db.refresh(scan)
+        try:
+            key = minio_service.object_key(tenant_id, device.id, scan.id, filename)
+            put = minio_service.put_object(key, raw_bytes, content_type="text/plain")
+            if put:
+                scan.raw_config_path = put.object_key
+                db.commit()
+        except Exception:  # noqa: BLE001 -- object store optional, extraction below doesn't depend on it
+            db.rollback()
+            db.add(scan)
+
+        try:
+            summary = await topology_service.refresh_device_topology_async(
+                db, tenant_id=tenant_id, device_id=device.id, scan_id=scan.id,
+                vendor=device.vendor, raw_text=raw_text, use_llm_fallback=use_llm_fallback,
+            )
+            results.append(BuildFileResult(
+                filename=filename, device_id=device.id, hostname=hostname,
+                vendor=device.vendor, vendor_review_required=guess.review_required,
+                family=summary["family"],
+                interfaces=summary["deterministic"]["interfaces"] + summary["llm_fallback"]["interfaces"],
+                vlans=summary["deterministic"]["vlans"] + summary["llm_fallback"]["vlans"],
+                vrfs=summary["deterministic"]["vrfs"] + summary["llm_fallback"]["vrfs"],
+                routes=summary["deterministic"]["routes"] + summary["llm_fallback"]["routes"],
+                llm_fallback=summary["llm_fallback"],
+                unexplained_lines=summary["unexplained_lines"], total_lines=summary["total_lines"],
+            ))
+        except Exception as e:  # noqa: BLE001 -- one bad file must not sink the batch
+            db.rollback()
+            results.append(BuildFileResult(
+                filename=filename, device_id=device.id, hostname=hostname, vendor=device.vendor,
+                llm_fallback={}, error=str(e),
+            ))
+        device_ids.append(device.id)
+
+    group_id = group_name_out = None
+    if group_name and device_ids:
+        from app.models.db import NetworkGroup, NetworkGroupMember
+        g = NetworkGroup(tenant_id=tenant_id, name=group_name,
+                          description="Auto-built from uploaded configs (POST /api/topology/build).")
+        db.add(g)
+        db.flush()
+        for did in device_ids:
+            db.add(NetworkGroupMember(group_id=g.id, device_id=did))
+        db.commit()
+        db.refresh(g)
+        group_id, group_name_out = g.id, g.name
+
+    return BuildTopologyOut(devices=results, group_id=group_id, group_name=group_name_out)
 
 
 def _get_device_or_404(db: Session, device_id: str, tenant_id: str) -> Device:

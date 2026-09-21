@@ -214,6 +214,13 @@ _register(CLITemplate(
     save_commands=["write memory"],
     reference="CIS Cisco IOS 17 Benchmark 1.1.4",
 ))
+_register(CLITemplate(
+    control_id="CIS-PWD-001", vendor="Juniper", os_family="Junos",
+    description="Junos inherently hashes passwords upon creation. If plaintext secrets have been detected, they must be manually replaced with hashes. There is no global 'service password-encryption' equivalent to enable.",
+    commands=[],
+    save_commands=[],
+    reference="Juniper Security Architecture (Default Behavior)",
+))
 
 # CIS-AAA-001 / ISO27001-A9-1 -- centralized AAA
 _register(CLITemplate(

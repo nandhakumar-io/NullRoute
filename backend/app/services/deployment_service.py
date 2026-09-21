@@ -292,6 +292,7 @@ async def deploy_change_request(
     transport: Optional[str] = None,
     framework: str = "ALL",
     target_control_ids: Optional[list] = None,
+    existing_dr: Optional[DeploymentRecord] = None,
 ) -> DeploymentRecord:
     """Run one deployment attempt. Pre-flight problems (not APPROVED, device
     missing) raise ValueError -> HTTP 409 with no record created. Once a
@@ -302,6 +303,7 @@ async def deploy_change_request(
     try:
         return await _deploy_change_request(
             db, cr, initiated_by, credential_ref_id, transport, framework, target_control_ids, holder,
+            existing_dr=existing_dr,
         )
     except Exception as e:  # noqa: BLE001
         dr = holder.get("dr")
@@ -333,8 +335,9 @@ async def _deploy_change_request(
     framework: str,
     target_control_ids: Optional[list],
     holder: Dict[str, Any],
+    existing_dr: Optional[DeploymentRecord] = None,
 ) -> DeploymentRecord:
-    if cr.status not in ("APPROVED", "FAILED"):
+    if cr.status not in ("APPROVED", "FAILED", "DEPLOYING"):
         raise ValueError(f"Change request {cr.id} is not APPROVED or FAILED (status={cr.status})")
     # The approval must still describe what is about to be pushed (HITL binding).
     from app.services.change_request_service import approval_still_valid
@@ -346,14 +349,18 @@ async def _deploy_change_request(
     if device is None:
         raise ValueError(f"Device {cr.device_id} not found")
 
-    dr = DeploymentRecord(
-        tenant_id=cr.tenant_id, change_request_id=cr.id, device_id=device.id,
-        initiated_by=initiated_by, transport=transport or "ssh",
-        expected_pre_hash=cr.current_config_hash, status="PENDING",
-        started_at=datetime.utcnow(),
-        target_control_ids=list(target_control_ids) if target_control_ids else None,
-    )
-    db.add(dr)
+    if existing_dr:
+        dr = existing_dr
+    else:
+        dr = DeploymentRecord(
+            tenant_id=cr.tenant_id, change_request_id=cr.id, device_id=device.id,
+            initiated_by=initiated_by, transport=transport or "ssh",
+            expected_pre_hash=cr.current_config_hash, status="PENDING",
+            started_at=datetime.utcnow(),
+            target_control_ids=list(target_control_ids) if target_control_ids else None,
+        )
+        db.add(dr)
+    
     cr.status = "DEPLOYING"
     db.commit()
     db.refresh(dr)
@@ -575,7 +582,13 @@ async def _deploy_change_request(
     db.refresh(scan)
     dr.post_scan_id = scan.id
 
-    target_failed = False
+    if scan.status in ("stopped", "failed"):
+        dr.post_verification_passed = False
+        target_failed = True
+        error_msg = f"Post-deployment validation scan did not complete (status: {scan.status}). Note: {scan.error or 'Pipeline stopped'}"
+        dr.error = ((dr.error or "") + " " + error_msg).strip()
+
+    target_failed = target_failed or False
     if target_control_ids:
         rows = db.query(Finding).filter(
             Finding.scan_id == scan.id, Finding.control_id.in_(list(target_control_ids)),
@@ -589,7 +602,6 @@ async def _deploy_change_request(
             {"control_id": c, "result": by_control.get(c, "NOT_EVALUATED")} for c in target_control_ids
         ]
         failing = [f.control_id for f in rows if f.result != "PASS"]
-        dr.target_controls_passed = not failing
         if failing:
             target_failed = True
             dr.post_verification_passed = False

@@ -13,7 +13,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import (CurrentUser, get_current_tenant,
@@ -303,9 +303,40 @@ def reject(
     return change_request_service.to_dict(cr)
 
 
+async def _background_deploy(
+    tenant_id: str,
+    cr_id: str,
+    dr_id: str,
+    initiated_by: str,
+    credential_ref_id: Optional[str],
+    transport: Optional[str],
+    framework: str,
+    target_control_ids: Optional[list]
+):
+    from app.db import SessionLocal
+    with SessionLocal() as db:
+        cr = db.query(ChangeRequest).get(cr_id)
+        dr = db.query(DeploymentRecord).get(dr_id)
+        if not cr or not dr:
+            return
+        try:
+            finished_dr = await deployment_service.deploy_change_request(
+                db, cr, initiated_by=initiated_by,
+                credential_ref_id=credential_ref_id, transport=transport, framework=framework,
+                target_control_ids=target_control_ids,
+                existing_dr=dr
+            )
+            change_request_service.add_event(
+                db, cr, "deployed" if finished_dr.status in ("DEPLOYED", "VERIFIED") else "deploy_failed",
+                initiated_by, finished_dr.error, deployment_id=finished_dr.id, transport=finished_dr.transport, outcome=finished_dr.status,
+            )
+        except Exception:
+            logging.getLogger("change_request_router").exception("Background deployment failed unexpectedly")
+
 @router.post("/{cr_id}/deploy")
 async def deploy(
     cr_id: str,
+    background_tasks: BackgroundTasks,
     credential_ref_id: Optional[str] = Body(default=None),
     transport: Optional[str] = Body(default=None),
     framework: str = Body(default="ALL"),
@@ -321,23 +352,30 @@ async def deploy(
     (approve()) -- deployment is never triggered by AI or automatically on
     validation (RULE 4/5)."""
     cr = _get_owned(db, tenant_id, cr_id)
-    try:
-        dr = await deployment_service.deploy_change_request(
-            db, cr, initiated_by=user.username,
-            credential_ref_id=credential_ref_id, transport=transport, framework=framework,
-            target_control_ids=target_control_ids,
-        )
-        change_request_service.add_event(
-            db, cr, "deployed" if dr.status in ("DEPLOYED", "VERIFIED") else "deploy_failed",
-            user.username, dr.error, deployment_id=dr.id, transport=dr.transport, outcome=dr.status,
-        )
-        return deployment_service.to_dict_full(db, dr)
-    except ValueError as e:
-        raise HTTPException(409, str(e))
-    except Exception as e:
-        logger.exception("Deployment of change request %s crashed", cr_id)
-        raise HTTPException(500, f"Deployment failed to start: {type(e).__name__}: {e}")
+    if cr.status not in ("APPROVED", "FAILED", "DEPLOYING"):
+        raise HTTPException(409, f"Change request {cr.id} is not APPROVED or FAILED (status={cr.status})")
 
+    device = db.query(Device).filter(Device.id == cr.device_id).first()
+    dr = DeploymentRecord(
+        tenant_id=cr.tenant_id, change_request_id=cr.id, device_id=device.id,
+        initiated_by=user.username, transport=transport or "ssh",
+        expected_pre_hash=cr.current_config_hash, status="PENDING",
+        started_at=datetime.utcnow(),
+        target_control_ids=list(target_control_ids) if target_control_ids else None,
+    )
+    db.add(dr)
+    cr.status = "DEPLOYING"
+    db.commit()
+    db.refresh(dr)
+
+    background_tasks.add_task(
+        _background_deploy,
+        tenant_id=tenant_id, cr_id=cr.id, dr_id=dr.id,
+        initiated_by=user.username, credential_ref_id=credential_ref_id,
+        transport=transport, framework=framework, target_control_ids=target_control_ids
+    )
+
+    return deployment_service.to_dict_full(db, dr)
 
 
 

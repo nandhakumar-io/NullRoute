@@ -17,15 +17,87 @@ from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from app.services.topology_extractor import extract_topology
+from app.services.topology_extractor import extract_topology, extract_topology_with_gaps
 
 
 def refresh_device_topology(
     db: Session, *, tenant_id: str, device_id: str, scan_id: str, vendor: Optional[str], raw_text: str
 ) -> None:
+    """Deterministic-only refresh (no LLM fallback) -- unchanged entry point
+    for existing callers. Use refresh_device_topology_async below for the
+    config-upload build path, which also fills unrecognized lines via the
+    LLM fallback."""
+    extraction = extract_topology(vendor, raw_text)
+    _persist_topology(
+        db, tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
+        interfaces=extraction.interfaces, vlans=extraction.vlans,
+        vrfs=extraction.vrfs, routes=extraction.routes,
+    )
+
+
+async def refresh_device_topology_async(
+    db: Session, *, tenant_id: str, device_id: str, scan_id: str, vendor: Optional[str], raw_text: str,
+    use_llm_fallback: bool = True,
+) -> dict:
+    """Structural refresh with the LLM fallback: every line
+    services/structure_parser.py couldn't deterministically explain is
+    handed to topology_llm_fallback.interpret_unknown_lines(); only facts
+    accepted at >= confidence threshold are merged in, tagged source="llm"
+    so the UI can distinguish them from source="config" facts. Returns a
+    small summary dict (counts + how many unknown lines remain unexplained
+    even after the LLM pass) for the build endpoint to report back."""
+    from app.services.topology_llm_fallback import interpret_unknown_lines
+
+    gapped = extract_topology_with_gaps(vendor, raw_text)
+    interfaces, vlans, vrfs, routes = list(gapped.interfaces), list(gapped.vlans), list(gapped.vrfs), list(gapped.routes)
+    llm_counts = {"interfaces": 0, "vlans": 0, "vrfs": 0, "routes": 0}
+    still_unknown = len(gapped.unknown_indices)
+    llm_iface_names: set = set()
+    llm_vlan_ids: set = set()
+    llm_vrf_names: set = set()
+
+    if use_llm_fallback and gapped.unknown_indices:
+        llm_facts = await interpret_unknown_lines(vendor, gapped.lines, gapped.unknown_indices)
+        interfaces += llm_facts.interfaces
+        vlans += llm_facts.vlans
+        vrfs += llm_facts.vrfs
+        routes += llm_facts.routes
+        llm_counts = {
+            "interfaces": len(llm_facts.interfaces), "vlans": len(llm_facts.vlans),
+            "vrfs": len(llm_facts.vrfs), "routes": len(llm_facts.routes),
+        }
+        still_unknown = len(gapped.unknown_indices) - len(llm_facts.explained_indices)
+        llm_iface_names = {f.name for f in llm_facts.interfaces}
+        llm_vlan_ids = {f.vlan_id for f in llm_facts.vlans}
+        llm_vrf_names = {f.name for f in llm_facts.vrfs}
+
+    _persist_topology(
+        db, tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
+        interfaces=interfaces, vlans=vlans, vrfs=vrfs, routes=routes,
+        llm_iface_names=llm_iface_names, llm_vlan_ids=llm_vlan_ids, llm_vrf_names=llm_vrf_names,
+    )
+    return {
+        "family": gapped.family,
+        "deterministic": {
+            "interfaces": len(gapped.interfaces), "vlans": len(gapped.vlans),
+            "vrfs": len(gapped.vrfs), "routes": len(gapped.routes),
+        },
+        "llm_fallback": llm_counts,
+        "unexplained_lines": still_unknown,
+        "total_lines": len([l for l in gapped.lines if l.strip()]),
+    }
+
+
+def _persist_topology(
+    db: Session, *, tenant_id: str, device_id: str, scan_id: str,
+    interfaces, vlans, vrfs, routes,
+    llm_iface_names: Optional[set] = None, llm_vlan_ids: Optional[set] = None, llm_vrf_names: Optional[set] = None,
+) -> None:
     from app.models.db import VLAN, VRF, NetworkInterface, NetworkRoute
 
-    extraction = extract_topology(vendor, raw_text)
+    llm_iface_names = llm_iface_names or set()
+    llm_vlan_ids = llm_vlan_ids or set()
+    llm_vrf_names = llm_vrf_names or set()
 
     # Replace this device's prior snapshot -- current-state tables, not a log.
     db.query(NetworkInterface).filter(NetworkInterface.device_id == device_id).delete()
@@ -33,19 +105,25 @@ def refresh_device_topology(
     db.query(VRF).filter(VRF.device_id == device_id).delete()
     db.query(NetworkRoute).filter(NetworkRoute.device_id == device_id).delete()
 
-    for iface in extraction.interfaces:
+    for iface in interfaces:
         db.add(NetworkInterface(
             tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
-            source="config", name=iface.name, description=iface.description, ip_address=iface.ip_address,
+            source="llm" if iface.name in llm_iface_names else "config",
+            name=iface.name, description=iface.description, ip_address=iface.ip_address,
             subnet_mask=iface.subnet_mask, vlan=iface.vlan, vrf=iface.vrf, admin_state=iface.admin_state,
         ))
-    for vlan in extraction.vlans:
-        db.add(VLAN(tenant_id=tenant_id, device_id=device_id, scan_id=scan_id, source="config",
-                     vlan_id=vlan.vlan_id, name=vlan.name))
-    for vrf in extraction.vrfs:
-        db.add(VRF(tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
-                    name=vrf.name, route_distinguisher=vrf.route_distinguisher))
-    for route in extraction.routes:
+    for vlan in vlans:
+        db.add(VLAN(
+            tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
+            source="llm" if vlan.vlan_id in llm_vlan_ids else "config",
+            vlan_id=vlan.vlan_id, name=vlan.name,
+        ))
+    for vrf in vrfs:
+        db.add(VRF(
+            tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
+            name=vrf.name, route_distinguisher=vrf.route_distinguisher,
+        ))
+    for route in routes:
         db.add(NetworkRoute(tenant_id=tenant_id, device_id=device_id, scan_id=scan_id,
                              destination=route.destination, mask=route.mask,
                              next_hop=route.next_hop, vrf=route.vrf))

@@ -88,7 +88,7 @@ export default function RagChatPanel() {
   }
 
   return (
-    <div className={`fixed bottom-6 right-6 z-40 bg-soc-panel border border-soc-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col overflow-hidden transition-all duration-300 ${isMaximized ? "w-[90vw] md:w-[800px] h-[90vh] md:h-[800px]" : "w-[380px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-4rem)]"}`}>
+    <div className={`fixed bottom-6 right-6 z-40 bg-soc-panel border border-soc-border rounded-2xl shadow-2xl shadow-black/30 flex flex-col overflow-hidden transition-all duration-300 ${isMaximized ? "w-[90vw] md:w-[800px] h-[90vh] md:h-[800px] max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)]" : "w-[380px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-4rem)]"}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-soc-border bg-slate-900/40">
         <div className="flex items-center gap-2 min-w-0">

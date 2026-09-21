@@ -242,7 +242,7 @@ services:
   # Periodic device health-metrics poller (app/workers/metrics_poller_worker.py)
   # -- same "own process, never blocks the API" rationale as `scheduler`
   # above, but on its own interval since metrics polling and audit
-  # scheduling are unrelated cadences.
+  # scheduling are unrelated cadences...
   metrics-poller:
     build:
       context: .

@@ -18,15 +18,20 @@ grading/demo purposes.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 from app.models.baseline import NormalizedParameter
+
+logger = logging.getLogger("ai.normalize")
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama")
@@ -61,6 +66,19 @@ CRITICAL RULES:
 2. If the line lacks enough context to be a complete security configuration, your confidence MUST be below 0.7.
 """
 
+
+
+# Changes whenever anything that shapes an LLM interpretation changes: the
+# system prompt, the known-parameter schema, or the confidence gate. It is part
+# of every interpretation-cache key (ai/inference_cache.py), so editing any of
+# them invalidates cached interpretations automatically -- no manual version
+# bump to forget.
+def prompt_fingerprint() -> str:
+    payload = json.dumps(
+        {"system": SYSTEM_PROMPT, "params": KNOWN_PARAMETERS, "threshold": CONFIDENCE_THRESHOLD},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass
@@ -121,6 +139,35 @@ def _offline_heuristic_interpret(line: str) -> List[AIInterpretation]:
     )]
 
 
+def _mapping_rows_to_knowledge(results: List[dict]) -> List[dict]:
+    return [
+        {
+            "parameter": r["normalized_parameter"], "example_value": r["example_value"], "pattern": r["raw_command_pattern"],
+            # Extra evidence for provenance / routing; the LLM prompt only reads the three keys above.
+            "mapping_id": r.get("id"), "similarity": r.get("similarity"), "mapping_confidence": r.get("confidence"),
+            "retrieval_backend": r.get("backend"),
+        }
+        for r in results
+    ]
+
+
+def retrieve_similar_mappings_for_vector(
+    db_session, vendor: str, line: str, query_vector: Optional[List[float]],
+    top_k: int = 3, tenant_id: Optional[str] = None,
+) -> List[dict]:
+    """Retrieval half of the HITL loop given an ALREADY-COMPUTED MiniLM query
+    vector (None -> vector_search degrades to token overlap exactly as before).
+    The batched pipeline embeds every unknown line once, up front, and reuses
+    that vector here instead of embedding the same line a second time."""
+    from app.services import vector_search
+
+    results = vector_search.find_similar_mappings(
+        db_session, tenant_id=tenant_id, query_text=line, vendor=vendor, status="approved",
+        top_k=top_k, query_vector=query_vector,
+    )
+    return _mapping_rows_to_knowledge(results)
+
+
 async def retrieve_similar_mappings(db_session, vendor: str, line: str, top_k: int = 3, tenant_id: Optional[str] = None) -> List[dict]:
     """Retrieval half of the HITL training loop: when a human approves or
     corrects an AI interpretation, hitl_service._persist_training_example()
@@ -131,10 +178,6 @@ async def retrieve_similar_mappings(db_session, vendor: str, line: str, top_k: i
     so the next unknown/similarly-worded config line retrieves it as
     few-shot context for interpret_line() below.
 
-    Previously this re-implemented a much weaker plain-Python token-overlap
-    search from scratch and never touched the embedding column at all --
-    every human correction was stored but silently never fed back into
-    future interpretations, so the "training loop" only closed on paper.
     vector_search itself still degrades gracefully (real cosine over stored
     vectors, then token overlap) when running on SQLite or with no embedder
     loaded, so this call is always safe.
@@ -142,18 +185,41 @@ async def retrieve_similar_mappings(db_session, vendor: str, line: str, top_k: i
     `tenant_id` scopes retrieval to that tenant's own corrections plus
     tenant-agnostic seeded mappings (tenant_id IS NULL) -- pass it whenever
     the caller has it (see services/pipeline.py) so one tenant's corrections
-    never leak into another's interpretations."""
+    never leak into another's interpretations.
+
+    Single-line entry point: embeds `line` itself. The bulk pipeline uses
+    retrieve_similar_mappings_for_vector() with a batch-computed vector."""
     from app.services import vector_search
     import anyio
 
     query_vector = await anyio.to_thread.run_sync(vector_search.embed_text, line)
-    results = vector_search.find_similar_mappings(
-        db_session, tenant_id=tenant_id, query_text=line, vendor=vendor, status="approved", top_k=top_k, query_vector=query_vector
+    return retrieve_similar_mappings_for_vector(
+        db_session, vendor, line, query_vector, top_k=top_k, tenant_id=tenant_id,
     )
-    return [
-        {"parameter": r["normalized_parameter"], "example_value": r["example_value"], "pattern": r["raw_command_pattern"]}
-        for r in results
-    ]
+
+
+def parse_llm_confidence(raw: Any) -> float:
+    """Strictly parse an LLM-reported confidence. Anything that is not a finite
+    number in [0, 1] raises ValueError -- it is NOT clamped or repaired into a
+    value that could later pass the confidence gate."""
+    if isinstance(raw, bool):
+        raise ValueError("confidence must be a number, not a bool")
+    value = float(raw)  # TypeError/ValueError propagate
+    if not math.isfinite(value) or value < 0.0 or value > 1.0:
+        raise ValueError(f"confidence {value!r} outside [0, 1]")
+    return value
+
+
+def validate_llm_item(item: Any) -> None:
+    """Structural validation of one LLM interpretation item. Raises ValueError
+    on malformed output so the caller degrades to forced human review instead
+    of silently turning a broken response into a normalized fact."""
+    if not isinstance(item, dict):
+        raise ValueError("interpretation item is not a JSON object")
+    param = item.get("normalized_parameter", "extra_parameters.unknown_evidence")
+    if not isinstance(param, str) or not param.strip():
+        raise ValueError("normalized_parameter missing or not a non-empty string")
+    parse_llm_confidence(item.get("confidence", 0.5))
 
 
 async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[List[dict]] = None) -> List[AIInterpretation]:
@@ -211,7 +277,8 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
             interpretations_data = parsed.get("interpretations", [parsed])
             interps = []
             for item in interpretations_data:
-                confidence = float(item.get("confidence", 0.5))
+                validate_llm_item(item)
+                confidence = parse_llm_confidence(item.get("confidence", 0.5))
                 interps.append(AIInterpretation(
                     raw_command=line,
                     normalized_parameter=item.get("normalized_parameter", "extra_parameters.unknown_evidence"),
@@ -225,11 +292,13 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
             
             return interps if interps else _offline_heuristic_interpret(line)
     except Exception as e:
-        import traceback
-        print(f"DEBUG EXCEPTION for '{line}': {type(e).__name__} - {repr(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"DEBUG HTTP RESPONSE TEXT: {e.response.text}")
-        print(traceback.format_exc())
+        # Never log the raw line or the response body: configs carry
+        # passwords / SNMP communities. Log the failure class and a hash so an
+        # operator can still correlate it.
+        logger.warning(
+            "LLM interpretation degraded to offline heuristic: %s (line_sha256=%s)",
+            type(e).__name__, hashlib.sha256(line.encode("utf-8")).hexdigest()[:12],
+        )
         results = _offline_heuristic_interpret(line)
         for result in results:
             if retrieved_knowledge:
@@ -307,7 +376,9 @@ async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Opt
     return BlockInterpretationResult(vendor=vendor, block_text=block_text, facts=facts, unknown_lines=unknown_lines)
 
 
-def to_normalized_parameter(interp: AIInterpretation, vendor: Optional[str] = None) -> NormalizedParameter:
+def to_normalized_parameter(
+    interp: AIInterpretation, vendor: Optional[str] = None, ai_provenance: Optional[Dict[str, Any]] = None,
+) -> NormalizedParameter:
     return NormalizedParameter(
         raw_command=interp.raw_command,
         normalized_parameter=interp.normalized_parameter,
@@ -319,6 +390,7 @@ def to_normalized_parameter(interp: AIInterpretation, vendor: Optional[str] = No
         retrieved_knowledge=interp.retrieved_knowledge,
         model_version=interp.model_version,
         human_validated=not interp.needs_human_review,
+        ai_provenance=ai_provenance,
     )
 
 

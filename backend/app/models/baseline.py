@@ -226,6 +226,17 @@ class NormalizedParameter(BaseModel):
         description="AI model version/tag when source='ai'. Distinct from parser_version.",
     )
     human_validated: bool = False
+    ai_provenance: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Only for source='ai': how the interpretation was produced -- route "
+            "(cache_hit / approved_mapping / llm / review_required), classifier "
+            "(intent, confidence, backend, model_version), embedding (nearest "
+            "intent, similarity), retrieval evidence, LLM model + prompt "
+            "fingerprint. Absent on parser facts and on facts persisted before "
+            "this field existed."
+        ),
+    )
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 

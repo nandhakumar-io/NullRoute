@@ -20,8 +20,9 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
+from app.ai import settings as ai_settings
 from app.ai.schemas import UNKNOWN_INTENT, ClassifierResult
 
 # Known network-configuration intents the classifier was fine-tuned on.
@@ -52,9 +53,13 @@ _KEYWORD_RULES: Dict[str, List[str]] = {
 
 @dataclass
 class LoadedClassifier:
-    backend_name: str  # "distilbert" | "keyword-fallback"
+    backend_name: str  # "distilbert" | "keyword-fallback" | "remote-classifier"
     model_version: str
     predict_fn: object  # callable[[str], ClassifierResult]
+    # callable[[List[str]], List[ClassifierResult]]; same order as the input.
+    # None -> classify_batch() falls back to calling predict_fn per text.
+    predict_batch_fn: Optional[Callable[[List[str]], List[ClassifierResult]]] = None
+    device: str = "cpu"
 
 
 def _keyword_predict(model_version: str):
@@ -76,6 +81,18 @@ def _keyword_predict(model_version: str):
     return predict
 
 
+def _is_resource_error(exc: BaseException) -> bool:
+    """True for out-of-memory style failures (torch.cuda.OutOfMemoryError is a
+    RuntimeError subclass; CPU OOM surfaces as MemoryError or a RuntimeError
+    mentioning allocation)."""
+    if isinstance(exc, MemoryError):
+        return True
+    if isinstance(exc, RuntimeError):
+        msg = str(exc).lower()
+        return "out of memory" in msg or "can't allocate" in msg or "cannot allocate" in msg
+    return False
+
+
 def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
     try:
         import torch  # noqa: F401
@@ -85,23 +102,67 @@ def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
     if not model_path or not os.path.isdir(model_path):
         return None
     try:
+        import torch as _torch
+
         tokenizer = AutoTokenizer.from_pretrained(model_path)
         model = AutoModelForSequenceClassification.from_pretrained(model_path)
         model.eval()
+        # CUDA when available (and not overridden), otherwise CPU. Only the
+        # inference model moves; nothing else in the backend touches the GPU.
+        device = ai_settings.resolve_torch_device()
+        model.to(device)
         id2label = model.config.id2label
 
-        def predict(text: str) -> ClassifierResult:
-            import torch as _torch
-            inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=64)
-            with _torch.no_grad():
+        def _forward(texts: List[str]) -> List[ClassifierResult]:
+            """One padded forward pass over `texts`; output order == input order."""
+            inputs = tokenizer(texts, return_tensors="pt", truncation=True, max_length=64, padding=True)
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            with _torch.inference_mode():
                 logits = model(**inputs).logits
-                probs = _torch.softmax(logits, dim=-1)[0]
-                top_idx = int(_torch.argmax(probs).item())
-                confidence = float(probs[top_idx].item())
-            label = id2label.get(top_idx, UNKNOWN_INTENT)
-            return ClassifierResult(intent=label, confidence=round(confidence, 4), model_version=model_path)
+                probs = _torch.softmax(logits, dim=-1)
+                confs, idxs = _torch.max(probs, dim=-1)
+            out: List[ClassifierResult] = []
+            for idx, conf in zip(idxs.tolist(), confs.tolist()):
+                out.append(ClassifierResult(
+                    intent=id2label.get(int(idx), UNKNOWN_INTENT),
+                    confidence=round(float(conf), 4),
+                    model_version=model_path,
+                ))
+            return out
 
-        return LoadedClassifier(backend_name="distilbert", model_version=model_path, predict_fn=predict)
+        def _forward_with_backoff(texts: List[str]) -> List[ClassifierResult]:
+            # A resource error on a big batch is retried as two half-batches
+            # (down to single items) instead of dropping blocks; a single item
+            # that still fails is raised exactly like the sequential path would.
+            try:
+                return _forward(texts)
+            except Exception as exc:  # noqa: BLE001
+                if len(texts) > 1 and _is_resource_error(exc):
+                    mid = len(texts) // 2
+                    return _forward_with_backoff(texts[:mid]) + _forward_with_backoff(texts[mid:])
+                raise
+
+        def predict(text: str) -> ClassifierResult:
+            return _forward([text])[0]
+
+        def predict_batch(texts: List[str]) -> List[ClassifierResult]:
+            if not texts:
+                return []
+            batch_size = ai_settings.distilbert_batch_size()
+            # Group similar-length texts so padding waste stays low, then put
+            # every prediction back at its original position.
+            order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+            results: List[Optional[ClassifierResult]] = [None] * len(texts)
+            for start in range(0, len(order), batch_size):
+                idxs = order[start:start + batch_size]
+                for i, res in zip(idxs, _forward_with_backoff([texts[i] for i in idxs])):
+                    results[i] = res
+            return results  # type: ignore[return-value]
+
+        return LoadedClassifier(
+            backend_name="distilbert", model_version=model_path,
+            predict_fn=predict, predict_batch_fn=predict_batch, device=device,
+        )
     except Exception:
         return None
 
@@ -152,7 +213,24 @@ def _try_load_remote_classifier(url: str, api_key: str, timeout: float) -> Optio
                 model_version="remote-error"
             )
             
-    return LoadedClassifier(backend_name="remote-classifier", model_version="remote", predict_fn=predict)
+    def predict_batch(texts: List[str]) -> List[ClassifierResult]:
+        # The remote endpoint takes ONE text per request, so this is bounded
+        # concurrent fan-out (order preserved by executor.map), not a native
+        # batch. A server-side batch endpoint would need to be added to the
+        # inference service first.
+        if not texts:
+            return []
+        if len(texts) == 1:
+            return [predict(texts[0])]
+        from concurrent.futures import ThreadPoolExecutor
+        workers = min(ai_settings.remote_inference_concurrency(), len(texts))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(predict, texts))
+
+    return LoadedClassifier(
+        backend_name="remote-classifier", model_version="remote",
+        predict_fn=predict, predict_batch_fn=predict_batch, device="remote",
+    )
 
 
 def load_classifier() -> LoadedClassifier:
@@ -183,3 +261,22 @@ def classify(loaded: LoadedClassifier, text: str) -> Tuple[ClassifierResult, flo
     result = loaded.predict_fn(text)
     latency_ms = (time.perf_counter() - start) * 1000.0
     return result, latency_ms
+
+
+def classify_batch(loaded: LoadedClassifier, texts: List[str]) -> Tuple[List[ClassifierResult], float]:
+    """Classify many texts at once. Result i corresponds to texts[i].
+
+    Uses the backend's true batched path when it has one; otherwise falls back
+    to the per-text predict_fn (keyword fallback, custom backends). The
+    returned latency is the wall time of the WHOLE batch.
+    """
+    start = time.perf_counter()
+    if not texts:
+        return [], 0.0
+    if loaded.predict_batch_fn is not None:
+        results = loaded.predict_batch_fn(list(texts))
+    else:
+        results = [loaded.predict_fn(t) for t in texts]
+    if len(results) != len(texts):
+        raise RuntimeError(f"classifier returned {len(results)} results for {len(texts)} inputs")
+    return results, (time.perf_counter() - start) * 1000.0

@@ -41,8 +41,9 @@ from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.orm import Session
 
 from app import events
-from app.ai import service as ai_service
-from app.ai.normalize import (interpret_line, retrieve_similar_mappings,
+from app.ai import service as ai_service  # noqa: F401 (kept importable; staged.py drives it now)
+from app.ai import staged as ai_staged
+from app.ai.normalize import (interpret_line, retrieve_similar_mappings,  # noqa: F401 (retrieve_similar_mappings kept importable here)
                                to_normalized_parameter)
 from app.models.baseline import SecurityBaselineModel
 from app.models.db import AIAnalysis, BatfishAnalysis, Device, Finding, OPAAnalysis, Scan
@@ -68,7 +69,7 @@ STAGE_LABELS = {
 # Stages from which resuming can skip straight to OPA by reloading the
 # already-persisted baseline instead of re-parsing/re-normalizing.
 _RESUMABLE_FROM_BASELINE = {"opa", "batfish", "finalize"}
-_NORMALIZE_BATCH_SIZE = 40  # checkpoint frequency inside the AI loop
+# (AI normalize checkpoint granularity now lives in app/ai/settings.py: AI_NORMALIZE_CHUNK_SIZE, default 40)
 
 
 class PipelinePaused(Exception):
@@ -266,83 +267,60 @@ async def run_pipeline(
             db.query(AIAnalysis).filter(AIAnalysis.scan_id == scan.id).delete()
             db.commit()
 
-            # asyncio.to_thread (not anyio.to_thread.run_sync): anyio's
-            # default is a *shielded* wait, so a force-stop (task.cancel())
-            # landed only after every in-flight LLM call finished. This form
-            # is cancelled immediately (the worker thread just finishes in
-            # the background and its result is discarded).
-            async def _analyze(curr_line: str):
-                res = await asyncio.to_thread(ai_service.analyze_command, curr_line)
-                return curr_line, res
+            # Staged, batched, de-duplicated AI normalization (app/ai/staged.py):
+            #   DistilBERT + MiniLM as true batches (versioned cache first) ->
+            #   RAG retrieval from the same MiniLM vector -> LLM only for what
+            #   the cache / validated evidence could not resolve -> uncertain
+            #   results stay needs_human_review (existing HITL queue).
+            # Every unknown line is still normalized and AIAnalysis-recorded
+            # (bounded concurrency, never a coverage cap); duplicates are
+            # computed once and fanned back out to each occurrence.
+            # `interpret_line` is passed by name at call time so the existing
+            # patch point (app.services.pipeline.interpret_line) keeps working.
+            interp_vendor = device.vendor or guess.vendor
+            inference_items = [
+                ai_staged.InferenceItem(line=l, vendor=interp_vendor, tenant_id=scan.tenant_id, device_id=device.id)
+                for l in unknown_lines
+            ]
 
-            for batch_start in range(0, len(unknown_lines), 20):
-                batch = unknown_lines[batch_start: batch_start + 20]
-                results = await asyncio.gather(*[_analyze(l) for l in batch])
-                for line, ai_result in results:
-                    db.add(AIAnalysis(
-                        scan_id=scan.id,
-                        device_id=device.id,
-                        tenant_id=scan.tenant_id,
-                        raw_command_hash=hashlib.sha256(line.encode()).hexdigest(),
-                        intent=ai_result.intent,
-                        classifier_confidence=ai_result.classifier_confidence,
-                        semantic_similarity=ai_result.semantic_similarity,
-                        nearest_intent=ai_result.nearest_intent,
-                        nearest_vendor=ai_result.nearest_vendor,
-                        models_agree=ai_result.models_agree,
-                        decision=ai_result.decision,
-                        requires_review=ai_result.requires_review,
-                        reason=ai_result.reason,
-                        model_version=ai_result.model_version,
-                        inference_latency_ms=ai_result.inference_latency_ms,
-                    ))
-                # Honour a pause/stop request between every batch of 20
-                # rather than only after the whole loop -- on a big config
-                # this loop used to be one un-interruptible block.
-                if batch_start + 20 < len(unknown_lines):
-                    await _checkpoint(db, scan, "normalize")
+            async def _normalize_checkpoint():
+                # Honour a pause/stop request between chunks instead of only
+                # after every unknown line has been sent through the models.
+                await _checkpoint(db, scan, "normalize")
 
-            # Bound *concurrency*, not coverage: every unknown line must still be
-            # normalized (and therefore eligible for remediation) no matter how
-            # large the uploaded config is. The old `unknown_lines[:60]` slice
-            # silently dropped everything past the first 60 unknown lines from
-            # both normalization and downstream remediation on large configs --
-            # a semaphore-limited gather keeps demo/production latency in check
-            # without ever skipping lines.
-            # 20 concurrent generate() calls against a single (usually
-            # single-GPU) Ollama instance is what was producing the "500
-            # internal server error" pile-up on the GPU server and the
-            # upstream "response time exceeded"/discarded requests on large
-            # config uploads: the requests queue up server-side and start
-            # failing/timing out faster than they complete. Match the
-            # concurrency used by ai/normalize.py's interpret_block (also
-            # lowered) and make both independently tunable per deployment.
-            _CONCURRENCY = int(os.getenv("AI_LLM_CONCURRENCY", "3"))
-            semaphore = asyncio.Semaphore(_CONCURRENCY)
+            occurrences, ai_stats = await ai_staged.normalize_unknown_lines(
+                inference_items, db=db, interpret_fn=interpret_line, checkpoint=_normalize_checkpoint,
+            )
+            __import__("logging").getLogger("pipeline").info(
+                "ai.normalize_summary scan=%s input_lines=%s deterministic_facts=%s unknown_lines=%s stats=%s",
+                scan.id, len(baseline.extra_parameters.get("_input_lines", [])),
+                sum(1 for p in baseline.provenance if p.source == "parser"), len(unknown_lines),
+                ai_stats.as_dict(),
+            )
 
-            async def _process_line(line: str):
-                async with semaphore:
-                    retrieved = await retrieve_similar_mappings(db, device.vendor or guess.vendor, line, tenant_id=scan.tenant_id)
-                    interp_vendor = device.vendor or guess.vendor
-                    interps = await interpret_line(interp_vendor, line, retrieved)
-                    return interp_vendor, interps
+            for occ in occurrences:
+                ai_result = occ.analysis
+                db.add(AIAnalysis(
+                    scan_id=scan.id,
+                    device_id=device.id,
+                    tenant_id=scan.tenant_id,
+                    raw_command_hash=hashlib.sha256(occ.item.line.encode()).hexdigest(),
+                    intent=ai_result.intent,
+                    classifier_confidence=ai_result.classifier_confidence,
+                    semantic_similarity=ai_result.semantic_similarity,
+                    nearest_intent=ai_result.nearest_intent,
+                    nearest_vendor=ai_result.nearest_vendor,
+                    models_agree=ai_result.models_agree,
+                    decision=ai_result.decision,
+                    requires_review=ai_result.requires_review,
+                    reason=ai_result.reason,
+                    model_version=ai_result.model_version,
+                    inference_latency_ms=ai_result.inference_latency_ms,
+                ))
 
-            # Processed in batches, with a checkpoint after each one, so a
-            # pause/stop request on a large config takes effect within one
-            # batch instead of only after every unknown line has been sent
-            # through the AI normalizer.
-            lines_to_process = [l for l in unknown_lines if l.strip()]
-            results = []
-            for batch_start in range(0, len(lines_to_process), _NORMALIZE_BATCH_SIZE):
-                batch = lines_to_process[batch_start: batch_start + _NORMALIZE_BATCH_SIZE]
-                batch_results = await asyncio.gather(*[_process_line(line) for line in batch])
-                results.extend(batch_results)
-                if batch_start + _NORMALIZE_BATCH_SIZE < len(lines_to_process):
-                    await _checkpoint(db, scan, "normalize")
-
-            for interp_vendor, interps in results:
-                for interp in interps:
-                    norm_param = to_normalized_parameter(interp, vendor=interp_vendor)
+            for occ in occurrences:
+                for interp in occ.interpretations:
+                    norm_param = to_normalized_parameter(interp, vendor=interp_vendor, ai_provenance=occ.provenance)
                     baseline.provenance.append(norm_param)
                     if interp.needs_human_review:
                         _queue_for_training(db, interp_vendor, interp)

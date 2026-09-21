@@ -19,8 +19,9 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
+from app.ai import settings as ai_settings
 from app.ai.schemas import UNKNOWN_INTENT, EmbeddingMatch
 
 
@@ -39,6 +40,10 @@ class LoadedEmbedder:
     reference_dataset_path: Optional[str]
     examples: List[ReferenceExample] = field(default_factory=list)
     encode_fn: Optional[object] = None  # callable[[str], list[float]] when backend is minilm
+    # callable[[List[str]], List[List[float]]]; same order as the input.
+    # None -> embed_batch() falls back to calling encode_fn per text.
+    encode_batch_fn: Optional[Callable[[List[str]], List[List[float]]]] = None
+    device: str = "cpu"
 
 
 def _load_reference_dataset(path: str) -> List[ReferenceExample]:
@@ -63,7 +68,8 @@ def _try_load_minilm(model_path: str, dataset_path: str, embeddings_path: Option
     if not model_path:
         return None
     try:
-        model = SentenceTransformer(model_path)
+        device = ai_settings.resolve_torch_device()
+        model = SentenceTransformer(model_path, device=device)
         examples = _load_reference_dataset(dataset_path)
         if not examples:
             return None
@@ -74,13 +80,38 @@ def _try_load_minilm(model_path: str, dataset_path: str, embeddings_path: Option
             for ex, vec in zip(examples, vectors):
                 ex.vector = vec.tolist()
         else:
-            vectors = model.encode([e.text for e in examples], normalize_embeddings=True)
+            vectors = model.encode(
+                [e.text for e in examples], normalize_embeddings=True,
+                batch_size=ai_settings.minilm_batch_size(),
+            )
             for ex, vec in zip(examples, vectors):
                 ex.vector = vec.tolist() if hasattr(vec, "tolist") else list(vec)
 
+        def _encode_chunk(texts: List[str]) -> List[List[float]]:
+            vecs = model.encode(
+                texts, normalize_embeddings=True, batch_size=ai_settings.minilm_batch_size(),
+            )
+            return [v.tolist() if hasattr(v, "tolist") else list(v) for v in vecs]
+
+        def _encode_with_backoff(texts: List[str]) -> List[List[float]]:
+            # Resource error on a large batch -> retry as halves rather than
+            # dropping items; a single failing text is raised as before.
+            try:
+                return _encode_chunk(texts)
+            except Exception as exc:  # noqa: BLE001
+                from app.ai.classifier import _is_resource_error
+                if len(texts) > 1 and _is_resource_error(exc):
+                    mid = len(texts) // 2
+                    return _encode_with_backoff(texts[:mid]) + _encode_with_backoff(texts[mid:])
+                raise
+
         def encode(text: str) -> List[float]:
-            vec = model.encode([text], normalize_embeddings=True)[0]
-            return vec.tolist() if hasattr(vec, "tolist") else list(vec)
+            return _encode_chunk([text])[0]
+
+        def encode_batch(texts: List[str]) -> List[List[float]]:
+            if not texts:
+                return []
+            return _encode_with_backoff(list(texts))
 
         return LoadedEmbedder(
             backend_name="minilm",
@@ -88,6 +119,8 @@ def _try_load_minilm(model_path: str, dataset_path: str, embeddings_path: Option
             reference_dataset_path=dataset_path,
             examples=examples,
             encode_fn=encode,
+            encode_batch_fn=encode_batch,
+            device=device,
         )
     except Exception:
         return None
@@ -133,6 +166,18 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
         except Exception:
             return []
 
+    def encode_batch(texts: List[str]) -> List[List[float]]:
+        # Remote endpoint = one text per request -> bounded concurrent
+        # fan-out with order preserved; not a native batch.
+        if not texts:
+            return []
+        if len(texts) == 1:
+            return [encode(texts[0])]
+        import concurrent.futures
+        workers = min(ai_settings.remote_inference_concurrency(), len(texts))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(encode, texts))
+
     # If we didn't load from a numpy file, encode each reference example via the API
     # Since this blocks startup, let's just make sure we do it.
     if examples and not examples[0].vector:
@@ -148,6 +193,8 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
         reference_dataset_path=dataset_path,
         examples=examples,
         encode_fn=encode,
+        encode_batch_fn=encode_batch,
+        device="remote",
     )
 
 
@@ -196,14 +243,35 @@ def _cosine(a: List[float], b: List[float]) -> float:
     return dot / (na * nb)
 
 
-def nearest(loaded: LoadedEmbedder, text: str) -> Tuple[EmbeddingMatch, float]:
+def embed_batch(loaded: LoadedEmbedder, texts: List[str]) -> Tuple[List[Optional[List[float]]], float]:
+    """Embed many texts at once. Entry i corresponds to texts[i].
+
+    Returns None entries when the backend has no encoder (token-overlap
+    fallback), matching what ``vector_search.embed_text`` reports for it.
+    The latency is the wall time of the whole batch.
+    """
     start = time.perf_counter()
+    if not texts:
+        return [], 0.0
+    if loaded.encode_fn is None and loaded.encode_batch_fn is None:
+        return [None] * len(texts), (time.perf_counter() - start) * 1000.0
+    if loaded.encode_batch_fn is not None:
+        vectors = loaded.encode_batch_fn(list(texts))
+    else:
+        vectors = [loaded.encode_fn(t) for t in texts]  # type: ignore[misc]
+    if len(vectors) != len(texts):
+        raise RuntimeError(f"embedder returned {len(vectors)} vectors for {len(texts)} inputs")
+    return list(vectors), (time.perf_counter() - start) * 1000.0
+
+
+def nearest_from_vector(loaded: LoadedEmbedder, text: str, query_vec: Optional[List[float]]) -> EmbeddingMatch:
+    """Nearest reference example for `text`, given an already-computed query
+    vector (or None for the token-overlap fallback). Same math as nearest()."""
     if not loaded.examples:
-        latency_ms = (time.perf_counter() - start) * 1000.0
-        return EmbeddingMatch(nearest_intent=UNKNOWN_INTENT, nearest_vendor=None, similarity=0.0), latency_ms
+        return EmbeddingMatch(nearest_intent=UNKNOWN_INTENT, nearest_vendor=None, similarity=0.0)
 
     if loaded.encode_fn is not None:
-        query_vec = loaded.encode_fn(text)
+        query_vec = query_vec if query_vec is not None else []
         best = max(loaded.examples, key=lambda e: _cosine(query_vec, e.vector or []))
         similarity = _cosine(query_vec, best.vector or [])
     else:
@@ -217,12 +285,19 @@ def nearest(loaded: LoadedEmbedder, text: str) -> Tuple[EmbeddingMatch, float]:
                 best, best_score = ex, score
         similarity = max(best_score, 0.0)
         if best is None:
-            latency_ms = (time.perf_counter() - start) * 1000.0
-            return EmbeddingMatch(nearest_intent=UNKNOWN_INTENT, nearest_vendor=None, similarity=0.0), latency_ms
+            return EmbeddingMatch(nearest_intent=UNKNOWN_INTENT, nearest_vendor=None, similarity=0.0)
 
-    latency_ms = (time.perf_counter() - start) * 1000.0
     return EmbeddingMatch(
         nearest_intent=best.intent,
         nearest_vendor=best.vendor,
         similarity=round(float(similarity), 4),
-    ), latency_ms
+    )
+
+
+def nearest(loaded: LoadedEmbedder, text: str) -> Tuple[EmbeddingMatch, float]:
+    start = time.perf_counter()
+    query_vec = None
+    if loaded.examples and loaded.encode_fn is not None:
+        query_vec = loaded.encode_fn(text)
+    match = nearest_from_vector(loaded, text, query_vec)
+    return match, (time.perf_counter() - start) * 1000.0

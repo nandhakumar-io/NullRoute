@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
-                         Integer, String, Text)
+                         Integer, String, Text, UniqueConstraint)
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -168,6 +168,7 @@ class CommandMapping(Base):
     status = Column(String, default="pending", index=True)  # pending/approved/rejected
     embedding = Column(JSON, nullable=True)  # stored as list[float]; pgvector column in real PG migration
     model_version = Column(String, nullable=True)
+    embedding_backend = Column(String, nullable=True)  # "minilm"/"minilm-remote"/None if no vector was stored
     reviewed_by = Column(String, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -843,6 +844,32 @@ class DatasetVersion(Base):
     training_status = Column(String, nullable=True)
     dataset_hash = Column(String, nullable=False)
     is_immutable = Column(Boolean, default=True)
+    # DRAFT versions are mutable (examples can be added/removed) until an
+    # admin calls Finalize, which freezes membership, computes the final
+    # content-addressable hash, and sets is_immutable=True. Clone starts a
+    # new DRAFT from a finalized version's membership so trained models
+    # remain traceable to an immutable snapshot.
+    status = Column(String, nullable=False, default="FINALIZED", index=True)  # DRAFT/FINALIZED
+    parent_version = Column(String, nullable=True)  # id of the DatasetVersion this was cloned from
+    finalized_at = Column(DateTime, nullable=True)
+
+
+class DatasetItem(Base):
+    """Explicit membership of a TrainingExample in a DatasetVersion.
+
+    Replaces the old TrainingExample.dataset_version string column, which a
+    later snapshot could silently overwrite (making earlier "immutable"
+    datasets non-reproducible, since a job re-querying by that string would
+    pick up whatever the column currently says instead of the original
+    membership). Membership here is a append-only join row scoped to one
+    DatasetVersion, so cloning/creating a new draft never mutates an older,
+    finalized version's rows.
+    """
+    __tablename__ = "dataset_items"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    dataset_version_id = Column(String, ForeignKey("dataset_versions.id"), nullable=False, index=True)
+    training_example_id = Column(String, ForeignKey("training_examples.id"), nullable=False, index=True)
+    added_at = Column(DateTime, default=datetime.utcnow)
 
 
 class TrainingJob(Base):
@@ -852,6 +879,7 @@ class TrainingJob(Base):
     tenant_id = Column(String, ForeignKey("tenants.id"), nullable=True, index=True)
     dataset_version_id = Column(String, ForeignKey("dataset_versions.id"), nullable=False)
     base_model_version = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     status = Column(String, default="QUEUED", index=True)  # QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED
@@ -1355,3 +1383,34 @@ class RollbackRecord(Base):
     completed_at = Column(DateTime, nullable=True)
     # Ordered per-stage progress, same shape as DeploymentRecord.stages.
     stages = Column(JSON, nullable=True)
+
+
+class User(Base):
+    """Local username/password account, used when AUTH_ENABLED=true and no
+    Keycloak token is presented (see auth/local.py, auth/passwords.py).
+
+    Coexists with Keycloak: auth/dependencies.py tries a local HS256 token
+    first (by checking the unverified header's `alg`/issuer) and falls back
+    to Keycloak RS256 validation, so a deployment can use either or both.
+    """
+    __tablename__ = "users"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    tenant_id = Column(String, ForeignKey("tenants.id"), nullable=False, index=True)
+    username = Column(String, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    # Comma-free JSON list, e.g. ["admin"], ["viewer", "auditor"].
+    roles = Column(JSON, nullable=False, default=list)
+    is_active = Column(Boolean, nullable=False, default=True)
+    # Bumped on password change / forced logout so previously issued tokens
+    # (which embed the version they were minted with) stop validating
+    # without needing a revocation list.
+    token_version = Column(Integer, nullable=False, default=0)
+    failed_login_count = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "username", name="uq_users_tenant_username"),
+    )

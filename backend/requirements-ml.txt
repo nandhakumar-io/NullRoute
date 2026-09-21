@@ -1,0 +1,5 @@
+# Installed only when the image is built with INSTALL_ML=true
+# (see backend/Dockerfile and the training-worker service in docker-compose.yml).
+torch==2.4.1
+transformers==4.44.2
+sentence-transformers==3.1.1

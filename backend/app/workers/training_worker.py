@@ -10,8 +10,12 @@ Designed for resilience:
 - Handles SIGTERM / SIGINT gracefully (current job finishes, then exits).
 - Uses a configurable poll interval (TRAINING_WORKER_POLL_INTERVAL_SECONDS).
 - Holds a `RUNNING` claim by setting job.status before training starts;
-  if the worker dies mid-job, the job stays RUNNING and can be manually
-  retried via the API (POST /api/training/jobs/{id}/retry).
+  if the worker dies mid-job, the job is marked FAILED after
+  TRAINING_JOB_STALE_MINUTES and can be retried via the API
+  (POST /api/ai/training/jobs/{id}/retry).
+- Claims each job with an atomic QUEUED -> RUNNING UPDATE
+  (training_service.claim_job), so the NATS wake-up callback, the poll loop
+  and any second worker container can never run the same job twice.
 """
 from __future__ import annotations
 
@@ -30,6 +34,10 @@ MAX_CONCURRENT_JOBS = int(os.getenv("TRAINING_WORKER_MAX_CONCURRENT_JOBS", "1"))
 _shutdown = False
 _sigint_count = 0
 _wakeup_event: asyncio.Event | None = None
+# One poll at a time inside this process: the NATS callback and the timer loop
+# both call _poll_once(); the DB-level claim is the real guard, this just
+# avoids two of them contending for the same SQLAlchemy session/thread pool.
+_poll_lock: asyncio.Lock | None = None
 
 
 def _handle_signal(signum, _frame):
@@ -69,15 +77,32 @@ async def _run_job_in_thread(db, job_id: str) -> None:
 
 async def _poll_once() -> None:
     """Claim and execute one batch of QUEUED training jobs."""
+    global _poll_lock
+    if _poll_lock is None:
+        _poll_lock = asyncio.Lock()
+    async with _poll_lock:
+        await _poll_once_locked()
+
+
+async def _poll_once_locked() -> None:
     from app.db import SessionLocal
     from app.models.db import TrainingJob
+    from app.services import training_service
 
     db = SessionLocal()
     try:
+        try:
+            recovered = training_service.recover_stale_jobs(db)
+            if recovered:
+                logger.warning("Training worker: marked %d stale RUNNING job(s) FAILED", recovered)
+        except Exception:  # noqa: BLE001
+            logger.exception("Training worker: stale-job recovery failed")
+            db.rollback()
+
         queued = (
             db.query(TrainingJob)
             .filter(TrainingJob.status == "QUEUED")
-            .order_by(TrainingJob.id)
+            .order_by(TrainingJob.created_at, TrainingJob.id)
             .limit(MAX_CONCURRENT_JOBS)
             .all()
         )
@@ -88,8 +113,10 @@ async def _poll_once() -> None:
             if _shutdown:
                 logger.info("Shutdown requested — skipping job %s", job.id)
                 break
-            logger.info("Training worker: claiming job %s", job.id)
+            logger.info("Training worker: attempting to claim job %s", job.id)
             try:
+                # run_training_job() claims atomically and is a no-op if
+                # another runner got there first.
                 await _run_job_in_thread(db, job.id)
                 db.refresh(job)
                 logger.info(
@@ -98,6 +125,7 @@ async def _poll_once() -> None:
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Training worker: job %s raised an unexpected error: %s", job.id, exc)
+                db.rollback()
     finally:
         db.close()
 

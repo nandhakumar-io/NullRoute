@@ -13,7 +13,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "light" || stored === "dark") return stored;
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    // Light by default. The OS dark preference is deliberately ignored: the
+    // app's palette is designed light-first and only an explicit toggle
+    // (stored above) opts into dark.
+    return "light";
   });
 
   useEffect(() => {

@@ -39,7 +39,17 @@ async def test_hitl_loop2_dataset_immutability(monkeypatch, tmp_path):
     assert dataset.example_count == 1
     
     db_session.refresh(example)
-    assert example.dataset_version == dataset.version
+    # The old design stamped the example with a single dataset_version
+    # string, which a *later* snapshot could silently overwrite (breaking
+    # reproducibility of the earlier "immutable" dataset). Membership is now
+    # tracked via an explicit, append-only DatasetItem join row instead.
+    from app.models.db import DatasetItem
+    membership = (
+        db_session.query(DatasetItem)
+        .filter(DatasetItem.dataset_version_id == dataset.id, DatasetItem.training_example_id == example.id)
+        .first()
+    )
+    assert membership is not None
 
 @pytest.mark.asyncio
 async def test_hitl_loop2_job_lifecycle(monkeypatch, tmp_path):
@@ -68,4 +78,3 @@ async def test_hitl_loop2_job_lifecycle(monkeypatch, tmp_path):
 
     assert job.status == "QUEUED"
     assert job.dataset_version_id == dataset.id
-

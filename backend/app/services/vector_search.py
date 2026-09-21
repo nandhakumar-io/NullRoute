@@ -68,8 +68,11 @@ def _cosine(a: List[float], b: List[float]) -> float:
     return dot / (na * nb)
 
 
-def store_embedding(db: Session, mapping_id: str, vector: Optional[List[float]]) -> None:
-    """Persists `vector` for a CommandMapping row.
+def store_embedding(db: Session, mapping_id: str, vector: Optional[List[float]]) -> bool:
+    """Persists `vector` for a CommandMapping row. Returns True iff a
+    vector was actually written -- callers must not report the embedding as
+    updated when this returns False (e.g. no embedder was loaded and
+    embed_text() returned None).
 
     On Postgres this writes through an explicit `CAST(:vec AS vector(384))`
     via raw SQL, so the physical column (a real pgvector `vector`, per the
@@ -78,7 +81,7 @@ def store_embedding(db: Session, mapping_id: str, vector: Optional[List[float]])
     ORM-shaped JSON list write.
     """
     if vector is None or not mapping_id:
-        return
+        return False
     bind = db.get_bind()
     if bind.dialect.name == "postgresql":
         db.execute(
@@ -90,7 +93,7 @@ def store_embedding(db: Session, mapping_id: str, vector: Optional[List[float]])
         row = db.get(CommandMapping, mapping_id)
         if row is not None:
             row.embedding = vector
-    db.commit()
+    return True
 
 
 def _row_dict(r: Dict[str, Any], similarity: float, backend: str) -> Dict[str, Any]:

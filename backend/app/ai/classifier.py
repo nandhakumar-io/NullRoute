@@ -93,7 +93,7 @@ def _is_resource_error(exc: BaseException) -> bool:
     return False
 
 
-def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
+def _try_load_distilbert(model_path: str, model_version: Optional[str] = None) -> Optional[LoadedClassifier]:
     try:
         import torch  # noqa: F401
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
@@ -126,7 +126,7 @@ def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
                 out.append(ClassifierResult(
                     intent=id2label.get(int(idx), UNKNOWN_INTENT),
                     confidence=round(float(conf), 4),
-                    model_version=model_path,
+                    model_version=model_version or model_path,
                 ))
             return out
 
@@ -160,7 +160,7 @@ def _try_load_distilbert(model_path: str) -> Optional[LoadedClassifier]:
             return results  # type: ignore[return-value]
 
         return LoadedClassifier(
-            backend_name="distilbert", model_version=model_path,
+            backend_name="distilbert", model_version=model_version or model_path,
             predict_fn=predict, predict_batch_fn=predict_batch, device=device,
         )
     except Exception:
@@ -233,8 +233,31 @@ def _try_load_remote_classifier(url: str, api_key: str, timeout: float) -> Optio
     )
 
 
-def load_classifier() -> LoadedClassifier:
-    """Load once at application startup (see model_registry.py)."""
+def load_classifier(
+    production_path: Optional[str] = None,
+    production_version: Optional[str] = None,
+) -> LoadedClassifier:
+    """Load at startup and again whenever a model is promoted/rolled back
+    (see model_registry.py).
+
+    Precedence: the model-registry PRODUCTION entry (a human explicitly
+    promoted it) > AI_CLASSIFIER_REMOTE_URL > AI_CLASSIFIER_MODEL_PATH >
+    keyword fallback. If the production artifact can't be loaded (missing
+    directory, torch/transformers not installed in this process) we fall
+    through to the next source instead of failing the API; the caller can see
+    that via the returned backend_name / model_version.
+    """
+    if production_path:
+        loaded = _try_load_distilbert(production_path, production_version)
+        if loaded is not None:
+            return loaded
+        import logging
+        logging.getLogger(__name__).warning(
+            "PRODUCTION classifier at %r could not be loaded (missing artifact or torch/transformers "
+            "not installed in this process); falling back to the configured classifier.",
+            production_path,
+        )
+
     remote_url = os.getenv("AI_CLASSIFIER_REMOTE_URL", "")
     if remote_url:
         api_key = os.getenv("AI_REMOTE_API_KEY", "")

@@ -34,6 +34,10 @@ def _demo_auth(monkeypatch):
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/test.db")
     monkeypatch.setenv("AI_ENABLED", "false")
+    # This file tests the explicit second gate, so turn off the admin
+    # shortcut (demo mode acts as an admin, whose reviews would otherwise be
+    # auto-validated -- covered in test_hitl_datasets_training_registry.py).
+    monkeypatch.setenv("HITL_ADMIN_AUTO_VALIDATE", "false")
     from app.main import app
 
     with TestClient(app) as c:

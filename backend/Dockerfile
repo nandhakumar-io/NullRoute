@@ -10,6 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev c
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Optional ML stack (DistilBERT fine-tuning + inference). Off by default to keep
+# the API image small; the training-worker service builds with INSTALL_ML=true.
+# Set the same arg on the backend build if you want the API itself to serve a
+# promoted DistilBERT model (otherwise it falls back to the configured classifier).
+ARG INSTALL_ML=false
+COPY backend/requirements-ml.txt .
+RUN if [ "$INSTALL_ML" = "true" ]; then \
+      pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements-ml.txt; \
+    fi
+
 COPY backend/ .
 COPY sample_configs /app/sample_configs
 COPY policies /app/policies

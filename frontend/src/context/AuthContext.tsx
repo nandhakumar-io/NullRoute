@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { setTargetTenant, api } from "../api";
 import { Navigate } from "react-router-dom";
 
@@ -9,55 +9,146 @@ interface AuthContextType {
   role: Role | null;
   username: string | null;
   isAuthenticated: boolean;
-  login: (mockRole: Role) => void;
+  authError: string | null;
+  isLoggingIn: boolean;
+  login: (username: string, password: string, tenant?: string) => Promise<void>;
+  tenantName: string | null;
+  ready: boolean;
+  authDisabled: boolean;
   logout: () => void;
+  /** Adopt a freshly issued token (e.g. after a password change rotated the old ones). */
+  applyToken: (token: string) => void;
   hasRole: (role: Role) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const TOKEN_KEY = "netsecauditor.token";
+const ROLE_KEY = "netsecauditor.role";
+const USERNAME_KEY = "netsecauditor.username";
+const TENANT_KEY = "netsecauditor.tenant";
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
-  const [role, setRole] = useState<Role | null>((localStorage.getItem("role") as Role) || null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
+  const [role, setRole] = useState<Role | null>((localStorage.getItem(ROLE_KEY) as Role) || null);
+  const [username, setUsername] = useState<string | null>(localStorage.getItem(USERNAME_KEY));
+  const [tenantName, setTenantName] = useState<string | null>(localStorage.getItem(TENANT_KEY));
+  const [authDisabled, setAuthDisabled] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(USERNAME_KEY);
+    localStorage.removeItem(TENANT_KEY);
+    setTenantName(null);
+    setToken(null);
+    setRole(null);
+    setUsername(null);
+    // Best-effort: invalidate the token server-side (bumps token_version).
+    // Fire-and-forget -- logging out client-side must succeed either way.
+    api.post("/api/auth/logout").catch(() => {});
+  }, []);
 
   useEffect(() => {
-    // Setup Axios interceptor to automatically inject Bearer token
-    const interceptor = api.interceptors.request.use((config) => {
+    // Demo deployments (AUTH_ENABLED=false) have no login: skip the form.
+    let cancelled = false;
+    api
+      .get("/api/auth/config")
+      .then((r) => { if (!cancelled) setAuthDisabled(r.data?.auth_enabled === false); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setReady(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    // Attach the bearer token to every request, and log the user out the
+    // moment the backend says the token is no longer valid (expired,
+    // invalidated by a prior logout/password change, or account disabled)
+    // rather than leaving them stuck on 401s until they notice.
+    const reqInterceptor = api.interceptors.request.use((config) => {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
       return config;
     });
-    
-    // Also inject demo tenant if none provided
-    setTargetTenant("tenant-a");
+    const resInterceptor = api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const url: string = error?.config?.url || "";
+        // Not for /auth/login (a wrong password is a 401 too) or /auth/logout
+        // (would recurse into logout()).
+        if (error?.response?.status === 401 && token && !url.includes("/api/auth/")) {
+          logout();
+        }
+        return Promise.reject(error);
+      }
+    );
 
     return () => {
-      api.interceptors.request.eject(interceptor);
+      api.interceptors.request.eject(reqInterceptor);
+      api.interceptors.response.eject(resInterceptor);
     };
-  }, [token]);
+  }, [token, logout]);
 
-  const login = (role: Role) => {
-    const mockToken = `MOCK_${role}`;
-    localStorage.setItem("token", mockToken);
-    localStorage.setItem("role", role);
-    setToken(mockToken);
-    setRole(role);
+  const login = async (loginUsername: string, password: string, tenant?: string) => {
+    setIsLoggingIn(true);
+    setAuthError(null);
+    try {
+      const { data } = await api.post("/api/auth/login", {
+        username: loginUsername,
+        password,
+        ...(tenant ? { tenant } : {}),
+      });
+      const accessToken: string = data.access_token;
+
+      // Fetch identity (role/tenant) using the freshly issued token, since
+      // /login only returns the token itself.
+      const meResp = await api.get("/api/auth/me", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const roles: string[] = meResp.data.roles || [];
+      const primaryRole = (roles.includes("admin") ? "admin" : roles[0]) as Role | undefined;
+
+      localStorage.setItem(TOKEN_KEY, accessToken);
+      if (primaryRole) localStorage.setItem(ROLE_KEY, primaryRole);
+      localStorage.setItem(USERNAME_KEY, meResp.data.username || loginUsername);
+
+      setToken(accessToken);
+      setRole(primaryRole || null);
+      setUsername(meResp.data.username || loginUsername);
+      if (meResp.data.tenant_name) {
+        setTargetTenant(meResp.data.tenant_name);
+        localStorage.setItem(TENANT_KEY, meResp.data.tenant_name);
+        setTenantName(meResp.data.tenant_name);
+      }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setAuthError(
+        typeof detail === "string"
+          ? detail
+          : "Login failed. Check your username and password and try again."
+      );
+      throw err;
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    setToken(null);
-    setRole(null);
+  const effectiveRole: Role | null = role ?? (authDisabled ? "admin" : null);
+  const applyToken = (t: string) => {
+    localStorage.setItem(TOKEN_KEY, t);
+    setToken(t);
   };
 
-  const hasRole = (r: Role) => role === r || role === "admin";
-
-  const username = role ? `demo-${role}` : null;
+  const hasRole = (r: Role) => effectiveRole === r || effectiveRole === "admin";
 
   return (
-    <AuthContext.Provider value={{ token, role, username, isAuthenticated: !!token, login, logout, hasRole }}>
+    <AuthContext.Provider
+      value={{ token, role: effectiveRole, username: username ?? (authDisabled ? "demo-admin" : null), isAuthenticated: !!token || authDisabled, tenantName, ready, authDisabled, authError, isLoggingIn, login, logout, applyToken, hasRole }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -72,11 +163,13 @@ export function useAuth() {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: Role[] }) {
-  const { isAuthenticated, role } = useAuth();
-  
+  const { isAuthenticated, role, ready } = useAuth();
+
+  if (!ready) return <div className="p-8 text-sm" style={{ color: "var(--ink-muted)" }}>Loading…</div>;
+
   if (!isAuthenticated) {
     // Redirect to login if not authenticated
-    return <Navigate to="/login" replace />; 
+    return <Navigate to="/login" replace state={{ from: window.location.pathname + window.location.search }} />;
   }
   
   if (allowedRoles && role && !allowedRoles.includes(role) && role !== "admin") {

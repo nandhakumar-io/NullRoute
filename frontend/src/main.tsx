@@ -61,6 +61,7 @@ import ControlDetail from "./pages/ControlDetail";
 import VulnerabilityDashboard from "./pages/VulnerabilityDashboard";
 import FindingDetail from "./pages/FindingDetail";
 import ReviewQueue from "./pages/ChangeRequest";
+import Account from "./pages/Account";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
@@ -107,6 +108,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="gns3-integration" element={<PageErrorBoundary><Gns3Integration /></PageErrorBoundary>} />
           <Route path="control-library" element={<PageErrorBoundary><ControlLibrary /></PageErrorBoundary>} />
           <Route path="control-library/:controlId" element={<PageErrorBoundary><ControlDetail /></PageErrorBoundary>} />
+          <Route path="account" element={<PageErrorBoundary><Account /></PageErrorBoundary>} />
           <Route path="vulnerabilities" element={<PageErrorBoundary><VulnerabilityDashboard /></PageErrorBoundary>} />
         </Route>
       </Routes>

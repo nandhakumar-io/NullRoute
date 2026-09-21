@@ -16,7 +16,8 @@ from app.ai.schemas import (
 from app.db import get_db
 from app.models.db import AIAnalysis, CommandMapping, Device, ModelRegistryEntry, Scan
 
-from app.auth.dependencies import get_current_tenant, get_current_user, require_role
+from app.auth.dependencies import get_current_tenant, get_current_user, require_role, require_permission
+from app.auth.rbac import Permission
 
 router = APIRouter(prefix="/api", tags=["ai"], dependencies=[Depends(get_current_user)])
 
@@ -122,6 +123,8 @@ def ai_health():
         model_version=registry.model_version,
         reference_dataset=registry.embedder.reference_dataset_path if registry.embedder else None,
         reference_examples=len(registry.embedder.examples) if registry.embedder else 0,
+        production_model_id=registry.production_model_id,
+        production_load_error=registry.production_load_error,
     )
 
 
@@ -251,28 +254,44 @@ def submit_training_feedback(
     correction_reason: Optional[str] = Body(default=None),
     db: Session = Depends(get_db),
     tenant_id: str = Depends(get_current_tenant),
-    user=Depends(get_current_user),
+    user=Depends(require_permission(Permission.APPROVE_AI_MAPPING)),
 ):
     """HITL inline feedback — thumbs up/down/edit on an AI interpretation.
 
     Records the operator action, updates the CommandMapping status, and
     re-embeds the raw command into pgvector so future LLM lookups learn
-    from this correction immediately (RAG active learning loop)."""
+    from this correction immediately (RAG active learning loop).
+
+    Tenant-scoped end to end: the AIAnalysis lookup, the CommandMapping
+    lookup, and the resulting TrainingExample are all confined to the
+    caller's tenant (or global/tenant-null mappings), and requires the
+    APPROVE_AI_MAPPING permission — a viewer can no longer mint training
+    data just by having a valid session.
+    """
     from app.services import hitl_service, vector_search
 
     # Resolve the AIAnalysis → find the linked CommandMapping (same raw hash)
-    analysis = db.query(AIAnalysis).filter(
+    analysis_q = db.query(AIAnalysis).filter(
         AIAnalysis.id == analysis_id,
         AIAnalysis.scan_id == scan_id,
-    ).first()
+    )
+    if tenant_id:
+        analysis_q = analysis_q.filter(
+            (AIAnalysis.tenant_id == tenant_id) | (AIAnalysis.tenant_id.is_(None))
+        )
+    analysis = analysis_q.first()
     
     if not analysis:
         raise HTTPException(404, f"No AI analysis found with id {analysis_id}")
 
     import hashlib
-    all_mappings = db.query(CommandMapping).all()
+    mapping_q = db.query(CommandMapping)
+    if tenant_id:
+        mapping_q = mapping_q.filter(
+            (CommandMapping.tenant_id == tenant_id) | (CommandMapping.tenant_id.is_(None))
+        )
     mapping = None
-    for m in all_mappings:
+    for m in mapping_q.all():
         if hashlib.sha256(m.raw_command_pattern.encode("utf-8")).hexdigest() == analysis.raw_command_hash:
             mapping = m
             break
@@ -305,7 +324,15 @@ def submit_training_feedback(
         hitl_service.correct_mapping(
             db, mapping,
             normalized_facts={
-                "intent": corrected_parameter,
+                # NOTE: intent stays the original AI-assigned intent category
+                # (e.g. "interfaces"), NOT corrected_parameter (a parameter
+                # *path* like "interfaces.port_security_enabled"). A
+                # correction fixes which parameter/value was extracted, not
+                # which of the 13 known intents the command belongs to;
+                # feeding corrected_parameter into intent used to pollute the
+                # training label space with parameter-path strings that were
+                # never valid intent labels.
+                "intent": analysis.intent,
                 "facts": [{"parameter": corrected_parameter, "value": value}]
             },
             correction_reason=correction_reason or f"User corrected '{analysis.intent}' → '{corrected_parameter}'",
@@ -325,7 +352,12 @@ def submit_training_feedback(
         "action": action,
         "mapping_id": mapping.id,
         "analysis_id": analysis_id,
-        "message": "Feedback recorded and pgvector embedding updated.",
+        "message": (
+            f"Feedback recorded; embedding updated ({mapping.embedding_backend})."
+            if mapping.embedding_backend
+            else "Feedback recorded. No embedder is currently loaded — similarity search for "
+                 "this mapping will fall back to token overlap until one is."
+        ),
     }
 
 

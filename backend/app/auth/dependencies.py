@@ -24,6 +24,7 @@ from typing import List, Optional
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.auth import local as local_auth
 from app.auth.jwt import AUTH_ENABLED, AuthError, decode_and_validate
 
 _bearer = HTTPBearer(auto_error=False)
@@ -93,8 +94,48 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
+    token = credentials.credentials
+
+    # Local (username/password) tokens are HS256 and issued only by
+    # POST /api/auth/login; Keycloak tokens are RS256. is_local_token peeks
+    # at the unverified header to route to the right validator -- the
+    # actual trust decision happens inside local_auth.decode_and_validate
+    # (signature + issuer + expiry) below, not here.
+    if local_auth.is_local_token(token):
+        try:
+            claims = local_auth.decode_and_validate(token)
+        except AuthError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message) from e
+
+        from sqlalchemy.orm import Session
+
+        from app.db import SessionLocal
+        from app.models.db import User
+
+        db: Session = SessionLocal()
+        try:
+            user_row = db.query(User).filter(User.id == claims.get("sub")).first()
+            if user_row is None or not user_row.is_active:
+                raise HTTPException(status_code=401, detail="Account no longer exists or is disabled")
+            # A logout, password change, or admin-forced invalidation bumps
+            # token_version in the DB; a token minted before that no longer
+            # matches and stops working immediately, with no revocation
+            # list needed.
+            if claims.get("token_version", -1) != user_row.token_version:
+                raise HTTPException(status_code=401, detail="Token has been invalidated; please log in again")
+
+            return CurrentUser(
+                subject=user_row.id,
+                username=claims.get("preferred_username", user_row.username),
+                roles=[r for r in (claims.get("roles") or []) if r in ALL_ROLES],
+                tenant_id=user_row.tenant_id,
+                tenant_name=claims.get("tenant_name"),
+            )
+        finally:
+            db.close()
+
     try:
-        claims = decode_and_validate(credentials.credentials)
+        claims = decode_and_validate(token)
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message) from e
 

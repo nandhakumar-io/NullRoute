@@ -16,7 +16,7 @@ FALLBACK_SQLITE = "sqlite:///./compliance_local.db"
 def _build_engine(url: str = None):
     url = url or os.getenv("DATABASE_URL", DATABASE_URL)
     try:
-        engine = create_engine(url, pool_pre_ping=True)
+        engine = create_engine(url, pool_pre_ping=True, pool_size=20, max_overflow=50)
         with engine.connect():
             pass
         return engine
@@ -140,6 +140,8 @@ _POSTGRES_MIGRATIONS = [
     "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
     "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END)",
     "ALTER TABLE device_credential_refs ADD COLUMN IF NOT EXISTS secret_data JSON",
+    "ALTER TABLE alert_channels ADD COLUMN IF NOT EXISTS secret_data JSON",
+    "ALTER TABLE backup_destinations ADD COLUMN IF NOT EXISTS secret_data JSON",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS snippet TEXT",
     "ALTER TABLE change_requests ADD COLUMN IF NOT EXISTS merge_style VARCHAR",
     "ALTER TABLE audit_schedules ADD COLUMN IF NOT EXISTS time_of_day VARCHAR",
@@ -174,6 +176,11 @@ _POSTGRES_MIGRATIONS = [
     "ALTER TABLE network_interfaces ADD COLUMN IF NOT EXISTS source VARCHAR",
     "ALTER TABLE vlans ADD COLUMN IF NOT EXISTS interfaces JSON",
     "ALTER TABLE vlans ADD COLUMN IF NOT EXISTS source VARCHAR",
+    "ALTER TABLE dataset_versions ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'FINALIZED'",
+    "ALTER TABLE dataset_versions ADD COLUMN IF NOT EXISTS parent_version VARCHAR",
+    "ALTER TABLE dataset_versions ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMP",
+    "ALTER TABLE training_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now()",
+    "ALTER TABLE command_mappings ADD COLUMN IF NOT EXISTS embedding_backend VARCHAR",
     # evidence_records.scan_id must allow NULL (deploy/rollback events with no scan).
     "ALTER TABLE evidence_records ALTER COLUMN scan_id DROP NOT NULL",
     # merge_confidence was first created as FLOAT but the merge engine
@@ -211,6 +218,11 @@ _SQLITE_COLUMNS = [
     ("vlans", "interfaces", "JSON"),
     ("vlans", "source", "VARCHAR"),
     ("scans", "source_filename", "VARCHAR"),
+    ("dataset_versions", "status", "VARCHAR DEFAULT 'FINALIZED'"),
+    ("dataset_versions", "parent_version", "VARCHAR"),
+    ("dataset_versions", "finalized_at", "DATETIME"),
+    ("training_jobs", "created_at", "DATETIME"),
+    ("command_mappings", "embedding_backend", "VARCHAR"),
 ]
 
 

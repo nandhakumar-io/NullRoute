@@ -23,13 +23,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.ai.model_registry import initialize as init_ai_registry
 from app.db import init_db
 from app.routers import (
-    ai, compliance, devices, evidence, knowledge, scans, training,
+    ai, auth, users, compliance, devices, evidence, knowledge, scans, training,
     topology, schedules, network_scan, audit, advanced_drift,
     change_request, compliance_baselines, config_search,
     alerts, credentials, datasets, device_gateway, drift,
     exceptions, system_health, training_jobs, streaming, gns3,
     backups, controls, vulnerabilities, document_ingestion, report_verification,
     metrics, event_triggers, topology_groups, rag, custom_controls,
+    model_registry,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -120,6 +121,12 @@ def _reconcile_scans_on_startup() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # First-boot convenience: if AUTH_ENABLED=true and no local user exists
+    # yet, create one so there's a way to log in without Keycloak. No-op on
+    # every later restart once a users table row exists.
+    if os.getenv("AUTH_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on"):
+        from app.bootstrap import ensure_bootstrap_admin
+        ensure_bootstrap_admin()
     # Load the trained-AI models (DistilBERT classifier + MiniLM embedder)
     # exactly once here — never per-request. See app/ai/model_registry.py.
     init_ai_registry()
@@ -183,6 +190,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(devices.router)
 app.include_router(scans.router)
 app.include_router(training.router)
@@ -219,6 +228,7 @@ app.include_router(metrics.router)
 app.include_router(event_triggers.router)
 app.include_router(event_triggers.webhook_router)
 app.include_router(custom_controls.router)
+app.include_router(model_registry.router)
 
 @app.get("/health")
 def health():

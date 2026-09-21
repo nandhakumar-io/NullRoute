@@ -47,6 +47,49 @@ def redact_secrets(raw_config: str) -> str:
     return redacted
 
 
+def _admin_auto_validate_enabled() -> bool:
+    """HITL_ADMIN_AUTO_VALIDATE (default true): an admin's own approve/correct
+    is treated as the second validation gate too, so their decisions flow
+    straight into datasets. Set to false to force every example -- including
+    admin-reviewed ones -- through the explicit validate step."""
+    import os
+    return os.getenv("HITL_ADMIN_AUTO_VALIDATE", "true").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _is_admin(user: Any) -> bool:
+    roles = getattr(user, "roles", None) or []
+    return any(r in ("admin", "TENANT_ADMIN", "SUPER_ADMIN") for r in roles)
+
+
+def _maybe_auto_validate(te: TrainingExample, user: Any) -> None:
+    """Admin approve/correct skips the second gate (when enabled). Analyst
+    reviews always stay PENDING until an admin/analyst validates them, and
+    REJECTED examples are never auto-validated (no usable facts)."""
+    if te.human_action in ("APPROVED", "CORRECTED") and _is_admin(user) and _admin_auto_validate_enabled():
+        te.validation_status = "VALIDATED"
+
+
+def _derive_intent(mapping: CommandMapping, normalized_facts: Dict[str, Any]) -> Optional[str]:
+    """Best-effort intent label for a TrainingExample.
+
+    Prefers an explicit "intent" key when the caller supplied one (e.g. the
+    AIAnalysis category from the training-feedback endpoint). Otherwise
+    falls back to the top-level segment of the mapping's normalized
+    parameter path (e.g. "interfaces.port_security_enabled" -> "interfaces"),
+    which is one of the known intent categories, not a raw parameter path.
+    Never returns the full parameter path itself as the intent -- doing so
+    pollutes the label space training reads from (13 known intents; a
+    parameter path is not one of them).
+    """
+    intent = normalized_facts.get("intent") if normalized_facts else None
+    if intent:
+        return intent
+    param = mapping.normalized_parameter
+    if param:
+        return param.split(".")[0]
+    return None
+
+
 def _persist_training_example(
     db: Session,
     mapping: CommandMapping,
@@ -56,15 +99,20 @@ def _persist_training_example(
     user: Any
 ) -> TrainingExample:
     """Create the full normalized TrainingExample from the mapping action."""
-    # The scan tracking for the AI analysis is typically stored separately or we can just fetch it 
-    # but based on the problem statement, we should grab the raw config pattern and redact it.
-    
-    # We may not have a source_scan_id or device_device_id available on the CommandMapping natively
-    # but we will just write the row with what we have.
+    # We may not have a source_scan_id or source_device_id available on the
+    # CommandMapping natively, so we write the row with what we have.
     raw_config = mapping.raw_command_pattern
-    
+
     import hashlib
     raw_hash = hashlib.sha256(raw_config.encode("utf-8")).hexdigest()
+
+    # A plain approve/correct with no explicit facts payload must still
+    # produce a *usable* training row, not an empty one: fall back to the
+    # mapping's own normalized_parameter/example_value so normalized_facts
+    # is never left as {} when the mapping itself carries a real decision.
+    facts = dict(normalized_facts or {})
+    if "facts" not in facts and mapping.normalized_parameter:
+        facts["facts"] = [{"parameter": mapping.normalized_parameter, "value": mapping.example_value}]
 
     te = TrainingExample(
         tenant_id=mapping.tenant_id,
@@ -72,21 +120,41 @@ def _persist_training_example(
         raw_config_hash=raw_hash,
         raw_config_redacted=redact_secrets(raw_config),
         vendor=mapping.vendor,
-        intent=None, # if we had intent we'd set it, but we set normalized_facts instead
-        normalized_facts=normalized_facts,
+        intent=_derive_intent(mapping, facts),
+        normalized_facts=facts,
         human_action=human_action,
         correction_reason=correction_reason,
         created_by=user.username if hasattr(user, "username") and user.username else "system",
         created_at=datetime.utcnow(),
     )
-    
-    # If the facts suggest an intent, we could extract it from `normalized_facts.get("intent")`
-    if "intent" in normalized_facts:
-        te.intent = normalized_facts["intent"]
 
     db.add(te)
     db.flush()
     return te
+
+
+def _embed_and_store(db: Session, mapping: CommandMapping) -> None:
+    """Embed the REDACTED command text (never the raw text -- secrets must
+    never leave the process toward a remote embedding endpoint) and record
+    on the mapping whether a real vector was actually stored, so callers can
+    tell a genuine embedding update apart from a silent no-op (no embedder
+    loaded)."""
+    from app.ai import model_registry
+
+    redacted = redact_secrets(mapping.raw_command_pattern)
+    vector = vector_search.embed_text(redacted)
+    stored = vector_search.store_embedding(db, mapping.id, vector)
+    if stored:
+        registry = model_registry.get_registry()
+        mapping.embedding_backend = registry.embedder.backend_name if registry.embedder else None
+    else:
+        mapping.embedding_backend = None
+        import logging
+        logging.getLogger(__name__).warning(
+            "No embedding stored for CommandMapping %s -- no embedder is currently loaded; "
+            "similarity search for this mapping will fall back to token overlap.",
+            mapping.id,
+        )
 
 
 def approve_mapping(
@@ -116,10 +184,10 @@ def approve_mapping(
 
     # Create the training example
     te = _persist_training_example(db, mapping, "APPROVED", normalized_facts, correction_reason, user)
+    _maybe_auto_validate(te, user)
 
-    # Generate the embedding and store it in pgvector
-    vector = vector_search.embed_text(mapping.raw_command_pattern)
-    vector_search.store_embedding(db, mapping.id, vector)
+    # Generate the embedding (from redacted text) and store it in pgvector
+    _embed_and_store(db, mapping)
     
     db.commit()
     db.refresh(mapping)
@@ -163,9 +231,9 @@ def correct_mapping(
     mapping.reviewed_at = datetime.utcnow()
 
     te = _persist_training_example(db, mapping, "CORRECTED", normalized_facts, correction_reason, user)
+    _maybe_auto_validate(te, user)
 
-    vector = vector_search.embed_text(mapping.raw_command_pattern)
-    vector_search.store_embedding(db, mapping.id, vector)
+    _embed_and_store(db, mapping)
 
     db.commit()
     db.refresh(mapping)

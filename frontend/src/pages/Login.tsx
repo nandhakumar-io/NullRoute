@@ -1,125 +1,99 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth, Role } from "../context/AuthContext";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-const ROLES: { role: Role; label: string; description: string; icon: string; color: string; glow: string }[] = [
-  {
-    role: "security_analyst",
-    label: "Security Analyst",
-    description: "Review AI suggestions, approve remediations, manage compliance policies.",
-    icon: "🔍",
-    color: "from-cyan-500/20 to-cyan-900/10 border-cyan-700/60 hover:border-cyan-400",
-    glow: "shadow-cyan-900/40",
-  },
-  {
-    role: "operator",
-    label: "Network Operator",
-    description: "Deploy approved changes, run scans, manage device inventory.",
-    icon: "⚙️",
-    color: "from-blue-500/20 to-blue-900/10 border-blue-700/60 hover:border-blue-400",
-    glow: "shadow-blue-900/40",
-  },
-  {
-    role: "auditor",
-    label: "Compliance Auditor",
-    description: "Read-only access to all findings, reports, and evidence ledger.",
-    icon: "📋",
-    color: "from-violet-500/20 to-violet-900/10 border-violet-700/60 hover:border-violet-400",
-    glow: "shadow-violet-900/40",
-  },
-  {
-    role: "admin",
-    label: "System Administrator",
-    description: "Full access: tenant management, RBAC, system health, all operations.",
-    icon: "🛡️",
-    color: "from-fuchsia-500/20 to-fuchsia-900/10 border-fuchsia-700/60 hover:border-fuchsia-400",
-    glow: "shadow-fuchsia-900/40",
-  },
-];
+// The login page is always a white page with dark ink, regardless of the
+// app theme. Colors are inline (not text-slate-* utilities) on purpose:
+// index.css force-remaps those to theme variables, which is what made the
+// old dark-gradient login render dark-on-dark.
+const INK = "#0f172a";
+const MUTED = "#475569";
+const BORDER = "#cbd5e1";
+const BRAND = "#28406f";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoggingIn, authError } = useAuth();
   const navigate = useNavigate();
-  const [selecting, setSelecting] = useState<Role | null>(null);
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from || "/";
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [tenant, setTenant] = useState("");
+  const [showTenant, setShowTenant] = useState(false);
 
-  const handleLogin = (role: Role) => {
-    setSelecting(role);
-    setTimeout(() => {
-      login(role);
-      navigate("/");
-    }, 400);
+  if (isAuthenticated) return <Navigate to={from} replace />;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username || !password || isLoggingIn) return;
+    try {
+      await login(username.trim(), password, tenant.trim() || undefined);
+      navigate(from, { replace: true });
+    } catch {
+      // authError is already set by the context and rendered below.
+      setPassword("");
+    }
   };
 
-  return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
-      style={{ background: "radial-gradient(ellipse at 60% 20%, #0e2a38 0%, #080e1a 60%, #060810 100%)" }}
-    >
-      {/* Ambient glow blobs */}
-      <div className="pointer-events-none absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full bg-cyan-700/10 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full bg-blue-700/10 blur-3xl" />
+  const field: React.CSSProperties = {
+    width: "100%", padding: "0.65rem 0.8rem", border: `1px solid ${BORDER}`, borderRadius: 8,
+    background: "#fff", color: INK, fontSize: "1rem", outline: "none",
+  };
+  const label: React.CSSProperties = { display: "block", fontSize: "0.875rem", fontWeight: 600, color: INK, marginBottom: 6 };
 
-      <div className="relative z-10 max-w-5xl w-full">
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-5 bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_40px_rgba(6,182,212,0.4)]">
-            <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+  return (
+    <div style={{ minHeight: "100vh", background: "#ffffff", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <form onSubmit={submit} style={{ width: "100%", maxWidth: 400 }} aria-labelledby="login-title">
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: BRAND, margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="30" height="30" fill="none" viewBox="0 0 24 24" stroke="#fff" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                 d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
           </div>
-          <h1 className="text-5xl font-extrabold tracking-tight text-white mb-3"
-            style={{ textShadow: "0 0 40px rgba(6,182,212,0.25)" }}>
-            NullRoute
-          </h1>
-          <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            AI-driven multi-vendor network security compliance. OPA-deterministic, Batfish-verified, LLM-assisted.
-          </p>
-          <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full border border-cyan-800/50 bg-cyan-900/20 text-xs text-cyan-400 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" /> SSO SIMULATED — SELECT ROLE TO AUTHENTICATE
+          <h1 id="login-title" style={{ fontSize: "1.75rem", fontWeight: 800, color: INK, margin: 0 }}>NetSecAuditor</h1>
+          <p style={{ color: MUTED, marginTop: 6, fontSize: "0.95rem" }}>Sign in to continue</p>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label htmlFor="login-username" style={label}>Username</label>
+          <input id="login-username" style={field} value={username} onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username" autoFocus required />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label htmlFor="login-password" style={label}>Password</label>
+          <input id="login-password" type="password" style={field} value={password} onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password" required />
+        </div>
+
+        {showTenant ? (
+          <div style={{ marginBottom: 16 }}>
+            <label htmlFor="login-tenant" style={label}>Tenant <span style={{ fontWeight: 400, color: MUTED }}>(only if your username exists in more than one)</span></label>
+            <input id="login-tenant" style={field} value={tenant} onChange={(e) => setTenant(e.target.value)} />
           </div>
-        </div>
+        ) : (
+          <button type="button" onClick={() => setShowTenant(true)}
+            style={{ background: "none", border: "none", color: BRAND, cursor: "pointer", fontSize: "0.875rem", padding: 0, marginBottom: 16 }}>
+            Multiple organisations? Specify a tenant
+          </button>
+        )}
 
-        {/* Role cards grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {ROLES.map(({ role, label, description, icon, color, glow }) => (
-            <button
-              key={role}
-              id={`login-role-${role}`}
-              onClick={() => handleLogin(role)}
-              disabled={selecting !== null}
-              className={`relative group text-left p-6 rounded-2xl border bg-gradient-to-br ${color} transition-all duration-300 shadow-lg ${glow} hover:shadow-xl hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-wait`}
-              style={{ backdropFilter: "blur(12px)" }}
-            >
-              <div className="flex items-start gap-4">
-                <span className="text-3xl mt-0.5">{icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-bold text-slate-100 text-lg">{label}</div>
-                    {selecting === role && (
-                      <span className="text-xs text-cyan-400 font-mono animate-pulse">Authenticating…</span>
-                    )}
-                  </div>
-                  <p className="text-sm text-slate-400 mt-1 leading-relaxed">{description}</p>
-                  <div className="mt-3 flex items-center gap-1.5 text-xs font-mono text-slate-600">
-                    <span className="w-1 h-1 rounded-full bg-slate-600" />
-                    role: <span className="text-slate-500">{role}</span>
-                  </div>
-                </div>
-              </div>
-              {/* Animated border gradient on hover */}
-              <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                style={{ boxShadow: "inset 0 0 0 1px rgba(6,182,212,0.2)" }} />
-            </button>
-          ))}
-        </div>
+        {authError && (
+          <div role="alert" style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 8, padding: "0.6rem 0.8rem", fontSize: "0.9rem", marginBottom: 16 }}>
+            {authError}
+          </div>
+        )}
 
-        {/* Footer */}
-        <p className="text-center text-xs text-slate-600 mt-8">
-          In production, role assignment is enforced via Keycloak JWT claims —
-          the SSO panel above is a demo-mode convenience only and is not available in AUTH_ENABLED=true deployments.
+        <button type="submit" disabled={isLoggingIn || !username || !password}
+          style={{ width: "100%", padding: "0.75rem", borderRadius: 8, border: "none", background: BRAND, color: "#fff", fontSize: "1rem", fontWeight: 600,
+            cursor: isLoggingIn ? "wait" : "pointer", opacity: isLoggingIn || !username || !password ? 0.6 : 1 }}>
+          {isLoggingIn ? "Signing in…" : "Sign in"}
+        </button>
+
+        <p style={{ color: MUTED, fontSize: "0.8rem", textAlign: "center", marginTop: 20 }}>
+          Accounts are created by an administrator. On a fresh install, use the bootstrap admin from your deployment configuration.
         </p>
-      </div>
+      </form>
     </div>
   );
 }

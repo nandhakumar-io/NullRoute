@@ -58,6 +58,9 @@ class AIHealth(BaseModel):
     model_version: str
     reference_dataset: Optional[str] = None
     reference_examples: int = 0
+    # Registry PRODUCTION model currently serving (None = configured/fallback classifier).
+    production_model_id: Optional[str] = None
+    production_load_error: Optional[str] = None
     model_config = ConfigDict(protected_namespaces=())
 
 

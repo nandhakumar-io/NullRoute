@@ -582,6 +582,7 @@ async def _deploy_change_request(
     db.refresh(scan)
     dr.post_scan_id = scan.id
 
+    target_failed = False
     if scan.status in ("stopped", "failed"):
         dr.post_verification_passed = False
         target_failed = True

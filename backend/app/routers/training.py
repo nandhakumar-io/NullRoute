@@ -115,6 +115,13 @@ def _tenant_scoped_examples_query(db: Session, tenant_id: str):
     )
 
 
+@router.get("/settings")
+def training_settings():
+    """Read-only HITL settings the UI needs (e.g. whether an admin's own
+    approve/correct also counts as the second validation gate)."""
+    return {"admin_auto_validate": hitl_service._admin_auto_validate_enabled()}
+
+
 @router.get("/examples", response_model=List[TrainingExampleOut])
 def list_training_examples(
     status: str = "PENDING",
@@ -127,7 +134,9 @@ def list_training_examples(
     default PENDING — the review queue). `human_action` optionally narrows
     to APPROVED/CORRECTED/REJECTED (e.g. CORRECTED to see just the unknown
     commands a reviewer fixed)."""
-    q = _tenant_scoped_examples_query(db, tenant_id).filter(TrainingExample.validation_status == status)
+    q = _tenant_scoped_examples_query(db, tenant_id)
+    if status.upper() != "ALL":
+        q = q.filter(TrainingExample.validation_status == status.upper())
     if human_action:
         q = q.filter(TrainingExample.human_action == human_action.upper())
     return q.order_by(TrainingExample.created_at.desc()).all()
@@ -146,6 +155,8 @@ def validate_training_example(
     ex = _tenant_scoped_examples_query(db, tenant_id).filter(TrainingExample.id == example_id).first()
     if not ex:
         raise HTTPException(404, "Training example not found")
+    if ex.human_action == "REJECTED":
+        raise HTTPException(400, "Cannot validate a REJECTED example — it has no usable facts")
     prior_status = ex.validation_status
     ex.validation_status = "VALIDATED"
     db.commit()
@@ -202,7 +213,11 @@ def bulk_validate_training_examples(
         .all()
     )
     validated_ids = []
+    skipped_rejected_ids = []
     for ex in examples:
+        if ex.human_action == "REJECTED":
+            skipped_rejected_ids.append(ex.id)
+            continue
         ex.validation_status = "VALIDATED"
         validated_ids.append(ex.id)
     db.commit()
@@ -210,6 +225,10 @@ def bulk_validate_training_examples(
         db, user, action="training.example.bulk_validate", request=request, result="SUCCESS",
         object_type="training_example", object_id=None,
         old_value=None,
-        new_value={"validated_ids": validated_ids},
+        new_value={"validated_ids": validated_ids, "skipped_rejected_ids": skipped_rejected_ids},
     )
-    return {"validated_count": len(validated_ids), "validated_ids": validated_ids}
+    return {
+        "validated_count": len(validated_ids),
+        "validated_ids": validated_ids,
+        "skipped_rejected_ids": skipped_rejected_ids,
+    }

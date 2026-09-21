@@ -8,6 +8,9 @@ import {
   TrainingExample,
 } from "../api";
 import { PageHeader, Loading, EmptyState } from "../components/ui";
+import DatasetsPanel from "../components/training/DatasetsPanel";
+import JobsPanel from "../components/training/JobsPanel";
+import ModelsPanel from "../components/training/ModelsPanel";
 
 function apiErrorMessage(e: any, fallback: string): string {
   const detail = e?.response?.data?.detail;
@@ -42,23 +45,17 @@ export default function TrainingCenter() {
   // Datasets tab can actually pull from (validation_status PENDING -> VALIDATED).
   const [examples, setExamples] = useState<TrainingExample[] | null>(null);
   const [exampleFilter, setExampleFilter] = useState<"" | "APPROVED" | "CORRECTED" | "REJECTED">("");
+  const [exampleStatus, setExampleStatus] = useState<"PENDING" | "VALIDATED" | "EXCLUDED" | "ALL">("PENDING");
+  const [adminAutoValidate, setAdminAutoValidate] = useState<boolean | null>(null);
   const [exampleBusyId, setExampleBusyId] = useState<string | null>(null);
   const [exampleBulkBusy, setExampleBulkBusy] = useState(false);
   const [selectedExampleIds, setSelectedExampleIds] = useState<Set<string>>(new Set());
 
   // Datasets Tab state
-  const [datasets, setDatasets] = useState<DatasetVersion[] | null>(null);
-  const [newDatasetLabel, setNewDatasetLabel] = useState("");
-  const [datasetBusy, setDatasetBusy] = useState(false);
 
   // Jobs Tab state
-  const [jobs, setJobs] = useState<TrainingJob[] | null>(null);
-  const [selectedDatasetForJob, setSelectedDatasetForJob] = useState("");
-  const [jobBusy, setJobBusy] = useState<string | null>(null);
 
   // Models Tab state
-  const [models, setModels] = useState<ModelRegistryEntry[] | null>(null);
-  const [modelBusy, setModelBusy] = useState<string | null>(null);
 
   // Page-level error banner -- surfaces load failures (network down, no
   // permission, backend error) that would otherwise leave a tab stuck on
@@ -72,21 +69,9 @@ export default function TrainingCenter() {
         .then((r) => setPending(r.data))
         .catch((e) => { setPending([]); setLoadError(apiErrorMessage(e, "Failed to load pending reviews.")); });
     } else if (activeTab === "examples") {
-      endpoints.trainingExamples("PENDING", exampleFilter || undefined)
+      endpoints.trainingExamples(exampleStatus, exampleFilter || undefined)
         .then((r) => setExamples(r.data))
         .catch((e) => { setExamples([]); setLoadError(apiErrorMessage(e, "Failed to load training examples.")); });
-    } else if (activeTab === "datasets") {
-      endpoints.datasets()
-        .then((r) => setDatasets(r.data))
-        .catch((e) => { setDatasets([]); setLoadError(apiErrorMessage(e, "Failed to load datasets.")); });
-    } else if (activeTab === "jobs") {
-      endpoints.trainingJobs()
-        .then((r) => setJobs(r.data))
-        .catch((e) => { setJobs([]); setLoadError(apiErrorMessage(e, "Failed to load training jobs.")); });
-    } else if (activeTab === "models") {
-      endpoints.registryModels()
-        .then((r) => setModels(r.data))
-        .catch((e) => { setModels([]); setLoadError(apiErrorMessage(e, "Failed to load model registry.")); });
     }
   }
 
@@ -97,7 +82,11 @@ export default function TrainingCenter() {
     // the AI just flagged) shows up without a manual page refresh.
     const t = setInterval(load, 20000);
     return () => clearInterval(t);
-  }, [activeTab, exampleFilter]);
+  }, [activeTab, exampleFilter, exampleStatus]);
+
+  useEffect(() => {
+    endpoints.trainingSettings().then((r) => setAdminAutoValidate(r.data.admin_auto_validate)).catch(() => {});
+  }, []);
 
   // --- Reviews Tab ---
   // Categorised dropdown of all known normalized security parameters
@@ -240,67 +229,6 @@ export default function TrainingCenter() {
   }
 
   // --- Datasets Tab ---
-  async function createDataset() {
-    if (!newDatasetLabel.trim()) return;
-    setDatasetBusy(true);
-    setLoadError(null);
-    try {
-      await endpoints.createDataset(newDatasetLabel.trim());
-      setNewDatasetLabel("");
-      load();
-    } catch (e: any) {
-      setLoadError(apiErrorMessage(e, "Failed to compile dataset."));
-    } finally {
-      setDatasetBusy(false);
-    }
-  }
-
-  // --- Jobs Tab ---
-  async function createJob() {
-    if (!selectedDatasetForJob.trim()) return;
-    setJobBusy("__create__");
-    setLoadError(null);
-    try {
-      await endpoints.createTrainingJob(selectedDatasetForJob.trim());
-      setSelectedDatasetForJob("");
-      load();
-    } catch (e: any) {
-      setLoadError(apiErrorMessage(e, "Failed to create training job."));
-    } finally {
-      setJobBusy(null);
-    }
-  }
-
-  async function runJob(id: string) {
-    setJobBusy(id);
-    setLoadError(null);
-    try {
-      await endpoints.runTrainingJob(id);
-      load();
-    } catch (e: any) {
-      setLoadError(apiErrorMessage(e, "Failed to start training job."));
-    } finally {
-      setJobBusy(null);
-    }
-  }
-
-  // --- Models Tab ---
-  async function handleModelAction(id: string, action: "approve" | "reject" | "promote" | "rollback") {
-    setModelBusy(id);
-    setLoadError(null);
-    try {
-      if (action === "approve") await endpoints.approveModel(id);
-      else if (action === "reject") await endpoints.rejectModel(id);
-      else if (action === "promote") await endpoints.promoteModel(id);
-      else if (action === "rollback") await endpoints.rollbackModel(id);
-      load();
-    } catch (e: any) {
-      setLoadError(apiErrorMessage(e, `Failed to ${action} model.`));
-    } finally {
-      setModelBusy(null);
-    }
-  }
-
   return (
     <div>
       <PageHeader
@@ -455,8 +383,19 @@ export default function TrainingCenter() {
                 Every command a reviewer approved, corrected, or rejected above lands here first.
                 Validate the ones that should feed the next dataset — this is what keeps a stray
                 or low-quality correction from silently becoming training data.
+                {adminAutoValidate && " Approvals and corrections made by an admin are validated automatically; analyst reviews wait here."}
               </p>
               <div className="flex items-center gap-2 shrink-0">
+                <select
+                  value={exampleStatus}
+                  onChange={(e) => setExampleStatus(e.target.value as any)}
+                  className="bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-cyan-600"
+                >
+                  <option value="PENDING">Awaiting validation</option>
+                  <option value="VALIDATED">Validated</option>
+                  <option value="EXCLUDED">Excluded</option>
+                  <option value="ALL">All statuses</option>
+                </select>
                 <select
                   value={exampleFilter}
                   onChange={(e) => setExampleFilter(e.target.value as any)}
@@ -540,161 +479,9 @@ export default function TrainingCenter() {
           </div>
         )}
 
-        {activeTab === "datasets" && (
-          <div>
-            <div className="mb-6 flex gap-4">
-              <input 
-                value={newDatasetLabel}
-                onChange={(e) => setNewDatasetLabel(e.target.value)}
-                placeholder="Dataset Label (e.g. v2-network-rules)"
-                className="flex-1 bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm font-mono text-slate-200"
-              />
-              <button onClick={createDataset} disabled={datasetBusy || !newDatasetLabel.trim()} className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed">
-                {datasetBusy ? "Compiling…" : "Compile Dataset"}
-              </button>
-            </div>
-            
-            {!datasets ? <Loading /> : datasets.length === 0 ? <EmptyState message="No datasets found." /> : (
-              <div className="overflow-hidden rounded-lg border border-soc-border">
-                <table className="w-full text-left text-sm text-slate-400">
-                  <thead className="bg-soc-panel border-b border-soc-border uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-3">Version</th>
-                      <th className="px-4 py-3">Created</th>
-                      <th className="px-4 py-3">Examples</th>
-                      <th className="px-4 py-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-soc-border">
-                    {datasets.map(d => (
-                      <tr key={d.id} className="hover:bg-soc-panel">
-                        <td className="px-4 py-3 font-mono font-bold text-cyan-400">{d.version}</td>
-                        <td className="px-4 py-3">{new Date(d.created_at).toLocaleString()}</td>
-                        <td className="px-4 py-3">{d.example_count}</td>
-                        <td className="px-4 py-3 text-emerald-400">{d.validation_status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "jobs" && (
-          <div>
-            <div className="mb-6 flex gap-4">
-              <input 
-                value={selectedDatasetForJob}
-                onChange={(e) => setSelectedDatasetForJob(e.target.value)}
-                placeholder="Dataset Version UUID"
-                className="flex-1 bg-soc-panel border border-soc-border rounded-lg px-3 py-2 text-sm font-mono text-slate-200"
-              />
-              <button onClick={createJob} disabled={jobBusy === "__create__" || !selectedDatasetForJob.trim()} className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed">
-                {jobBusy === "__create__" ? "Creating…" : "Create Training Job"}
-              </button>
-            </div>
-
-            {!jobs ? <Loading /> : jobs.length === 0 ? <EmptyState message="No training jobs found." /> : (
-              <div className="overflow-hidden rounded-lg border border-soc-border">
-                <table className="w-full text-left text-sm text-slate-400">
-                  <thead className="bg-soc-panel border-b border-soc-border uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-3">Job ID</th>
-                      <th className="px-4 py-3">Dataset Version</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-soc-border">
-                    {jobs.map(j => (
-                      <tr key={j.id} className="hover:bg-soc-panel">
-                        <td className="px-4 py-3 font-mono">{j.id.split("-")[0]}</td>
-                        <td className="px-4 py-3">{j.dataset_version_id}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            j.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400' : 
-                            j.status === 'FAILED' ? 'bg-red-500/20 text-red-400' : 
-                            'bg-amber-500/20 text-amber-400'
-                          }`}>
-                            {j.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {j.status === 'QUEUED' && (
-                            <button disabled={jobBusy === j.id} onClick={() => runJob(j.id)} className="text-cyan-400 hover:underline disabled:opacity-40 disabled:cursor-not-allowed">
-                              {jobBusy === j.id ? "Starting…" : "Run"}
-                            </button>
-                          )}
-                          {j.status === 'RUNNING' && <span className="text-amber-400 text-xs">In progress…</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === "models" && (
-          <div>
-            {!models ? <Loading /> : models.length === 0 ? <EmptyState message="No models in registry." /> : (
-              <div className="overflow-hidden rounded-lg border border-soc-border">
-                <table className="w-full text-left text-sm text-slate-400">
-                  <thead className="bg-soc-panel border-b border-soc-border uppercase text-xs">
-                    <tr>
-                      <th className="px-4 py-3">Model</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3">Dataset</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-soc-border">
-                    {models.map(m => (
-                      <tr key={m.id} className="hover:bg-soc-panel">
-                        <td className="px-4 py-3 font-mono text-slate-200">{m.model_name}</td>
-                        <td className="px-4 py-3 font-semibold text-amber-500">{m.model_type}</td>
-                        <td className="px-4 py-3">{m.dataset_version}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            m.status === 'PRODUCTION' ? 'bg-emerald-500/20 text-emerald-400' : 
-                            m.status === 'APPROVED' ? 'bg-cyan-500/20 text-cyan-400' : 
-                            m.status === 'REJECTED' ? 'bg-red-500/20 text-red-400' : 
-                            'bg-slate-500/20 text-slate-300'
-                          }`}>
-                            {m.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 flex gap-2">
-                          {modelBusy === m.id ? (
-                            <span className="text-slate-500 text-xs">Working…</span>
-                          ) : (
-                            <>
-                              {m.status === 'CANDIDATE' && (
-                                <>
-                                  <button onClick={() => handleModelAction(m.id, 'approve')} className="text-emerald-400 hover:underline">Approve</button>
-                                  <button onClick={() => handleModelAction(m.id, 'reject')} className="text-red-400 hover:underline">Reject</button>
-                                </>
-                              )}
-                              {m.status === 'APPROVED' && (
-                                <button onClick={() => handleModelAction(m.id, 'promote')} className="text-cyan-400 font-bold hover:underline">Promote to Prod</button>
-                              )}
-                              {m.status === 'PRODUCTION' && (
-                                <button onClick={() => handleModelAction(m.id, 'rollback')} className="text-amber-400 hover:underline">Rollback</button>
-                              )}
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        {activeTab === "datasets" && <DatasetsPanel onError={setLoadError} />}
+        {activeTab === "jobs" && <JobsPanel onError={setLoadError} />}
+        {activeTab === "models" && <ModelsPanel onError={setLoadError} />}
       </div>
     </div>
   );

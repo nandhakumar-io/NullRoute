@@ -20,6 +20,12 @@ from app.ai.classifier import LoadedClassifier, load_classifier
 from app.ai.decision_engine import DecisionThresholds
 from app.ai.embeddings import LoadedEmbedder, load_embedder
 
+import logging
+import threading
+
+logger = logging.getLogger(__name__)
+_lock = threading.Lock()
+
 
 @dataclass
 class AIRegistry:
@@ -28,6 +34,11 @@ class AIRegistry:
     embedder: Optional[LoadedEmbedder]
     thresholds: DecisionThresholds
     model_version: str
+    # Set when the classifier came from the model registry's PRODUCTION row.
+    production_model_id: Optional[str] = None
+    # Why a PRODUCTION row exists but isn't the one serving (artifact missing,
+    # torch not installed here, ...). None when nothing is wrong.
+    production_load_error: Optional[str] = None
 
 
 _registry: Optional[AIRegistry] = None
@@ -40,13 +51,32 @@ def _read_bool_env(name: str, default: bool) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
-def initialize() -> AIRegistry:
-    """Idempotent: safe to call more than once (e.g. in tests); only loads
-    models the first time."""
-    global _registry
-    if _registry is not None:
-        return _registry
+def _production_entry(db=None):
+    """The current PRODUCTION classifier row from the model registry, or None.
+    Best-effort: a missing table / unreachable DB must never stop the API
+    from booting with the configured classifier."""
+    own = None
+    try:
+        if db is None:
+            from app.db import SessionLocal
+            own = db = SessionLocal()
+        from app.models.db import ModelRegistryEntry
 
+        return (
+            db.query(ModelRegistryEntry)
+            .filter(ModelRegistryEntry.model_type == "classifier", ModelRegistryEntry.status == "PRODUCTION")
+            .order_by(ModelRegistryEntry.training_timestamp.desc())
+            .first()
+        )
+    except Exception:  # noqa: BLE001
+        logger.debug("model registry lookup skipped", exc_info=True)
+        return None
+    finally:
+        if own is not None:
+            own.close()
+
+
+def _build(db=None) -> AIRegistry:
     enabled = _read_bool_env("AI_ENABLED", True)
     thresholds = DecisionThresholds(
         classifier_confidence=float(os.getenv("AI_CLASSIFIER_CONFIDENCE_THRESHOLD", "0.75")),
@@ -55,23 +85,52 @@ def initialize() -> AIRegistry:
     model_version = os.getenv("AI_MODEL_VERSION", "unversioned")
 
     if not enabled:
-        _registry = AIRegistry(enabled=False, classifier=None, embedder=None, thresholds=thresholds, model_version=model_version)
-        return _registry
+        return AIRegistry(enabled=False, classifier=None, embedder=None, thresholds=thresholds, model_version=model_version)
 
-    classifier = load_classifier()
+    prod = _production_entry(db)
+    prod_path = prod.artifact_path if prod else None
+    prod_version = f"{prod.model_name}@{prod.id[:8]}" if prod else None
+
+    classifier = load_classifier(production_path=prod_path, production_version=prod_version)
     embedder = load_embedder()
+
+    production_model_id = None
+    production_error = None
+    if prod is not None:
+        if classifier.backend_name == "distilbert" and classifier.model_version == prod_version:
+            production_model_id = prod.id
+        else:
+            production_error = (
+                f"PRODUCTION model {prod.model_name!r} ({prod.id}) is not being served: its artifact at "
+                f"{prod.artifact_path!r} could not be loaded by this process; using {classifier.backend_name}."
+            )
+
     # Version-alignment guard: the classifier and the reference dataset the
     # embedder loaded must not silently come from mismatched training runs.
-    effective_version = model_version if model_version != "unversioned" else classifier.model_version
-
-    _registry = AIRegistry(
+    effective_version = (
+        classifier.model_version if production_model_id
+        else (model_version if model_version != "unversioned" else classifier.model_version)
+    )
+    return AIRegistry(
         enabled=True,
         classifier=classifier,
         embedder=embedder,
         thresholds=thresholds,
         model_version=effective_version,
+        production_model_id=production_model_id,
+        production_load_error=production_error,
     )
-    return _registry
+
+
+def initialize() -> AIRegistry:
+    """Idempotent: safe to call more than once (e.g. in tests); only loads
+    models the first time. Picks up the registry's PRODUCTION classifier if
+    one has been promoted."""
+    global _registry
+    with _lock:
+        if _registry is None:
+            _registry = _build()
+        return _registry
 
 
 def get_registry() -> AIRegistry:
@@ -86,12 +145,17 @@ def reset_registry_for_tests() -> None:
 
 
 def reload_from_registry(db) -> AIRegistry:
-    """Refresh the in-memory registry to match the current production model.
+    """Swap the in-memory registry to match the registry table's current
+    PRODUCTION classifier (called right after promote / rollback).
 
-    In the minimal implementation used for tests and offline/demo mode, we
-    simply re-run the registry initialization path; if AI is disabled or no
-    production model exists, the registry remains disabled or unchanged.
+    The new registry is fully built BEFORE it replaces the old one, so
+    in-flight requests keep using a working classifier and a failed load
+    never leaves the process without one.
     """
     global _registry
-    _registry = None
-    return initialize()
+    new = _build(db)
+    with _lock:
+        _registry = new
+    if new.production_load_error:
+        logger.warning(new.production_load_error)
+    return new

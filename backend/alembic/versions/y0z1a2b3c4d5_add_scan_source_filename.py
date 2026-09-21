@@ -1,6 +1,6 @@
 """add scans.source_filename
 
-Revision ID: y0z1a2b3c4d5
+Revision ID: y9z8a7b6c5d4
 Revises: x9y0z1a2b3c5
 Create Date: 2026-09-20
 
@@ -11,7 +11,7 @@ upload) so the Validation list can tell apart scans that all share the one
 from alembic import op
 import sqlalchemy as sa
 
-revision = "y0z1a2b3c4d5"
+revision = "y9z8a7b6c5d4"
 down_revision = "x9y0z1a2b3c5"
 branch_labels = None
 depends_on = None

@@ -521,8 +521,8 @@ async def run_pipeline(
         # Compliance-score thresholds -> COMPLIANCE_SCORE_LOW alerts.
         # Best-effort (the service swallows its own errors).
         try:
-            from app.services import compliance_threshold_service
-            await compliance_threshold_service.evaluate_scan(db, scan, score, previous_score)
+            from app.services import alert_service
+            await alert_service.evaluate_compliance_thresholds(db, scan)
         except Exception:  # noqa: BLE001
             __import__("logging").getLogger("pipeline").exception("compliance threshold alerting failed for scan %s", scan.id)
         await events.publish("compliance.scan.completed", {"scan_id": scan.id, "score": score, "decision": compliance_decision.decision})

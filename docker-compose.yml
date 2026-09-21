@@ -40,9 +40,22 @@ x-common-env: &common-env
   AI_CLASSIFIER_CONFIDENCE_THRESHOLD: "0.75"
   AI_SEMANTIC_THRESHOLD: "0.60"
   AI_MODEL_VERSION: "unversioned"
-  # Phase 4: Keycloak JWT/RBAC. AUTH_ENABLED=false is the explicit
-  # local/offline demo mode only — never the default for a real deployment.
-  AUTH_ENABLED: "false"
+  # Local username/password login (POST /api/auth/login) alongside Keycloak.
+  # AUTH_ENABLED=false is the explicit demo mode only (every request becomes an
+  # implicit admin) -- set it in .env only for throwaway local demos.
+  AUTH_ENABLED: ${AUTH_ENABLED:-true}
+  # Required whenever AUTH_ENABLED=true: signs local login tokens.
+  # Generate one with: openssl rand -hex 32
+  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?set AUTH_JWT_SECRET in .env (openssl rand -hex 32)}
+  # First-boot admin (only created while the users table is empty). If left
+  # blank a random password is printed ONCE in the backend log.
+  BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+  BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+  # An admin's own approve/correct also counts as the dataset validation gate.
+  HITL_ADMIN_AUTO_VALIDATE: ${HITL_ADMIN_AUTO_VALIDATE:-true}
+  # Fine-tuned model artifacts: shared volume so the API can load a promoted
+  # model that the training worker wrote.
+  TRAINING_ARTIFACT_DIR: /training_artifacts
   GATEWAY_MOCK_CONNECTOR: "false"
   KEYCLOAK_ISSUER: http://keycloak:8080/realms/netsecauditor
   KEYCLOAK_AUDIENCE: netsecauditor-backend
@@ -188,6 +201,7 @@ services:
     volumes:
       - ./policies:/app/policies:ro
       - batfishdata:/tmp/batfish
+      - trainingartifacts:/training_artifacts:ro
 
   seed:
     build:
@@ -294,10 +308,15 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        # torch + transformers (CPU wheels) -- not in the API image.
+        INSTALL_ML: "true"
     container_name: compliance-training-worker
     command: ["python", "-m", "app.workers.training_worker"]
     environment:
       <<: *common-env
+    volumes:
+      - trainingartifacts:/training_artifacts
     depends_on:
       postgres: { condition: service_healthy }
       backend:
@@ -336,6 +355,7 @@ services:
 
 volumes:
   pgdata:
+  trainingartifacts:
   miniodata:
   ollamadata:
   vmdata:

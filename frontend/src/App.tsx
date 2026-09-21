@@ -268,10 +268,10 @@ export default function App() {
             <div className="w-8 h-8 rounded-full bg-brand-soft flex items-center justify-center text-xs font-semibold" style={{ color: "var(--brand)" }}>
               {(username || "?").slice(0, 1).toUpperCase()}
             </div>
-            <div className="hidden sm:block">
+            <NavLink to="/account" title="Account" className="hidden sm:block">
               <div className="text-sm font-medium leading-tight" style={{ color: "var(--ink)" }}>{username || "Unknown"}</div>
               <div className="text-[11px] leading-tight capitalize" style={{ color: "var(--ink-faint)" }}>{(role || "no role").replace("_", " ")}</div>
-            </div>
+            </NavLink>
             <button
               onClick={logout}
               className="p-2 rounded-md transition-colors hover:bg-red-500/10"

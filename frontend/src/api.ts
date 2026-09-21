@@ -1363,6 +1363,20 @@ export interface DatasetVersion {
   validation_status: string | null;
   training_status: string | null;
   is_immutable: boolean;
+  dataset_hash: string;
+  status: "DRAFT" | "FINALIZED";
+  parent_version: string | null;
+  finalized_at: string | null;
+}
+
+export interface AppUser {
+  id: string;
+  username: string;
+  roles: string[];
+  is_active: boolean;
+  last_login_at: string | null;
+  locked: boolean;
+  created_at: string | null;
 }
 
 export interface TrainingExample {
@@ -1384,6 +1398,7 @@ export interface TrainingJob {
   tenant_id: string | null;
   dataset_version_id: string;
   base_model_version: string | null;
+  created_at: string | null;
   started_at: string | null;
   completed_at: string | null;
   status: string;
@@ -1408,6 +1423,12 @@ export interface ModelRegistryEntry {
   approved_by: string | null;
   approved_at: string | null;
   training_job_id: string | null;
+  // Share of the 13 known intents this model was trained on (null for models
+  // trained before coverage was recorded).
+  intent_coverage: number | null;
+  known_intents_covered: number | null;
+  known_intents_total: number | null;
+  known_intents_missing: string[] | null;
 }
 
 export interface ComplianceMatrixRow {
@@ -1593,21 +1614,37 @@ export const endpoints = {
   approvedMappings: () => api.get<CommandMapping[]>("/api/training/approved"),
   reviewMapping: (id: string, payload: { action: "approve" | "correct" | "reject", normalized_parameter?: string, normalized_facts?: Record<string, any>, correction_reason?: string }) =>
     api.post(`/api/training/${id}/review`, payload),
-  trainingExamples: (status: "PENDING" | "VALIDATED" | "EXCLUDED" = "PENDING", humanAction?: string) =>
+  trainingExamples: (status: string, humanAction?: string) =>
     api.get<TrainingExample[]>(`/api/training/examples?status=${status}${humanAction ? `&human_action=${humanAction}` : ""}`),
   validateTrainingExample: (id: string) => api.post<TrainingExample>(`/api/training/examples/${id}/validate`),
   excludeTrainingExample: (id: string) => api.post<TrainingExample>(`/api/training/examples/${id}/exclude`),
   bulkValidateTrainingExamples: (ids: string[]) => api.post<{ validated_count: number; validated_ids: string[] }>("/api/training/examples/bulk-validate", ids),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<{ access_token: string; token_type: string; expires_in: number }>("/api/auth/change-password", {
+      current_password: currentPassword, new_password: newPassword,
+    }),
+  listUsers: () => api.get<AppUser[]>("/api/users"),
+  createUser: (username: string, password: string, roles: string[]) => api.post<AppUser>("/api/users", { username, password, roles }),
+  updateUser: (id: string, patch: { roles?: string[]; is_active?: boolean }) => api.patch<AppUser>(`/api/users/${id}`, patch),
+  resetUserPassword: (id: string, newPassword: string) => api.post(`/api/users/${id}/reset-password`, { new_password: newPassword }),
+  trainingSettings: () => api.get<{ admin_auto_validate: boolean }>("/api/training/settings"),
   datasets: () => api.get<DatasetVersion[]>("/api/ai/datasets"),
-  createDataset: (versionLabel: string) => api.post<DatasetVersion>(`/api/ai/datasets?version_label=${encodeURIComponent(versionLabel)}`),
+  createDatasetDraft: (versionLabel: string) => api.post<DatasetVersion>("/api/ai/datasets/draft", { version_label: versionLabel }),
+  datasetExamples: (id: string) => api.get<TrainingExample[]>(`/api/ai/datasets/${id}/examples`),
+  addDatasetExamples: (id: string, exampleIds: string[]) => api.post<DatasetVersion>(`/api/ai/datasets/${id}/examples`, { example_ids: exampleIds }),
+  removeDatasetExample: (id: string, exampleId: string) => api.delete<DatasetVersion>(`/api/ai/datasets/${id}/examples/${exampleId}`),
+  finalizeDataset: (id: string) => api.post<DatasetVersion>(`/api/ai/datasets/${id}/finalize`),
+  cloneDataset: (id: string, newLabel: string) => api.post<DatasetVersion>(`/api/ai/datasets/${id}/clone`, { new_label: newLabel }),
+  deleteDatasetDraft: (id: string) => api.delete(`/api/ai/datasets/${id}`),
   trainingJobs: () => api.get<TrainingJob[]>("/api/ai/training/jobs"),
   createTrainingJob: (datasetVersionId: string) => api.post<TrainingJob>("/api/ai/training/jobs", { dataset_version_id: datasetVersionId }),
-  runTrainingJob: (id: string) => api.post<TrainingJob>(`/api/ai/training/jobs/${id}/run`),
+  retryTrainingJob: (id: string) => api.post<TrainingJob>(`/api/ai/training/jobs/${id}/retry`),
+  cancelTrainingJob: (id: string) => api.post<TrainingJob>(`/api/ai/training/jobs/${id}/cancel`),
   registryModels: () => api.get<ModelRegistryEntry[]>("/api/ai/registry/models"),
   approveModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/approve`),
   rejectModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/reject`),
   promoteModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/promote`),
-  rollbackModel: (id: string) => api.post<ModelRegistryEntry>(`/api/ai/registry/models/${id}/rollback`),
+  rollbackModel: (targetModelId: string) => api.post<ModelRegistryEntry>("/api/ai/registry/models/rollback", { target_model_id: targetModelId }),
 
   reportUrl: (scanId: string, fmt: "pdf" | "json" | "csv") =>
     `${api.defaults.baseURL}/api/reports/${scanId}/${fmt}`,

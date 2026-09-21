@@ -34,7 +34,7 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.db import DatasetVersion, ModelRegistryEntry, TrainingExample, TrainingJob
+from app.models.db import DatasetVersion, DatasetItem, ModelRegistryEntry, TrainingExample, TrainingJob
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,10 @@ def create_training_job(
     dv = db.query(DatasetVersion).filter(DatasetVersion.id == dataset_version_id).first()
     if not dv:
         raise ValueError(f"DatasetVersion {dataset_version_id} not found")
+    if tenant_id and dv.tenant_id and dv.tenant_id != tenant_id:
+        raise ValueError(f"DatasetVersion {dataset_version_id} not found")
+    if dv.status != "FINALIZED":
+        raise ValueError(f"DatasetVersion {dataset_version_id} is {dv.status}, not FINALIZED — finalize it before training")
 
     job = TrainingJob(
         tenant_id=tenant_id,
@@ -83,30 +87,27 @@ def create_training_job(
     db.commit()
     db.refresh(job)
 
-    # Publish NATS event so the training worker can pick it up immediately
-    # rather than waiting for the next polling interval.
+    # Wake the training worker immediately via NATS -- best effort, and only
+    # when we are inside a running event loop. Never block here waiting on a
+    # broker (run_until_complete against an unreachable NATS used to stall
+    # this call for minutes); the worker also polls, so a skipped publish
+    # just means the job starts on the next poll.
     try:
         import asyncio
         from app import events
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(
-                events.publish("training.job.queued", {
-                    "job_id": job.id,
-                    "dataset_version_id": dataset_version_id,
-                    "tenant_id": tenant_id,
-                })
-            )
-        else:
-            loop.run_until_complete(
-                events.publish("training.job.queued", {
-                    "job_id": job.id,
-                    "dataset_version_id": dataset_version_id,
-                    "tenant_id": tenant_id,
-                })
-            )
-    except Exception:  # noqa: BLE001 - NATS is best-effort, job row was already committed
-        logger.debug("training.job.queued NATS publish skipped (event loop unavailable)")
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(
+            events.publish("training.job.queued", {
+                "job_id": job.id,
+                "dataset_version_id": dataset_version_id,
+                "tenant_id": tenant_id,
+            })
+        )
+    except RuntimeError:
+        logger.debug("training.job.queued NATS publish skipped (no running event loop)")
+    except Exception:  # noqa: BLE001 - job row was already committed
+        logger.debug("training.job.queued NATS publish failed", exc_info=True)
 
     return job
 
@@ -115,12 +116,82 @@ def create_training_job(
 # Job execution (called by the training worker synchronously)
 # ---------------------------------------------------------------------------
 
+def claim_job(db: Session, job_id: str) -> bool:
+    """Atomically move a job QUEUED -> RUNNING. Returns True only for the one
+    caller whose UPDATE actually changed the row, so the NATS callback and the
+    poll loop (or two worker containers) can never both run the same job."""
+    from sqlalchemy import update
+
+    res = db.execute(
+        update(TrainingJob)
+        .where(TrainingJob.id == job_id, TrainingJob.status == "QUEUED")
+        .values(status="RUNNING", started_at=datetime.utcnow(), error=None)
+    )
+    db.commit()
+    return (res.rowcount or 0) == 1
+
+
+def requeue_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> TrainingJob:
+    """FAILED/CANCELLED -> QUEUED (the "retry" the worker docs always mentioned)."""
+    job = _get_job(db, job_id, tenant_id)
+    if job.status not in ("FAILED", "CANCELLED"):
+        raise ValueError(f"Job is {job.status}; only FAILED or CANCELLED jobs can be retried")
+    job.status = "QUEUED"
+    job.error = None
+    job.started_at = None
+    job.completed_at = None
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def cancel_job(db: Session, job_id: str, tenant_id: Optional[str] = None) -> TrainingJob:
+    """Only a QUEUED job can be cancelled; a RUNNING fine-tune can't be
+    interrupted safely from here."""
+    job = _get_job(db, job_id, tenant_id)
+    if job.status != "QUEUED":
+        raise ValueError(f"Job is {job.status}; only QUEUED jobs can be cancelled")
+    job.status = "CANCELLED"
+    job.completed_at = datetime.utcnow()
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def _get_job(db: Session, job_id: str, tenant_id: Optional[str]) -> TrainingJob:
+    q = db.query(TrainingJob).filter(TrainingJob.id == job_id)
+    if tenant_id:
+        q = q.filter((TrainingJob.tenant_id == tenant_id) | (TrainingJob.tenant_id.is_(None)))
+    job = q.first()
+    if not job:
+        raise ValueError(f"TrainingJob {job_id} not found")
+    return job
+
+
+def recover_stale_jobs(db: Session, stale_minutes: Optional[int] = None) -> int:
+    """A worker that dies mid-fine-tune leaves its job RUNNING forever. Mark
+    those FAILED (retryable) once they exceed TRAINING_JOB_STALE_MINUTES."""
+    from datetime import timedelta
+
+    minutes = stale_minutes if stale_minutes is not None else int(os.getenv("TRAINING_JOB_STALE_MINUTES", "180"))
+    cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+    stale = db.query(TrainingJob).filter(TrainingJob.status == "RUNNING", TrainingJob.started_at < cutoff).all()
+    for job in stale:
+        job.status = "FAILED"
+        job.error = f"Worker stopped responding (no completion after {minutes} min); retry to run it again."
+        job.completed_at = datetime.utcnow()
+    if stale:
+        db.commit()
+    return len(stale)
+
+
 def run_training_job(db: Session, job_id: str) -> None:
     """Fine-tune DistilBERT on the examples in the job's DatasetVersion.
 
-    Sets job.status to COMPLETED (with real metrics) or FAILED (with error
-    text).  Never generates placeholder metrics on failure — a failed job
-    stays FAILED with a real error message.
+    Claims the job atomically first (QUEUED -> RUNNING); if another worker
+    already claimed it, this is a no-op. Sets job.status to COMPLETED (with
+    real metrics) or FAILED (with error text). Never generates placeholder
+    metrics on failure.
 
     This function is synchronous and CPU-safe.  The training worker runs it
     in a thread pool so it doesn't block the event loop.
@@ -132,15 +203,17 @@ def run_training_job(db: Session, job_id: str) -> None:
     if job.status == "CANCELLED":
         logger.info("TrainingJob %s is CANCELLED, skipping", job_id)
         return
-
-    job.status = "RUNNING"
-    job.started_at = datetime.utcnow()
-    db.commit()
+    if not claim_job(db, job_id):
+        logger.info("TrainingJob %s was already claimed by another runner, skipping", job_id)
+        return
+    db.refresh(job)
 
     try:
         _execute_training(db, job)
     except Exception as exc:  # noqa: BLE001
         logger.exception("TrainingJob %s failed: %s", job_id, exc)
+        db.rollback()
+        job = db.query(TrainingJob).filter(TrainingJob.id == job_id).first()
         job.status = "FAILED"
         job.error = f"{type(exc).__name__}: {exc}"
         job.completed_at = datetime.utcnow()
@@ -178,8 +251,9 @@ def _execute_training(db: Session, job: TrainingJob) -> None:
 
     examples = (
         db.query(TrainingExample)
+        .join(DatasetItem, DatasetItem.training_example_id == TrainingExample.id)
         .filter(
-            TrainingExample.dataset_version == dv.version,
+            DatasetItem.dataset_version_id == dv.id,
             TrainingExample.validation_status != "EXCLUDED",
             TrainingExample.human_action.in_(["APPROVED", "CORRECTED"]),
         )
@@ -260,20 +334,20 @@ def _execute_training(db: Session, job: TrainingJob) -> None:
     os.makedirs(artifact_dir, exist_ok=True)
 
     use_gpu = torch.cuda.is_available()
-    training_args = TrainingArguments(
+    training_args = TrainingArguments(**_training_args_kwargs(
+        TrainingArguments,
         output_dir=artifact_dir,
         num_train_epochs=5 if len(train_examples) >= 10 else 10,
         per_device_train_batch_size=min(8, len(train_examples)),
         per_device_eval_batch_size=min(8, len(val_examples)),
-        evaluation_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="eval_loss",
         logging_steps=10,
-        no_cuda=not use_gpu,
         report_to=[],  # disable W&B / tensorboard
         disable_tqdm=True,
-    )
+        _use_gpu=use_gpu,
+    ))
 
     # ------------------------------------------------------------------
     # 8. Train
@@ -299,6 +373,8 @@ def _execute_training(db: Session, job: TrainingJob) -> None:
         id2label=id2label,
         train_duration_ms=train_duration_ms,
     )
+
+    metrics.update(_intent_coverage(intents))
 
     # ------------------------------------------------------------------
     # 10. Save model + tokenizer artifacts
@@ -373,6 +449,38 @@ def _execute_training(db: Session, job: TrainingJob) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _training_args_kwargs(args_cls, *, _use_gpu: bool, **kw) -> dict:
+    """transformers renamed evaluation_strategy -> eval_strategy and no_cuda ->
+    use_cpu across releases (the old names are removed in newer ones). Pick
+    whichever the installed TrainingArguments actually accepts."""
+    import inspect
+
+    params = set(inspect.signature(args_cls.__init__).parameters)
+    kw["eval_strategy" if "eval_strategy" in params else "evaluation_strategy"] = "epoch"
+    if "use_cpu" in params:
+        kw["use_cpu"] = not _use_gpu
+    elif "no_cuda" in params:
+        kw["no_cuda"] = not _use_gpu
+    return kw
+
+
+def _intent_coverage(trained_intents) -> dict:
+    """How much of the 13-intent taxonomy a model trained only on HITL data
+    actually knows. Shown on the Models tab; promotion is deliberately not
+    gated on it (see routers/model_registry.py)."""
+    from app.ai.classifier import KNOWN_INTENTS
+
+    trained = sorted(set(trained_intents))
+    covered = [i for i in KNOWN_INTENTS if i in trained]
+    return {
+        "intents_trained": trained,
+        "known_intents_total": len(KNOWN_INTENTS),
+        "known_intents_covered": len(covered),
+        "known_intents_missing": [i for i in KNOWN_INTENTS if i not in trained],
+        "intent_coverage": round(len(covered) / len(KNOWN_INTENTS), 4) if KNOWN_INTENTS else 0.0,
+    }
+
 
 def _stratified_split(examples, label2id, train_ratio=0.80):
     """Roughly stratified 80/20 split by intent label."""

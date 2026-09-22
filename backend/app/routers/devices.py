@@ -517,6 +517,13 @@ async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: 
     from app.services import audit_service
     import anyio
     import logging
+    import asyncio
+    from app.services.scan_runner import RUNNING_SCAN_TASKS
+
+    current_task = asyncio.current_task()
+    if current_task:
+        RUNNING_SCAN_TASKS[scan_id] = current_task
+        current_task.add_done_callback(lambda t, sid=scan_id: RUNNING_SCAN_TASKS.pop(sid, None))
 
     # Run in a brand new database session because the HTTP request's Depends(Session) will be closed.
     with SessionLocal() as db:

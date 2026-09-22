@@ -110,9 +110,23 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
         db.refresh(scan)
     except InvalidRequestError:
         raise PipelineStopped(stage)
+
+    timings = dict(scan.stage_timings or {})
+
+    def _suspend_current_stage():
+        current = scan.pipeline_stage
+        if current and current in timings:
+            entry = dict(timings[current])
+            started_ms = entry.pop("_started_ms", None)
+            if started_ms is not None:
+                entry["duration_ms"] = (entry.get("duration_ms") or 0) + (now_ms - started_ms)
+            timings[current] = entry
+            scan.stage_timings = timings
+
     if scan.control_state == "STOPPED":
         raise PipelineStopped(stage)
     if scan.control_state == "STOP_REQUESTED":
+        _suspend_current_stage()
         scan.status = "stopped"
         scan.control_state = "STOPPED"
         scan.pipeline_stage = stage
@@ -121,6 +135,7 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
         await events.publish("pipeline.stopped", {"scan_id": scan.id, "stage": stage})
         raise PipelineStopped(stage)
     if scan.control_state == "PAUSE_REQUESTED":
+        _suspend_current_stage()
         scan.status = "paused"
         scan.control_state = "PAUSED"
         scan.pipeline_stage = stage
@@ -130,7 +145,6 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
         raise PipelinePaused(stage)
 
     # --- timing ---
-    timings: dict = dict(scan.stage_timings or {})
     prev_stage = scan.pipeline_stage
 
     # Finalise the previous stage's timing entry if it was started
@@ -138,24 +152,29 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
         entry = dict(timings[prev_stage])
         if entry.get("started_at") and not entry.get("completed_at"):
             entry["completed_at"] = now_iso
-            # Duration from monotonic clock (stored separately so the display
-            # can use it directly without parsing two ISO strings).
             started_ms = entry.pop("_started_ms", None)
             if started_ms is not None:
-                entry["duration_ms"] = now_ms - started_ms
+                entry["duration_ms"] = (entry.get("duration_ms") or 0) + (now_ms - started_ms)
         timings[prev_stage] = entry
 
     # Start timing the new stage (only if not already started, so a resume
     # entering mid-stage doesn't reset the clock on the current stage)
-    if stage not in timings or not timings[stage].get("started_at"):
+    if stage not in timings:
         timings[stage] = {
             "started_at": now_iso,
-            "_started_ms": now_ms,  # hidden monotonic anchor; stripped on completion
+            "_started_ms": now_ms,
             "completed_at": None,
-            "duration_ms": None,
+            "duration_ms": 0,
         }
+    elif not timings[stage].get("completed_at") and timings[stage].get("_started_ms") is None:
+        # Resuming a previously suspended stage
+        timings[stage]["_started_ms"] = now_ms
+
     scan.stage_timings = timings
     scan.pipeline_stage = stage
+    if stage == "done":
+        timings["done"]["completed_at"] = now_iso
+        scan.stage_timings = timings
     db.commit()
 
 
@@ -310,6 +329,24 @@ async def run_pipeline(
                         pass
                     vlan_ids.add(str(v.vlan_id))
             
+            # Map structural ACLs into the compliance baseline if missing
+            from app.models.baseline import ACLRule
+            acl_names = {a.name for a in baseline.acls}
+            for a in getattr(gapped, "acls", []):
+                if a.name not in acl_names:
+                    baseline.acls.append(ACLRule(name=a.name))
+                    baseline.provenance.append(NormalizedParameter(
+                        raw_command=gapped.lines[a.line - 1] if getattr(a, "line", None) else "unknown topology mapping",
+                        normalized_parameter="acls",
+                        value=a.name,
+                        confidence=1.0,
+                        source="parser",
+                        vendor=effective_vendor,
+                        human_validated=True
+                    ))
+                    acl_names.add(a.name)
+
+
             from app.services.topology_llm_fallback import interpret_unknown_lines
             if gapped.unknown_indices:
                 llm_facts = await interpret_unknown_lines(effective_vendor, gapped.lines, gapped.unknown_indices)
@@ -381,6 +418,7 @@ async def run_pipeline(
                     scan_id=scan.id,
                     device_id=device.id,
                     tenant_id=scan.tenant_id,
+                    raw_command=occ.item.line,
                     raw_command_hash=hashlib.sha256(occ.item.line.encode()).hexdigest(),
                     intent=ai_result.intent,
                     classifier_confidence=ai_result.classifier_confidence,
@@ -631,9 +669,8 @@ async def run_pipeline(
             logger = __import__("logging").getLogger("pipeline")
             logger.exception("rag incremental index failed for scan %s", scan.id)
 
-        scan.pipeline_stage = "done"
         scan.control_state = "RUNNING"
-        db.commit()
+        await _checkpoint(db, scan, "done")
 
     except (PipelinePaused, PipelineStopped):
         # Already persisted (status/control_state/pipeline_stage/timestamp)

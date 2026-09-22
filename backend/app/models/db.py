@@ -279,6 +279,7 @@ class AIAnalysis(Base):
     scan_id = Column(String, ForeignKey("scans.id"), nullable=False)
     device_id = Column(String, ForeignKey("devices.id"), nullable=True)
     tenant_id = Column(String, nullable=True, index=True)
+    raw_command = Column(Text, nullable=True)
     raw_command_hash = Column(String, nullable=False)
     intent = Column(String, nullable=False)
     classifier_confidence = Column(Float, nullable=False)

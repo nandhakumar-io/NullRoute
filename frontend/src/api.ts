@@ -518,6 +518,7 @@ export interface VerifyResult {
 
 export interface AIAnalysisRow {
   id: string;
+  raw_command?: string | null;
   raw_command_hash: string;
   intent: string;
   classifier_confidence: number;

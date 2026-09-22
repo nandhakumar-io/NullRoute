@@ -1093,11 +1093,20 @@ export default function ScanDetail() {
                 <div className="space-y-3 max-h-96 overflow-auto">
                   {aiAnalysis.analyses.map((a) => (
                     <div key={a.id}>
-                      <div className="flex items-center justify-between mb-1.5 px-1">
-                        <span className="font-mono text-base text-slate-400">{a.intent}</span>
-                        <span className={`badge ${AI_DECISION_TONE[a.decision] || "badge-na"}`}>
-                          {a.decision.replace(/_/g, " ")}
-                        </span>
+                      <div className="flex flex-col mb-1.5 px-1">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-mono text-base text-slate-400">Classified as: {a.intent}</span>
+                          <span className={`badge ${AI_DECISION_TONE[a.decision] || "badge-na"}`}>
+                            {a.decision.replace(/_/g, " ")}
+                          </span>
+                        </div>
+                        {a.raw_command ? (
+                          <div className="text-sm font-mono text-slate-300 bg-soc-bg border border-soc-border rounded p-2 mb-2 overflow-x-auto whitespace-pre">
+                            {a.raw_command}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-slate-500 italic mb-2">Command hash: {a.raw_command_hash}</div>
+                        )}
                       </div>
                       <WhyPanel
                         title={a.requires_review ? "Why is review required?" : "Why?"}

@@ -92,6 +92,7 @@ def get_scan_ai_analysis(scan_id: str, db: Session = Depends(get_db)):
         "analyses": [
             {
                 "id": r.id,
+                "raw_command": r.raw_command,
                 "raw_command_hash": r.raw_command_hash,
                 "intent": r.intent,
                 "classifier_confidence": r.classifier_confidence,

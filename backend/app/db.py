@@ -139,6 +139,7 @@ _POSTGRES_MIGRATIONS = [
     # pgvector column (create_all makes it JSON first).
     "ALTER TABLE command_mappings ALTER COLUMN embedding TYPE vector(384) "
     "USING (CASE WHEN embedding IS NOT NULL THEN embedding::text::vector ELSE NULL END)",
+    "ALTER TABLE ai_analyses ADD COLUMN IF NOT EXISTS raw_command TEXT",
     "ALTER TABLE device_credential_refs ADD COLUMN IF NOT EXISTS secret_data JSON",
     "ALTER TABLE alert_channels ADD COLUMN IF NOT EXISTS secret_data JSON",
     "ALTER TABLE backup_destinations ADD COLUMN IF NOT EXISTS secret_data JSON",
@@ -235,6 +236,7 @@ _SQLITE_COLUMNS = [
     ("dataset_versions", "finalized_at", "DATETIME"),
     ("training_jobs", "created_at", "DATETIME"),
     ("command_mappings", "embedding_backend", "VARCHAR"),
+    ("ai_analyses", "raw_command", "TEXT"),
 ]
 
 

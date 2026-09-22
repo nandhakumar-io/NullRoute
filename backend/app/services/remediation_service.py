@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 from app.models.db import Device, DeviceVulnerabilityMatch, Finding, Scan, Vulnerability
 from app.services import remediation_templates
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+OLLAMA_HOST = os.getenv("AI_GENERATION_REMOTE_URL", os.getenv("OLLAMA_HOST", "http://ollama:11434"))
 LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama")
 
 
@@ -308,12 +308,18 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                 device_target = f"{v_name} {os_family}"
             try:
                 system_prompt = (
-                    f"/no_think Generate the EXACT vendor-specific configuration CLI commands for a {device_target} device to fix this security finding.\\n"
-                    f"Issue: {f.title}\\nGuidance: {f.remediation}\\nActual Value: {f.actual_value}\\n\\n"
-                    "RULES:\\n"
-                    "1. Use the exact CLI syntax specific to this exact model and OS. Do not guess generic commands.\\n"
-                    "2. Output ONLY a JSON array of strings containing the exact commands for this device.\\n"
-                    "3. Do not include markdown fences, explanations, or introductory text."
+                    "You are a network security engineering assistant. "
+                    "You write vendor-specific configuration CLI commands to fix security findings. "
+                    "RULES:\n"
+                    "1. Use the exact CLI syntax specific to the requested model and OS. Do not guess generic commands.\n"
+                    "2. Do not include markdown fences, explanations, or introductory text.\n"
+                    "3. Respond ONLY with a valid JSON array of strings containing the commands."
+                )
+                user_prompt = (
+                    f"Device: {device_target}\n"
+                    f"Issue: {f.title}\n"
+                    f"Guidance: {f.remediation}\n"
+                    f"Actual Value: {f.actual_value}\n"
                     + vuln_prompt_suffix
                 )
                 async with _semaphore:
@@ -322,8 +328,11 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                             f"{OLLAMA_HOST}/generate",
                             json={
                                 "model": LLM_MODEL,
-                                "prompt": system_prompt,
-                                "stream": False
+                                "system": system_prompt,
+                                "prompt": user_prompt,
+                                "format": "json",
+                                "stream": False,
+                                "options": {"temperature": 0.1}
                             }
                         )
                         resp.raise_for_status()

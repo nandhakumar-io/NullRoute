@@ -38,6 +38,8 @@ class TopologyExtraction:
     vlans: List[ExtractedVlan] = field(default_factory=list)
     vrfs: List[ExtractedVrf] = field(default_factory=list)
     routes: List[ExtractedRoute] = field(default_factory=list)
+    acls: List[ExtractedAcl] = field(default_factory=list)
+    protocols: List[ExtractedProtocol] = field(default_factory=list)
 
 
 @dataclass
@@ -58,6 +60,7 @@ def extract_topology(vendor: Optional[str], raw_text: str) -> TopologyExtraction
     return TopologyExtraction(
         interfaces=result.interfaces, vlans=result.vlans,
         vrfs=result.vrfs, routes=result.routes,
+        acls=result.acls, protocols=result.protocols
     )
 
 
@@ -72,5 +75,6 @@ def extract_topology_with_gaps(vendor: Optional[str], raw_text: str) -> Topology
     unknown = [i for i in range(len(lines)) if lines[i].strip() and i not in result.explained]
     return TopologyExtractionWithGaps(
         interfaces=result.interfaces, vlans=result.vlans, vrfs=result.vrfs, routes=result.routes,
+        acls=result.acls, protocols=result.protocols,
         lines=lines, unknown_indices=unknown, family=result.family,
     )

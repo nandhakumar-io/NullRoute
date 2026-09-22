@@ -14,7 +14,7 @@ typed so the OPA/Rego + Python rule engine can evaluate them deterministically.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -29,7 +29,7 @@ class DeviceInfo(BaseModel):
 
 
 class SSHConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
     version: Optional[int] = None
     idle_timeout: Optional[int] = None
     key_exchange_algorithms: Optional[List[str]] = None
@@ -37,12 +37,12 @@ class SSHConfig(BaseModel):
 
 
 class TelnetConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
 
 
 class HTTPConfig(BaseModel):
-    enabled: Optional[bool] = None
-    https_only: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
+    https_only: Union[bool, str, None] = None
     port: Optional[int] = None
 
 
@@ -51,7 +51,7 @@ class ManagementConfig(BaseModel):
     telnet: TelnetConfig = Field(default_factory=TelnetConfig)
     http: HTTPConfig = Field(default_factory=HTTPConfig)
     console_timeout: Optional[int] = None
-    banner_configured: Optional[bool] = None
+    banner_configured: Union[bool, str, None] = None
 
 
 class RadiusServer(BaseModel):
@@ -96,8 +96,8 @@ class FirewallPolicy(BaseModel):
     destination: Optional[List[str]] = None
     service: Optional[List[str]] = None
     application: Optional[List[str]] = None
-    logging_enabled: Optional[bool] = None
-    enabled: Optional[bool] = None
+    logging_enabled: Union[bool, str, None] = None
+    enabled: Union[bool, str, None] = None
 
 
 class CryptoConfig(BaseModel):
@@ -105,10 +105,10 @@ class CryptoConfig(BaseModel):
     cipher/protocol-strength controls can be evaluated independently of
     whether the management protocol itself is merely enabled."""
     min_tls_version: Optional[str] = None
-    weak_ciphers_disabled: Optional[bool] = None
+    weak_ciphers_disabled: Union[bool, str, None] = None
     ssh_key_exchange_algorithms: Optional[List[str]] = None
-    certificate_expiry_checked: Optional[bool] = None
-    self_signed_cert_in_use: Optional[bool] = None
+    certificate_expiry_checked: Union[bool, str, None] = None
+    self_signed_cert_in_use: Union[bool, str, None] = None
 
 
 class ServicesConfig(BaseModel):
@@ -129,12 +129,12 @@ class SyslogServer(BaseModel):
 
 
 class NTPConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
     servers: List[str] = Field(default_factory=list)
 
 
 class RoutingOSPF(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
     process_id: Optional[int] = None
 
 
@@ -143,68 +143,68 @@ class RoutingConfig(BaseModel):
 
 
 class LoggingConfig(BaseModel):
-    enabled: Optional[bool] = None
-    remote_syslog: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
+    remote_syslog: Union[bool, str, None] = None
     syslog_servers: Optional[List[str]] = None
     syslog_servers_detail: List[SyslogServer] = Field(default_factory=list)
     log_level: Optional[str] = None
-    ntp_synced: Optional[bool] = None
+    ntp_synced: Union[bool, str, None] = None
     ntp: NTPConfig = Field(default_factory=NTPConfig)
 
 
 class AAAConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
     authentication_method: Optional[str] = None
-    accounting_enabled: Optional[bool] = None
-    local_fallback: Optional[bool] = None
+    accounting_enabled: Union[bool, str, None] = None
+    local_fallback: Union[bool, str, None] = None
     radius_servers: List[RadiusServer] = Field(default_factory=list)
     tacacs_servers: List[TACACSServer] = Field(default_factory=list)
 
 
 class PasswordPolicy(BaseModel):
     min_length: Optional[int] = None
-    complexity_required: Optional[bool] = None
+    complexity_required: Union[bool, str, None] = None
     max_age_days: Optional[int] = None
-    encrypted_storage: Optional[bool] = None
+    encrypted_storage: Union[bool, str, None] = None
 
 
 class SNMPConfig(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: Union[bool, str, None] = None
     version: Optional[str] = None
-    community_strings_default: Optional[bool] = None
+    community_strings_default: Union[bool, str, None] = None
     community_strings: List[str] = Field(default_factory=list)
 
 
 class InterfaceSecurity(BaseModel):
-    unused_ports_disabled: Optional[bool] = None
-    port_security_enabled: Optional[bool] = None
+    unused_ports_disabled: Union[bool, str, None] = None
+    port_security_enabled: Union[bool, str, None] = None
 
 
 class SecurityGroup(BaseModel):
     name: Optional[str] = None
-    allow_ssh: Optional[bool] = None
-    allow_http: Optional[bool] = None
-    allow_all_egress: Optional[bool] = None
-    restrict_default_vpc: Optional[bool] = None
+    allow_ssh: Union[bool, str, None] = None
+    allow_http: Union[bool, str, None] = None
+    allow_all_egress: Union[bool, str, None] = None
+    restrict_default_vpc: Union[bool, str, None] = None
 
 class IAMRole(BaseModel):
     name: str = "default"
-    privilege_escalation: Optional[bool] = None
-    cross_account_access: Optional[bool] = None
+    privilege_escalation: Union[bool, str, None] = None
+    cross_account_access: Union[bool, str, None] = None
 
 class CloudVPC(BaseModel):
     id: Optional[str] = None
-    flow_logs_enabled: Optional[bool] = None
-    default_security_group_closed: Optional[bool] = None
+    flow_logs_enabled: Union[bool, str, None] = None
+    default_security_group_closed: Union[bool, str, None] = None
     security_groups: List[SecurityGroup] = Field(default_factory=list)
     iam_roles: List[IAMRole] = Field(default_factory=list)
 
 class KubernetesNetworkPolicy(BaseModel):
     name: Optional[str] = None
     namespace: Optional[str] = None
-    default_deny_all_ingress: Optional[bool] = None
-    default_deny_all_egress: Optional[bool] = None
-    istio_mtls_strict: Optional[bool] = None
+    default_deny_all_ingress: Union[bool, str, None] = None
+    default_deny_all_egress: Union[bool, str, None] = None
+    istio_mtls_strict: Union[bool, str, None] = None
 
 
 class NormalizedParameter(BaseModel):

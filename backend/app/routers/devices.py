@@ -508,7 +508,7 @@ def collect_configuration(
         "config_hash": result.config_hash,
     }
 
-async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: str, framework: str, user_subject: str):
+async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: str, framework: str, user_subject: str, batfish_checks: Optional[str] = None):
     from app.db import SessionLocal
     from app.models.db import Device, Scan, Finding
     from app.services.pipeline import run_pipeline
@@ -555,7 +555,7 @@ async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: 
         device.last_collection_transport = result.transport
         db.commit()
 
-        await run_pipeline(db, scan, raw_text, framework=framework)
+        await run_pipeline(db, scan, raw_text, framework=framework, batfish_checks=batfish_checks)
 
         try:
             from app.services import backup_destination_service
@@ -571,6 +571,7 @@ async def run_scan(
     request: Request,
     background_tasks: BackgroundTasks,
     framework: str = "ALL",
+    batfish_checks: Optional[str] = Query(None, description="Comma-separated list of Batfish checks to run"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
     tenant_id: str = Depends(get_current_tenant)

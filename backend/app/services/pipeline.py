@@ -399,6 +399,7 @@ async def run_pipeline(
                 vendor=device.vendor or guess_vendor or "",
                 hostname=baseline.device.hostname or device.hostname or "device",
                 raw_config=raw_text,
+                selected_checks=batfish_checks.split(",") if batfish_checks else None,
             )
         )
         batfish_status = bf_result.status

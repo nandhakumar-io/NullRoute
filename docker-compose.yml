@@ -35,7 +35,7 @@ x-common-env: &common-env
   AI_ENABLED: "true"
   AI_CLASSIFIER_MODEL_PATH: ""
   AI_EMBEDDING_MODEL_PATH: ""
-  AI_REFERENCE_DATASET: ""
+  AI_REFERENCE_DATASET: "/app/data/ai_vector_reference_dataset.json"
   AI_REFERENCE_EMBEDDINGS: ""
   AI_CLASSIFIER_CONFIDENCE_THRESHOLD: "0.75"
   AI_SEMANTIC_THRESHOLD: "0.60"
@@ -202,6 +202,7 @@ services:
       - ./policies:/app/policies:ro
       - batfishdata:/tmp/batfish
       - trainingartifacts:/training_artifacts:ro
+      - ./data:/app/data:ro
 
   seed:
     build:

@@ -272,6 +272,10 @@ def nearest_from_vector(loaded: LoadedEmbedder, text: str, query_vec: Optional[L
 
     if loaded.encode_fn is not None:
         query_vec = query_vec if query_vec is not None else []
+        for e in loaded.examples:
+            if not e.vector:
+                # Lazily heal reference vectors if startup initialization failed
+                e.vector = loaded.encode_fn(e.text)
         best = max(loaded.examples, key=lambda e: _cosine(query_vec, e.vector or []))
         similarity = _cosine(query_vec, best.vector or [])
     else:

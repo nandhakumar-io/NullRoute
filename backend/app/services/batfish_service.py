@@ -1029,7 +1029,7 @@ def compare_snapshots(bf, network: str, before_snapshot: str, after_snapshot: st
 # Top-level orchestration
 # ---------------------------------------------------------------------------
 
-def analyze_security_behavior(scan_id: str, vendor: str, hostname: str, raw_config: str) -> BatfishAnalysisResult:
+def analyze_security_behavior(scan_id: str, vendor: str, hostname: str, raw_config: str, selected_checks: Optional[List[str]] = None) -> BatfishAnalysisResult:
     """Runs the full Batfish behavioral-analysis suite for one scan's
     candidate configuration. Always returns a BatfishAnalysisResult with an
     explicit top-level `status` — never raises to the caller (pipeline.py),
@@ -1098,13 +1098,14 @@ def analyze_security_behavior(scan_id: str, vendor: str, hostname: str, raw_conf
 
         # Management-VLAN isolation: none of the non-management zones should
         # be able to originate traffic that lands on the management zone.
-        for zone in ("GUEST", "USER", "INTERNET"):
-            if zones.get(zone) and zones.get("MANAGEMENT"):
-                checks.append(test_reachability(
-                    bf, zones[zone], zones["MANAGEMENT"],
-                    control_id=f"MGMT-ISOLATION-{zone}-001", title=f"Management VLAN isolation from {zone}",
-                    source_zone=zone, destination_zone="MANAGEMENT", expected_reachable=False, severity="HIGH",
-                ))
+        if _should_run("reachability"):
+            for zone in ("GUEST", "USER", "INTERNET"):
+                if zones.get(zone) and zones.get("MANAGEMENT"):
+                    checks.append(test_reachability(
+                        bf, zones[zone], zones["MANAGEMENT"],
+                        control_id=f"MGMT-ISOLATION-{zone}-001", title=f"Management VLAN isolation from {zone}",
+                        source_zone=zone, destination_zone="MANAGEMENT", expected_reachable=False, severity="HIGH",
+                    ))
 
         critical_violation = any(
             c.status == "BATFISH_FAIL" and c.severity == "CRITICAL" for c in checks

@@ -361,15 +361,6 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                 generated = []
 
             if generated:
-                # ----- Persist to DB so the next call is a cache-hit ---------
-                try:
-                    f.ai_cli_cache = list(generated)
-                    db.add(f)
-                    db.commit()
-                except Exception:
-                    # Non-fatal: cache write failure still lets us return data
-                    db.rollback()
-
                 cli_steps = list(generated)
                 if firmware_lines:
                     cli_steps = cli_steps + firmware_lines
@@ -401,6 +392,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                             if firmware_lines else ""
                         )
                     ),
+                    "_cache_payload": list(generated),
                 }
             else:
                 return {
@@ -432,6 +424,20 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
 
     if fails:
         remediations = await asyncio.gather(*[_generate(f) for f in fails])
+        
+        # Persist generated CLI asynchronously but using the synchronous db session serially to avoid crashes
+        cache_updated = False
+        for f, rem in zip(fails, remediations):
+            if "_cache_payload" in rem:
+                f.ai_cli_cache = rem.pop("_cache_payload")
+                db.add(f)
+                cache_updated = True
+                
+        if cache_updated:
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
     else:
         remediations = []
 

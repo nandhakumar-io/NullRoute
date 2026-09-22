@@ -423,6 +423,37 @@ export default function ScanDetail() {
     }
   }
 
+  function exportAiAnalysisCsv() {
+    if (!aiAnalysis || aiAnalysis.analyses.length === 0) return;
+    const header = ["Raw Command Hash", "Intent", "Classifier Confidence", "Semantic Similarity", "Decision", "Requires Review", "Nearest Intent", "Nearest Vendor", "Models Agree", "Reason"];
+    const rows = aiAnalysis.analyses.map(a => [
+      a.raw_command_hash,
+      a.intent,
+      a.classifier_confidence.toFixed(4),
+      a.semantic_similarity.toFixed(4),
+      a.decision,
+      a.requires_review ? "Yes" : "No",
+      a.nearest_intent || "",
+      a.nearest_vendor || "",
+      a.models_agree ? "Yes" : "No",
+      (a.reason || "").replace(/"/g, '""')
+    ]);
+
+    const csvContent = [header]
+      .concat(rows)
+      .map(row => row.map(cell => `"${cell}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `scan_${scanId}_ai_analysis.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   return (
     <div>
       <PageHeader
@@ -964,11 +995,20 @@ export default function ScanDetail() {
           {aiAnalysis && aiAnalysis.count > 0 && (
             <div className="px-8 mb-6">
               <div className="card">
-                <div className="font-semibold text-slate-200 mb-3">
-                  AI Interpretations ({aiAnalysis.count}) — never a compliance decision, advisory only
-                  {aiAnalysis.requires_review_count > 0 && (
-                    <span className="ml-2 badge badge-medium">{aiAnalysis.requires_review_count} need review</span>
-                  )}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="font-semibold text-slate-200">
+                    AI Interpretations ({aiAnalysis.count}) — never a compliance decision, advisory only
+                    {aiAnalysis.requires_review_count > 0 && (
+                      <span className="ml-2 badge badge-medium">{aiAnalysis.requires_review_count} need review</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={exportAiAnalysisCsv}
+                    className="btn-secondary text-base px-3 py-1 shrink-0"
+                    title="Export AI interpretations (hashes and scores) to CSV for training/dataset compilation"
+                  >
+                    Export CSV
+                  </button>
                 </div>
                 <div className="space-y-3 max-h-96 overflow-auto">
                   {aiAnalysis.analyses.map((a) => (

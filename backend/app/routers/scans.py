@@ -640,7 +640,15 @@ def get_opa_analysis(scan_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{scan_id}/remediation/generate-cli")
-async def get_remediation_suggestions(scan_id: str, db: Session = Depends(get_db)):
+async def get_remediation_suggestions(
+    scan_id: str,
+    refresh: bool = Query(
+        False,
+        description="Set to true to discard cached AI CLI commands and regenerate them "
+        "with the current device model context. Use this after a device model is added/updated.",
+    ),
+    db: Session = Depends(get_db),
+):
     """Phase 14 AI Feature Extension: Retrieve or LLM-synthesize remediation CLI recommendations.
 
     Deliberately namespaced under /generate-cli (not the bare
@@ -649,13 +657,22 @@ async def get_remediation_suggestions(scan_id: str, db: Session = Depends(get_db
     /{scan_id}/remediation-suggestions below, which never invents
     configuration. See that endpoint's docstring and
     tests/test_change_requests.py::test_remediation_suggestions_never_invents_config.
+
+    Pass ?refresh=true to bypass the per-finding ai_cli_cache and regenerate
+    model-specific commands (e.g. after a device model number is set).
     """
     from app.services.remediation_service import generate_remediation_cli_for_scan
     scan = db.query(Scan).get(scan_id)
     if not scan:
         raise HTTPException(404, "Scan not found")
-    
-    # Asynchronously invoke the LLM proxy
+
+    if refresh:
+        # Clear stale cached CLI so the service regenerates with current device model context.
+        db.query(Finding).filter(Finding.scan_id == scan_id).update(
+            {Finding.ai_cli_cache: None}, synchronize_session="fetch"
+        )
+        db.commit()
+
     return await generate_remediation_cli_for_scan(db, scan)
 
 

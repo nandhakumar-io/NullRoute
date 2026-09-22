@@ -167,7 +167,21 @@ export function useAuth() {
 export function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles?: Role[] }) {
   const { isAuthenticated, role, ready } = useAuth();
 
-  if (!ready) return <div className="p-8 text-sm" style={{ color: "var(--ink-muted)" }}>Loading…</div>;
+  if (!ready) return (
+    <div style={{
+      position: "fixed", inset: 0,
+      background: "#0b1120",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      gap: 16,
+    }}>
+      <svg width="40" height="40" viewBox="0 0 40 40" style={{ animation: "spin 1s linear infinite" }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <circle cx="20" cy="20" r="16" fill="none" stroke="#1e3a5f" strokeWidth="4" />
+        <path d="M20 4 A16 16 0 0 1 36 20" fill="none" stroke="#3b82f6" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+      <span style={{ color: "#94a3b8", fontSize: "0.875rem", letterSpacing: "0.05em" }}>Loading…</span>
+    </div>
+  );
 
   if (!isAuthenticated) {
     // Redirect to login if not authenticated

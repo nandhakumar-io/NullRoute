@@ -178,14 +178,7 @@ def _try_load_remote_embedder(url: str, api_key: str, timeout: float, dataset_pa
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             return list(pool.map(encode, texts))
 
-    # If we didn't load from a numpy file, encode each reference example via the API
-    # Since this blocks startup, let's just make sure we do it.
-    if examples and not examples[0].vector:
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
-            vectors = list(executor.map(encode, [ex.text for ex in examples]))
-            for ex, vec in zip(examples, vectors):
-                ex.vector = vec
+    # Healing is deferred completely to runtime for resilience, avoiding startup blocks.
             
     return LoadedEmbedder(
         backend_name="remote-minilm",
@@ -272,10 +265,14 @@ def nearest_from_vector(loaded: LoadedEmbedder, text: str, query_vec: Optional[L
 
     if loaded.encode_fn is not None:
         query_vec = query_vec if query_vec is not None else []
-        for e in loaded.examples:
-            if not e.vector:
-                # Lazily heal reference vectors if startup initialization failed
-                e.vector = loaded.encode_fn(e.text)
+        missing = [e for e in loaded.examples if not e.vector]
+        if missing:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=30) as pool:
+                vecs = list(pool.map(loaded.encode_fn, [m.text for m in missing]))
+                for m, v in zip(missing, vecs):
+                    m.vector = v
+        
         best = max(loaded.examples, key=lambda e: _cosine(query_vec, e.vector or []))
         similarity = _cosine(query_vec, best.vector or [])
     else:

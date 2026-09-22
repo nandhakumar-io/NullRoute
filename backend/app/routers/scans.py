@@ -544,7 +544,7 @@ async def resume_scan(
             device_id=scan.device_id,
             tenant_id=scan.tenant_id,
             framework=scan.framework or "ALL",
-            user_subject=user.sub,
+            user_subject=user.subject,
         )
         db.refresh(scan)
         return _detail(scan, db)

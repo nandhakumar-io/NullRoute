@@ -178,7 +178,7 @@ async def resume_pipeline(db: Session, scan: Scan) -> Scan:
 
 
 async def run_pipeline(
-    db: Session, scan: Scan, raw_text: str, framework: str = "ALL", resume_stage: Optional[str] = None,
+    db: Session, scan: Scan, raw_text: str, framework: str = "ALL", resume_stage: Optional[str] = None, batfish_checks: Optional[str] = None
 ) -> Scan:
     skip_normalize = resume_stage in _RESUMABLE_FROM_BASELINE
     try:

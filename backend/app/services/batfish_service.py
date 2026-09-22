@@ -47,7 +47,7 @@ os.makedirs(BATFISH_SNAPSHOT_ROOT, exist_ok=True)
 # a dataplane/forwarding graph for. Fortinet and Palo Alto are explicitly
 # excluded here (per problem statement section 6) — those still get full
 # deterministic-parser + OPA coverage, just not Batfish behavioral analysis.
-SUPPORTED_VENDORS = {"cisco", "cisco_ios", "cisco_iosxe", "arista", "arista_eos", "juniper", "juniper_junos", "ad_hoc", "unknown"}
+SUPPORTED_VENDORS = {"cisco", "cisco_ios", "cisco_iosxe", "arista", "arista_eos", "juniper", "juniper_junos", "aruba", "aos_cx", "sonic", "ad_hoc", "unknown"}
 
 _VENDOR_UNSUPPORTED = {"fortinet", "fortios", "paloalto", "panos", "palo alto"}
 
@@ -1095,6 +1095,9 @@ def analyze_security_behavior(scan_id: str, vendor: str, hostname: str, raw_conf
         # Dynamically build and add checks based on the extracted configuration (e.g. BGP peering state, references)
         checks.append(run_named_question(bf, "bgp_session_status", {}, "BGP Session Status (derived from config)", "BGP-001", "HIGH"))
         checks.append(run_named_question(bf, "undefined_references", {}, "Undefined References (derived from config)", "REF-001", "LOW"))
+
+        def _should_run(name: str) -> bool:
+            return not selected_checks or name in selected_checks
 
         # Management-VLAN isolation: none of the non-management zones should
         # be able to originate traffic that lands on the management zone.

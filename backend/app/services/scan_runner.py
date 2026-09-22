@@ -369,9 +369,9 @@ def reconcile_stale(db: Session, *, startup: bool = False, grace_seconds: int = 
             scan.status, scan.control_state, scan.stopped_at = "stopped", "STOPPED", now
         elif state == "PAUSE_REQUESTED" and stale:
             scan.status, scan.control_state, scan.paused_at = "paused", "PAUSED", now
-        elif startup and state in _LIVE_CONTROL_STATES:
+        elif state in _LIVE_CONTROL_STATES and (startup or not has_live_task(scan.id)):
             scan.status, scan.control_state, scan.stopped_at = "stopped", "STOPPED", now
-            scan.error = SHUTDOWN_NOTE
+            scan.error = SHUTDOWN_NOTE if startup else "Pipeline task orphaned (unexpected crash or worker restart). Resume to continue."
         else:
             continue
         fixed += 1

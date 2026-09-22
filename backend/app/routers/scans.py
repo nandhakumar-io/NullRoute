@@ -410,6 +410,7 @@ async def rerun_scan(
 
     findings = opa_decision_to_findings(opa_decision, baseline)
     for f in findings:
+        f.pop("line_number", None)
         db.add(Finding(scan_id=scan.id, **f))
 
     # Note: the original raw configuration text isn't persisted verbatim on

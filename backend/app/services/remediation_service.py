@@ -311,15 +311,17 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     "You are a network security engineering assistant. "
                     "You write vendor-specific configuration CLI commands to fix security findings. "
                     "RULES:\n"
-                    "1. Use the exact CLI syntax specific to the requested model and OS. Do not guess generic commands.\n"
-                    "2. Do not include markdown fences, explanations, or introductory text.\n"
-                    "3. Respond ONLY with a valid JSON array of strings containing the commands."
+                    "1. Provide the FULL, exact CLI command(s) needed to apply the configuration, not just the isolated value. (e.g. ['set system syslog host 1.2.3.4 any'], NOT ['1.2.3.4'] or ['any'])\n"
+                    "2. Use the exact CLI syntax specific to the requested model and OS. Do not guess generic commands.\n"
+                    "3. Do not include markdown fences, explanations, or introductory text.\n"
+                    "4. Respond ONLY with a valid JSON array of strings containing the commands."
                 )
                 user_prompt = (
                     f"Device: {device_target}\n"
                     f"Issue: {f.title}\n"
                     f"Guidance: {f.remediation}\n"
-                    f"Actual Value: {f.actual_value}\n"
+                    f"Actual Value: {f.actual_value}\n\n"
+                    f"IMPORTANT: Output your response as a JSON array of strings, where each string is a FULL CLI command required to remediate this issue, not just the isolated value.\n"
                     + vuln_prompt_suffix
                 )
                 async with _semaphore:

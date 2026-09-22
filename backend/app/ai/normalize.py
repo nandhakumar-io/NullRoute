@@ -36,7 +36,7 @@ logger = logging.getLogger("ai.normalize")
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 LLM_MODEL = os.getenv("OLLAMA_MODEL", "llama")
 EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
-CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.75"))
+CONFIDENCE_THRESHOLD = float(os.getenv("AI_CONFIDENCE_THRESHOLD", "0.65"))
 
 KNOWN_PARAMETERS = [
     "management.ssh.enabled", "management.ssh.version", "management.ssh.idle_timeout",
@@ -49,22 +49,13 @@ KNOWN_PARAMETERS = [
     "management.banner_configured",
 ]
 
-SYSTEM_PROMPT = """You are a network security configuration interpreter.
-Given ONE raw configuration line from a network device and a list of known
-normalized security parameters, output STRICT JSON ONLY (no prose, no
-markdown fences) with this exact shape:
-{"interpretations": [
-  {"normalized_parameter": "<one of the known parameters, or a new short dotted-path guess>",
-   "value": <best-typed value: bool/number/string>,
-   "confidence": <float 0.0-1.0>,
-   "reasoning": "<one short sentence>"}
-]}
-You are advisory only — you never decide compliance PASS/FAIL, only meaning.
-
-CRITICAL RULES:
-1. Do NOT assign high confidence (>= 0.75) if the line is just a fragment (like `name admin`, `members MGMT`, `name 0`). Classify fragments as `extra_parameters.unknown_evidence` unless you are absolutely certain.
-2. If the line lacks enough context to be a complete security configuration, your confidence MUST be below 0.7.
-"""
+SYSTEM_PROMPT = (
+    "Output ONLY raw JSON (no markdown, no explanation): "
+    '{"interpretations":[{"normalized_parameter":"<dotted-path>","value":<bool/int/str>,"confidence":<0.0-1.0>,"reasoning":"<one sentence>"}]}. '
+    "Known parameters: " + ", ".join(KNOWN_PARAMETERS[:10]) + ". "
+    "High confidence (>=0.8) only when the command clearly maps to a parameter. "
+    "Use extra_parameters.unknown_evidence for unclear lines."
+)
 
 
 
@@ -231,9 +222,7 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
         for k in retrieved_knowledge
     )
     user_prompt = (
-        f"Vendor: {vendor}\nKnown parameters: {', '.join(KNOWN_PARAMETERS)}\n"
-        f"Retrieved prior mappings:\n{context_str or '(none)'}\n\n"
-        f"Raw configuration line: {line}\n\nRespond with JSON only."
+        f"/no_think Config line: {line}"
     )
     try:
         # Previously timeout=300.0 with up to 4 attempts meant a single unknown
@@ -255,7 +244,7 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
                         json={
                             "model": LLM_MODEL,
                             "system": SYSTEM_PROMPT,
-                            "prompt": user_prompt,
+                            "prompt": user_prompt.replace("Ad-Hoc\n", "").replace("Unknown\n", ""),
                             "stream": False,
                             "format": "json",
                             "options": {"temperature": 0.1},

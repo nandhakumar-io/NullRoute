@@ -181,6 +181,9 @@ _POSTGRES_MIGRATIONS = [
     "ALTER TABLE dataset_versions ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMP",
     "ALTER TABLE training_jobs ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now()",
     "ALTER TABLE command_mappings ADD COLUMN IF NOT EXISTS embedding_backend VARCHAR",
+    # ai_cli_cache stores LLM-generated CLI remediation steps per finding so the
+    # LLM is not called again on every page refresh (token-efficient caching).
+    "ALTER TABLE findings ADD COLUMN IF NOT EXISTS ai_cli_cache JSON",
     # evidence_records.scan_id must allow NULL (deploy/rollback events with no scan).
     "ALTER TABLE evidence_records ALTER COLUMN scan_id DROP NOT NULL",
     # merge_confidence was first created as FLOAT but the merge engine

@@ -135,6 +135,13 @@ class Finding(Base):
     vendor = Column(String, nullable=True, index=True)  # denormalized from Scan/Device for direct filtering
     evidence_line = Column(Text)
     remediation = Column(Text)
+    # Cached AI-generated CLI remediation steps (list[str]). Populated the
+    # first time /remediation/generate-cli runs for this finding; returned on
+    # every subsequent call without re-invoking the LLM (prevents token waste
+    # on page refresh). NULL = not yet generated. Cleared automatically if the
+    # finding row is recreated by a new scan (the scan is a new Scan row, so
+    # Finding rows are fresh).
+    ai_cli_cache = Column(JSON, nullable=True)
     # Trust-boundary provenance for the Evidence Trace view: which engine
     # produced the raw_line -> normalized_parameter mapping this finding was
     # evaluated against. 'parser' = deterministic vendor parser (no AI

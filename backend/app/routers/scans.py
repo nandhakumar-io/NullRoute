@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, BackgroundTasks
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -516,6 +516,7 @@ async def stop_scan(
 @router.post("/{scan_id}/resume", response_model=ScanDetailOut)
 async def resume_scan(
     scan_id: str,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_role(*_ANY_WRITE_ROLES)),
 ):
@@ -527,6 +528,27 @@ async def resume_scan(
     scan = _scan_or_404(db, scan_id, user)
     if scan.control_state not in ("PAUSED", "STOPPED"):
         raise HTTPException(409, f"Scan is not paused or stopped (control_state={scan.control_state}); nothing to resume")
+
+    # If it's a device-based scan that crashed before it even finished collecting and archiving
+    # its configuration to MinIO, a normal pipeline resume would fail. Instead, gracefully restart collection.
+    if not scan.raw_config_path and not scan.source_filename and scan.device_id:
+        scan.control_state = "RUNNING"
+        scan.status = "resuming"
+        scan.error = None
+        db.commit()
+
+        from app.routers.devices import _background_collect_and_scan
+        background_tasks.add_task(
+            _background_collect_and_scan,
+            scan_id=scan.id,
+            device_id=scan.device_id,
+            tenant_id=scan.tenant_id,
+            framework=scan.framework or "ALL",
+            user_subject=user.sub,
+        )
+        db.refresh(scan)
+        return _detail(scan, db)
+
     try:
         validate_resumable(scan)
     except ValueError as e:

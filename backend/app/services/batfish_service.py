@@ -1092,6 +1092,10 @@ def analyze_security_behavior(scan_id: str, vendor: str, hostname: str, raw_conf
         checks.append(test_acl_behavior(bf, ".*", control_id="ACL-EFFECTIVENESS-001", title="ACL effectiveness / shadowed rules"))
         checks.append(test_route_behavior(bf))
 
+        # Dynamically build and add checks based on the extracted configuration (e.g. BGP peering state, references)
+        checks.append(run_named_question(bf, "bgp_session_status", {}, "BGP Session Status (derived from config)", "BGP-001", "HIGH"))
+        checks.append(run_named_question(bf, "undefined_references", {}, "Undefined References (derived from config)", "REF-001", "LOW"))
+
         # Management-VLAN isolation: none of the non-management zones should
         # be able to originate traffic that lands on the management zone.
         for zone in ("GUEST", "USER", "INTERNET"):

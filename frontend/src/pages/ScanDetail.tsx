@@ -944,9 +944,9 @@ export default function ScanDetail() {
               ) : (
                 <div className="flex flex-wrap items-center gap-4">
                   <span className="badge badge-pass">Generated</span>
-                  <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "pdf")}>Download PDF</a>
-                  <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "json")}>Download JSON</a>
-                  <a className="btn-secondary text-base" href={endpoints.reportUrl(scan.id, "csv")}>Download CSV</a>
+                  <button className="btn-secondary text-base" onClick={() => endpoints.downloadReport(scan.id, "pdf")}>Download PDF</button>
+                  <button className="btn-secondary text-base" onClick={() => endpoints.downloadReport(scan.id, "json")}>Download JSON</button>
+                  <button className="btn-secondary text-base" onClick={() => endpoints.downloadReport(scan.id, "csv")}>Download CSV</button>
                 </div>
               )}
             </div>

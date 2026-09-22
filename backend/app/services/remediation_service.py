@@ -301,7 +301,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
             v_name = vendor if vendor not in ("Unknown", "Ad-Hoc", None) else "a network device"
             try:
                 system_prompt = (
-                    f"Write configuration CLI commands for {v_name} {os_family} to fix this security failing.\\n"
+                    f"/no_think Write configuration CLI commands for {v_name} {os_family} to fix this security failing.\\n"
                     f"Issue: {f.title}\\nGuidance: {f.remediation}\\nActual Value: {f.actual_value}\\n"
                     "Output ONLY a JSON array of strings containing the commands exactly, without markdown fences or explanations."
                     + vuln_prompt_suffix

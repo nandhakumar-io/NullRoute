@@ -1648,6 +1648,17 @@ export const endpoints = {
 
   reportUrl: (scanId: string, fmt: "pdf" | "json" | "csv") =>
     `${api.defaults.baseURL}/api/reports/${scanId}/${fmt}`,
+  downloadReport: async (scanId: string, fmt: "pdf" | "json" | "csv") => {
+    const res = await api.get(`/api/reports/${scanId}/${fmt}`, { responseType: "blob" });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `scan_${scanId}_report.${fmt}`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  },
   // Fetches the same JSON report as reportUrl(scanId,"json") but via the
   // authenticated axios instance, so in-app tabs (Compliance Matrix /
   // Vulnerabilities on ScanDetail) can read compliance_matrix /

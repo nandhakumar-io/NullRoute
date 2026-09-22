@@ -272,6 +272,20 @@ async def interpret_line(vendor: str, line: str, retrieved_knowledge: Optional[L
                         continue
                     raise req_e
             text = resp.json().get("response", "{}")
+            import re
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+            
+            # Robust JSON extraction
+            start_obj = text.find('{')
+            start_arr = text.find('[')
+            start = start_obj if start_obj != -1 and (start_arr == -1 or start_obj < start_arr) else start_arr
+            if start != -1:
+                end_obj = text.rfind('}')
+                end_arr = text.rfind(']')
+                end = end_obj if end_obj > end_arr else end_arr
+                if end != -1 and end > start:
+                    text = text[start:end+1]
+
             parsed = json.loads(text)
             
             interpretations_data = parsed.get("interpretations", [parsed])

@@ -317,10 +317,18 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                         )
                         resp.raise_for_status()
                     text = resp.json().get("response", "[]").strip()
-                    if "```json" in text:
-                        text = text.split("```json")[-1].split("```")[0].strip()
-                    elif "```" in text:
-                        text = text.split("```")[-1].split("```")[0].strip()
+                    import re as _re
+                    text = _re.sub(r'<think>.*?</think>', '', text, flags=_re.DOTALL).strip()
+                    
+                    start_obj = text.find('{')
+                    start_arr = text.find('[')
+                    start = start_obj if start_obj != -1 and (start_arr == -1 or start_obj < start_arr) else start_arr
+                    if start != -1:
+                        end_obj = text.rfind('}')
+                        end_arr = text.rfind(']')
+                        end = end_obj if end_obj > end_arr else end_arr
+                        if end != -1 and end > start:
+                            text = text[start:end+1]
 
                     try:
                         generated = json.loads(text)

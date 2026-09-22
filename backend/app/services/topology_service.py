@@ -13,7 +13,10 @@ the same /24-ish subnet -- never persisted as if it were an observed fact
 from __future__ import annotations
 
 import ipaddress
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from app.models.db import NetworkInterface
 
 from sqlalchemy.orm import Session
 

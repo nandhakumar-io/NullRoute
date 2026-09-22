@@ -69,7 +69,7 @@ def _now() -> str:
 def blank_stages(spec: Iterable[Tuple[str, str]]) -> List[Dict[str, Any]]:
     return [
         {"key": k, "label": label, "status": PENDING, "started_at": None,
-         "finished_at": None, "detail": None, "error": None, "kind": None}
+         "finished_at": None, "duration_ms": None, "detail": None, "error": None, "kind": None}
         for k, label in spec
     ]
 
@@ -105,6 +105,16 @@ class StageTracker:
         stages = self._stages()
         for s in stages:
             if s["key"] == key:
+                # Auto-compute duration_ms when finishing (a finished_at is in fields
+                # but started_at was already recorded from the start() call).
+                if "finished_at" in fields and fields["finished_at"] and s.get("started_at"):
+                    try:
+                        from datetime import datetime as _dt
+                        t0 = _dt.fromisoformat(s["started_at"])
+                        t1 = _dt.fromisoformat(fields["finished_at"])
+                        fields["duration_ms"] = round((t1 - t0).total_seconds() * 1000)
+                    except Exception:  # noqa: BLE001
+                        pass
                 s.update(fields)
                 break
         else:  # unknown key: ignore rather than crash a deployment

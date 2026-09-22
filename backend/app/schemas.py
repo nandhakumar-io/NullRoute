@@ -109,6 +109,9 @@ class ScanOut(BaseModel):
     paused_at: Optional[datetime] = None
     resumed_at: Optional[datetime] = None
     stopped_at: Optional[datetime] = None
+    # Per-stage duration data (see services/pipeline.py _checkpoint).
+    # Dict keyed by stage name: {started_at, completed_at, duration_ms}.
+    stage_timings: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 

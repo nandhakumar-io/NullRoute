@@ -308,9 +308,12 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                 device_target = f"{v_name} {os_family}"
             try:
                 system_prompt = (
-                    f"/no_think Write exact configuration CLI commands for {device_target} to fix this security finding.\\n"
-                    f"Issue: {f.title}\\nGuidance: {f.remediation}\\nActual Value: {f.actual_value}\\n"
-                    "Output ONLY a JSON array of strings containing the exact commands for this device, without markdown fences or explanations."
+                    f"/no_think Generate the EXACT vendor-specific configuration CLI commands for a {device_target} device to fix this security finding.\\n"
+                    f"Issue: {f.title}\\nGuidance: {f.remediation}\\nActual Value: {f.actual_value}\\n\\n"
+                    "RULES:\\n"
+                    "1. Use the exact CLI syntax specific to this exact model and OS. Do not guess generic commands.\\n"
+                    "2. Output ONLY a JSON array of strings containing the exact commands for this device.\\n"
+                    "3. Do not include markdown fences, explanations, or introductory text."
                     + vuln_prompt_suffix
                 )
                 async with _semaphore:

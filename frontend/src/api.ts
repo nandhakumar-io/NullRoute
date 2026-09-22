@@ -287,6 +287,7 @@ export interface Scan {
   source_filename?: string | null;
   control_state?: string | null;
   pipeline_stage?: string | null;
+  stage_timings?: Record<string, any>;
   paused_at?: string | null;
   resumed_at?: string | null;
   stopped_at?: string | null;

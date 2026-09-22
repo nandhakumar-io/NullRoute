@@ -34,7 +34,8 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
-from datetime import datetime
+import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.exc import InvalidRequestError
@@ -96,18 +97,20 @@ class PipelineStopped(Exception):
 async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
     """Safe stage-boundary check. Re-reads control_state from the DB (a
     concurrent pause/stop request may have updated it) and, if a pause or
-    stop was requested, persists the checkpoint and raises to unwind."""
+    stop was requested, persists the checkpoint and raises to unwind.
+
+    Also records stage timing: each call marks the *start* of `stage` and
+    finalises the timing of the stage that was previously running (i.e. the
+    stage name stored in scan.pipeline_stage before this call updates it).
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    now_ms = time.monotonic_ns() // 1_000_000  # monotonic for elapsed, iso for display
+
     try:
         db.refresh(scan)
     except InvalidRequestError:
-        # The scan row was deleted out from under us (force-delete). Nothing
-        # left to checkpoint -- unwind quietly instead of failing a scan
-        # that no longer exists.
         raise PipelineStopped(stage)
     if scan.control_state == "STOPPED":
-        # Force-stopped by another request (routers/scans.py -> scan_runner)
-        # while this coroutine was mid-stage; that request already persisted
-        # STOPPED, so don't touch the row again -- just unwind.
         raise PipelineStopped(stage)
     if scan.control_state == "STOP_REQUESTED":
         scan.status = "stopped"
@@ -125,6 +128,33 @@ async def _checkpoint(db: Session, scan: Scan, stage: str) -> None:
         db.commit()
         await events.publish("pipeline.paused", {"scan_id": scan.id, "stage": stage})
         raise PipelinePaused(stage)
+
+    # --- timing ---
+    timings: dict = dict(scan.stage_timings or {})
+    prev_stage = scan.pipeline_stage
+
+    # Finalise the previous stage's timing entry if it was started
+    if prev_stage and prev_stage != stage and prev_stage in timings:
+        entry = dict(timings[prev_stage])
+        if entry.get("started_at") and not entry.get("completed_at"):
+            entry["completed_at"] = now_iso
+            # Duration from monotonic clock (stored separately so the display
+            # can use it directly without parsing two ISO strings).
+            started_ms = entry.pop("_started_ms", None)
+            if started_ms is not None:
+                entry["duration_ms"] = now_ms - started_ms
+        timings[prev_stage] = entry
+
+    # Start timing the new stage (only if not already started, so a resume
+    # entering mid-stage doesn't reset the clock on the current stage)
+    if stage not in timings or not timings[stage].get("started_at"):
+        timings[stage] = {
+            "started_at": now_iso,
+            "_started_ms": now_ms,  # hidden monotonic anchor; stripped on completion
+            "completed_at": None,
+            "duration_ms": None,
+        }
+    scan.stage_timings = timings
     scan.pipeline_stage = stage
     db.commit()
 
@@ -254,6 +284,53 @@ async def run_pipeline(
             baseline.device.serial_number = device.serial_number
             baseline.raw_config_hash = scan.raw_config_hash
             await events.publish("config.parsed", {"scan_id": scan.id, "matched_params": len(baseline.provenance)})
+
+            # 2.5 Merge structural topology (VLANs, etc) into the compliance baseline.
+            # parsers.py does not have a 100% structural parser (like junos hierarchy flattening), 
+            # so we use topology_extractor's robust pipeline to cover the gaps.
+            from app.services.topology_extractor import extract_topology_with_gaps
+            gapped = await asyncio.to_thread(extract_topology_with_gaps, effective_vendor, raw_text)
+            
+            vlan_ids = {str(v.id) for v in baseline.vlans}
+            for v in gapped.vlans:
+                if str(v.vlan_id) not in vlan_ids:
+                    from app.models.baseline import VLAN, NormalizedParameter
+                    try:
+                        baseline.vlans.append(VLAN(id=int(v.vlan_id), name=v.name))
+                        baseline.provenance.append(NormalizedParameter(
+                            raw_command=gapped.lines[v.line - 1] if v.line else "unknown topology mapping",
+                            normalized_parameter="vlans",
+                            value=v.name or str(v.vlan_id),
+                            confidence=1.0,
+                            source="parser",
+                            vendor=effective_vendor,
+                            human_validated=True
+                        ))
+                    except ValueError:
+                        pass
+                    vlan_ids.add(str(v.vlan_id))
+            
+            from app.services.topology_llm_fallback import interpret_unknown_lines
+            if gapped.unknown_indices:
+                llm_facts = await interpret_unknown_lines(effective_vendor, gapped.lines, gapped.unknown_indices)
+                for v in llm_facts.vlans:
+                    if str(v.vlan_id) not in vlan_ids:
+                        from app.models.baseline import VLAN, NormalizedParameter
+                        try:
+                            baseline.vlans.append(VLAN(id=int(v.vlan_id), name=v.name))
+                            baseline.provenance.append(NormalizedParameter(
+                                raw_command=gapped.lines[v.line - 1] if v.line else "unknown topology ai mapping",
+                                normalized_parameter="vlans",
+                                value=v.name or str(v.vlan_id),
+                                confidence=0.8,
+                                source="ai",
+                                model_version="topology_llm_fallback",
+                                vendor=effective_vendor,
+                                human_validated=False
+                            ))
+                        except ValueError:
+                            pass
+                        vlan_ids.add(str(v.vlan_id))
 
             await _checkpoint(db, scan, "normalize")
 

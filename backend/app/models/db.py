@@ -96,6 +96,12 @@ class Scan(Base):
     paused_at = Column(DateTime, nullable=True)
     resumed_at = Column(DateTime, nullable=True)
     stopped_at = Column(DateTime, nullable=True)
+    # Per-stage timing for bottleneck analysis. JSON dict keyed by stage name,
+    # e.g. {"normalize": {"started_at": "...", "completed_at": "...", "duration_ms": 4321}}.
+    # Written by pipeline._checkpoint(); never cleared on resume so a full
+    # timing history across multiple resume attempts is preserved.
+    stage_timings = Column(JSON, nullable=True)
+
 
     # OPA / risk / correlation outputs (see services/opa_service.py,
     # risk_engine.py, change_validation_service.py). final_decision is the

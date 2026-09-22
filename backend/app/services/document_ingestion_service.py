@@ -177,6 +177,17 @@ async def extract_control_fields_via_llm(heading: str, body: str) -> Optional[Di
             resp.raise_for_status()
             data = resp.json()
             raw = data.get("response", "")
+            
+            # Robust JSON extraction
+            import re
+            raw = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+            
+            start_idx = raw.find('{')
+            if start_idx != -1:
+                end_idx = raw.rfind('}')
+                if end_idx != -1 and end_idx >= start_idx:
+                    raw = raw[start_idx:end_idx+1]
+                    
             parsed = _json.loads(raw)
             if not isinstance(parsed, dict) or "name" not in parsed:
                 return None

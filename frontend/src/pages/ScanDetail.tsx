@@ -701,6 +701,86 @@ export default function ScanDetail() {
             </div>
           </div>
 
+          {/* 2b. Pipeline Stage Timing — waterfall bar chart from scan.stage_timings.
+                Only rendered when the backend has collected at least one stage duration
+                (i.e. for scans run after the stage_timings column was added). */}
+          {scan.stage_timings && Object.keys(scan.stage_timings).length > 0 && (() => {
+            const STAGE_COLORS: Record<string, string> = {
+              start:    "bg-cyan-600",
+              normalize:"bg-violet-500",
+              opa:      "bg-emerald-500",
+              batfish:  "bg-amber-500",
+              finalize: "bg-orange-500",
+              done:     "bg-slate-500",
+            };
+            const STAGE_LABELS: Record<string, string> = {
+              start:    "Vendor detect & parse",
+              normalize:"AI/RAG normalization",
+              opa:      "OPA evaluation",
+              batfish:  "Batfish analysis",
+              finalize: "Risk, correlation & evidence",
+              done:     "Done",
+            };
+            const ORDER = ["start", "normalize", "opa", "batfish", "finalize", "done"];
+            type TimingEntry = { started_at?: string; completed_at?: string; duration_ms?: number };
+            const timings = scan.stage_timings as Record<string, TimingEntry>;
+            const rows = ORDER.filter(k => timings[k]?.duration_ms != null).map(k => ({
+              key: k,
+              label: STAGE_LABELS[k] || k,
+              color: STAGE_COLORS[k] || "bg-slate-600",
+              ms: timings[k].duration_ms as number,
+            }));
+            if (rows.length === 0) return null;
+            const totalMs = rows.reduce((s, r) => s + r.ms, 0);
+            const maxMs = Math.max(...rows.map(r => r.ms));
+            const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+            const bottleneck = rows.find(r => r.ms === maxMs);
+            return (
+              <div className="px-8 mb-6">
+                <div className="card">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="font-semibold text-slate-200">2b · Pipeline Stage Timing</div>
+                    <div className="text-base text-slate-500">Total: <span className="text-slate-300 font-mono">{fmtMs(totalMs)}</span></div>
+                  </div>
+                  <div className="text-base text-slate-500 mb-4">
+                    How long each stage took — identify bottlenecks at a glance.
+                    {bottleneck && (
+                      <span className="ml-2 px-2 py-0.5 rounded text-base bg-amber-500/15 text-amber-300 font-medium">
+                        ⚡ Bottleneck: {bottleneck.label} ({fmtMs(bottleneck.ms)})
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2.5">
+                    {rows.map(row => {
+                      const pct = totalMs > 0 ? (row.ms / totalMs) * 100 : 0;
+                      const isBottleneck = row.ms === maxMs;
+                      return (
+                        <div key={row.key}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className={`text-base font-medium ${isBottleneck ? "text-amber-300" : "text-slate-300"}`}>
+                              {row.label}
+                            </span>
+                            <span className={`text-base font-mono ${isBottleneck ? "text-amber-300 font-semibold" : "text-slate-400"}`}>
+                              {fmtMs(row.ms)}
+                              <span className="text-slate-600 ml-1">({pct.toFixed(0)}%)</span>
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ${row.color} ${isBottleneck ? "ring-1 ring-amber-400/40" : ""}`}
+                              style={{ width: `${Math.max(pct, 1)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+
           {/* Pipeline detail: what fed the Decision Pipeline above. */}
           <div className="px-8 grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
             <div className="card">

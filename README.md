@@ -1,63 +1,284 @@
 # AI-Driven Multi-Vendor Network Security Compliance Auditor
+
 ### SIH Problem Statement 26155 — MVP
 
-A vendor-agnostic platform that ingests network device configurations (Cisco,
-Juniper, Fortinet, Palo Alto, Arista, SONiC — extensible to more), normalizes
-them into a common **Security Baseline Model**, evaluates them against
-**CIS / NIST SP 800-53 / DISA STIG / ISO 27001** controls using a
-**deterministic** rule engine (OPA/Rego + Python — never the LLM), and
-produces PDF/JSON/CSV compliance reports with full evidence traceability.
+A vendor-agnostic platform that categorizes and normalizes network device configurations against **CIS / NIST SP 800-53 / DISA STIG / ISO 27001** standards using a deterministic rule engine.
 
-Local AI (Ollama + Qwen3-8B + BGE/E5 embeddings + pgvector RAG) interprets
-configuration syntax the deterministic parsers don't recognize, and a
-**Training Center** lets an administrator approve/correct low-confidence
-interpretations, which are stored back into the vector knowledge base so
-future scans recognize the same syntax automatically.
+The platform uses a dedicated **local AI server** as a supplementary heuristic analyzer for unrecognized or ambiguous configurations.
 
-**100% free/open-source, self-hostable. No paid cloud APIs required.**
+The AI server provides:
+
+- **DistilBERT** — intent classification
+- **MiniLM** — semantic embeddings and retrieval
+- **Qwen3-8B** — configuration normalization and remediation generation
+
+**100% free/open-source and self-hostable. No paid cloud AI APIs are required.**
 
 ---
 
-## Quick start
+## 🚀 Quick Start — Docker Compose
 
 ```bash
 cp .env.example .env
-docker compose up --build
+docker compose up --build -d
 ```
 
-This starts: PostgreSQL+pgvector, MinIO, NATS JetStream, OPA, Batfish, Ollama,
-Keycloak, OpenBao, the FastAPI backend, the React frontend, VictoriaMetrics,
-Grafana, and the background workers (scheduler, metrics-poller,
-vuln-sync-worker, evidence-verification-worker, training-worker) — then runs
-a one-shot `seed` container that pushes the bundled `sample_configs/`
-through the real pipeline so the dashboard is populated immediately.
+The Docker stack contains:
 
-- Frontend: http://localhost:5173
-- Backend API docs: http://localhost:8000/docs
-- Grafana: http://localhost:3001 (admin/admin)
-- MinIO console: http://localhost:9001 (compliance/compliance123)
-- Keycloak admin: http://localhost:8081 (admin/admin)
+- PostgreSQL / pgvector
+- MinIO
+- OPA
+- FastAPI backend
+- Vite frontend
+- Grafana
+- Background workers
 
-**Pull the local AI models once Ollama is up** (first run only):
+The AI models are served by the **Unified AI Server**.
+
+---
+
+# 🤖 Unified AI Server
+
+The project does **not require Ollama**.
+
+The AI models run through a dedicated FastAPI-based server, which can run on a separate GPU machine or on the same machine as the backend.
+
+| Model | Purpose | Endpoint |
+|---|---|---|
+| `kenpachi-zaraki36/netsecauditor-distilbert-v06` | Intent classification | `/classify` |
+| `kenpachi-zaraki36/netsecauditor-minilm-v02` | Semantic embeddings and retrieval | `/embed` |
+| `Qwen/Qwen3-8B` | Normalization and remediation generation | `/generate` |
+
+Qwen3-8B uses **4-bit quantization** to reduce GPU memory usage. Qwen generation is limited to one concurrent generation at a time to reduce GPU memory exhaustion.
+
+## AI Server Requirements
+
+Recommended:
+
+- Ubuntu Linux
+- NVIDIA GPU
+- NVIDIA driver with CUDA support
+- Python 3.12+
+- Python virtual environment
+- Hugging Face token for the private DistilBERT and MiniLM repositories
+
 ```bash
-docker exec compliance-ollama ollama pull qwen3:8b
-docker exec compliance-ollama ollama pull bge-m3
+sudo apt update
+sudo apt install -y python3 python3-venv
+nvidia-smi
 ```
-Until the models are pulled, the AI normalization stage automatically falls
-back to a deterministic keyword-similarity heuristic (see
-`backend/app/ai/normalize.py`) so the full pipeline still runs end-to-end —
-useful for grading/demo environments without GPU access. Swap in Ollama at
-any time with zero code changes.
 
-## Local (non-Docker) backend dev
+## Create the AI Server Environment
+
+```bash
+mkdir -p ~/nullroute
+cd ~/nullroute
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install torch transformers accelerate bitsandbytes sentence-transformers fastapi uvicorn huggingface_hub
+```
+
+## Configure Hugging Face Authentication
+
+```bash
+export HF_TOKEN="YOUR_HUGGINGFACE_TOKEN"
+```
+
+Do **not** hard-code the token in `server.py`.
+
+The server automatically pulls/verifies these models at startup:
+
+```text
+Qwen/Qwen3-8B
+kenpachi-zaraki36/netsecauditor-distilbert-v06
+kenpachi-zaraki36/netsecauditor-minilm-v02
+```
+
+The first startup downloads the models. Later startups use the Hugging Face cache.
+
+## Start the AI Server
+
+Place the unified `server.py` at:
+
+```text
+~/nullroute/server.py
+```
+
+Start it with:
+
+```bash
+cd ~/nullroute
+source .venv/bin/activate
+uvicorn server:app --host 0.0.0.0 --port 8000
+```
+
+The AI server is available at:
+
+```text
+http://<AI_SERVER_IP>:8000
+```
+
+---
+
+# AI Server API
+
+## Health
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+The endpoint reports the GPU and all loaded models.
+
+Example:
+
+```json
+{
+  "status": "online",
+  "models": {
+    "qwen": {
+      "status": "loaded",
+      "model": "Qwen/Qwen3-8B"
+    },
+    "distilbert": {
+      "status": "loaded",
+      "model": "kenpachi-zaraki36/netsecauditor-distilbert-v06"
+    },
+    "minilm": {
+      "status": "loaded",
+      "model": "kenpachi-zaraki36/netsecauditor-minilm-v02",
+      "embedding_dimension": 384
+    }
+  }
+}
+```
+
+## DistilBERT — Intent Classification
+
+```bash
+curl -X POST http://127.0.0.1:8000/classify   -H "Content-Type: application/json"   -d '{"text":"set system services ssh"}'
+```
+
+## MiniLM — Semantic Embeddings
+
+```bash
+curl -X POST http://127.0.0.1:8000/embed   -H "Content-Type: application/json"   -d '{"text":"set system services ssh"}'
+```
+
+MiniLM returns a **384-dimensional embedding** used by semantic retrieval and pgvector.
+
+## Qwen3-8B — Normalization and Remediation
+
+```bash
+curl -X POST http://127.0.0.1:8000/generate   -H "Content-Type: application/json"   -d '{
+    "prompt":"Normalize this Juniper command: set system services ssh",
+    "max_new_tokens":128
+  }'
+```
+
+Qwen is a supplementary AI component. The deterministic compliance engine remains authoritative for compliance evaluation.
+
+---
+
+# 🔗 Backend → AI Server Configuration
+
+Configure the backend `.env`:
+
+```env
+AI_CLASSIFIER_REMOTE_URL=http://192.168.1.50:8000/classify
+AI_EMBEDDING_REMOTE_URL=http://192.168.1.50:8000/embed
+AI_GENERATION_REMOTE_URL=http://192.168.1.50:8000/generate
+
+AI_REMOTE_API_KEY=
+AI_REMOTE_TIMEOUT_SECONDS=30
+
+AI_CLASSIFIER_CONFIDENCE_THRESHOLD=0.75
+AI_SEMANTIC_THRESHOLD=0.60
+
+AI_MODEL_VERSION=distilbert-v06-minilm-v02-qwen3-8b
+```
+
+Replace `192.168.1.50` with the actual AI server address.
+
+### Important
+
+The old Ollama settings are no longer required:
+
+```env
+OLLAMA_BASE_URL=
+OLLAMA_HOST_URL=
+```
+
+The backend communicates directly with the FastAPI AI server.
+
+---
+
+# 🧠 AI Processing Pipeline
+
+```text
+Network Configuration
+        │
+        ▼
+Configuration Parser
+        │
+        ▼
+Deterministic Normalization
+        │
+        ├───────────────┐
+        │               │
+        ▼               ▼
+   DistilBERT        MiniLM
+   Classification    Embedding
+        │               │
+        │               ▼
+        │          pgvector Retrieval
+        │               │
+        └───────┬───────┘
+                │
+                ▼
+          Confidence Check
+                │
+        ┌───────┴────────┐
+        │                │
+     Confident        Ambiguous
+        │                │
+        ▼                ▼
+   Known Intent        Qwen3-8B
+                         │
+                         ▼
+                  Normalization /
+                  Remediation
+                         │
+                         ▼
+                 Human Review
+                         │
+                         ▼
+               Deterministic Rules
+                         │
+                         ▼
+                  Compliance
+                  Evaluation
+```
+
+The AI models **supplement** the deterministic compliance engine rather than replacing it.
+
+---
+
+# 💻 Local Development Setup
+
+## Backend
 
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
-If PostgreSQL isn't reachable, `app/db.py` automatically falls back to a
-local SQLite file (`compliance_local.db`) so the API works standalone.
+
+## Frontend
 
 ```bash
 cd frontend
@@ -67,256 +288,175 @@ npm run dev
 
 ---
 
-## Demo script (matches the problem statement's target scenario)
+# 🌐 Accessing the Services
 
-1. **Ingestion → Compliance**: Upload `sample_configs/cisco_iosxe_core_sw01.cfg`
-   on the *Ingestion* page. Watch the pipeline stages
-   (Uploaded → Parsed → Normalized → Evaluated → Completed) on the *Scan
-   Detail* page, see the normalized Security Baseline Model, PASS/FAIL
-   findings with exact evidence lines, and download a PDF report.
-2. **Unknown syntax → Training → Recognition**: The sample Cisco config
-   includes one intentionally unmapped line
-   (`set fabric-path core-isis-instance enable`). It shows up in the
-   *Training Center* with an AI-suggested meaning and confidence score.
-   Approve/correct the mapping, then hit **Re-run evaluation** on the scan —
-   the mapping is now pulled from the pgvector-backed knowledge base
-   (*Knowledge Base* page).
+Once the Docker services have stabilized:
+
+- **Frontend SOC Dashboard:** `http://localhost:5173`
+- **Backend API Docs:** `http://localhost:8000/docs`
+- **Grafana:** `http://localhost:3001`
+- **MinIO Console:** `http://localhost:9001`
+- **Keycloak Admin:** `http://localhost:8081`
+
+The AI server is accessed separately:
+
+```text
+http://<AI_SERVER_IP>:8000
+```
 
 ---
 
-## Architecture
+# 🎯 Running a Demonstration
 
-```
-React (Vite/TS/Tailwind/Monaco/Recharts)
-        │
-        ▼
-FastAPI (Pydantic, SQLAlchemy)  ←→  Keycloak (auth/RBAC)
-        │
-        ▼
-   NATS JetStream (event bus)
-        │
- ┌──────┼──────────────┬─────────────────┐
- ▼                      ▼                 ▼
-Parsers            Ollama+Qwen3-8B     OPA / Rego
-(deterministic)     + BGE/E5 + RAG    + Python rule
-                    (pgvector KB)       engine
- └──────────────────────┼─────────────────┘
-                         ▼
-              Security Baseline Model
-                         │
-              ┌──────────┴──────────┐
-              ▼                     ▼
-     PostgreSQL + pgvector        MinIO
-              │                     │
-              ▼                     ▼
-          Findings            Evidence/Reports
-              │
-              ▼
-      Remediation Engine → PDF/JSON/CSV (ReportLab)
+1. Locate sample configurations in:
 
-OpenTelemetry → VictoriaMetrics → Grafana
+```text
+sample_configs/
 ```
 
-### Why the LLM never decides compliance
-`app/services/compliance.py` and `policies/baseline.rego` are the **only**
-places a PASS/FAIL verdict is produced. Both consume nothing but the
-flattened, Pydantic-validated Security Baseline Model — no raw AI text ever
-reaches the evaluation layer. The AI's confidence score only controls
-whether a mapping is auto-applied or routed to the Training Center for human
-sign-off (`AI_CONFIDENCE_THRESHOLD`, default 0.75).
+2. Upload:
 
-### Adding a new vendor
-1. Add detection signatures in `backend/app/services/vendor_detect.py`.
-2. Add a deterministic rule list in `backend/app/services/parsers.py`
-   (`VENDOR_RULES["NewVendor"] = [...]`).
-3. Nothing else changes — the compliance engine, controls catalog,
-   Training Center, and reporting all operate purely on the normalized
-   Security Baseline Model, so they're automatically vendor-agnostic.
+```text
+sample_configs/cisco_iosxe_core_sw01.cfg
+```
 
-### Adding a new control
-Add one entry to `backend/app/policies/controls.py` (and, if using the OPA
-path, mirror it in `policies/baseline.rego`). It applies to every vendor
-immediately.
+through the **Ingestion** page.
+
+3. Open the **Scan Detail** page.
+
+4. Review:
+
+```text
+Parsed
+   ↓
+Normalized
+   ↓
+Evaluated
+```
+
+5. Review PASS/FAIL compliance results.
+
+6. Inspect parsed evidence and line numbers.
+
+7. Download the results as **PDF/CSV**.
 
 ---
 
-## Project layout
+# ⛓️ Hyperledger Fabric Integration — Optional
 
-```
-backend/            FastAPI service (parsers, AI/RAG, compliance engine, reports)
-  app/models/        Pydantic Security Baseline Model + SQLAlchemy ORM
-  app/services/      vendor detection, parsers, pipeline, compliance, reports,
-                      opa_service, batfish_service, risk_engine, evidence_service, fabric_service
-  app/ai/            Ollama/RAG normalization (with offline fallback)
-  app/policies/      framework-independent control catalog
-  app/routers/       REST API endpoints
-frontend/           React + TS + Vite + Tailwind SOC dashboard
-policies/           Rego policy bundle (OPA authoritative decision engine)
-fabric/             Hyperledger Fabric chaincode + network bootstrap scripts
-fabric-gateway/     Node/TS bridge between FastAPI and the Fabric Gateway API
-sample_configs/     Realistic demo configs (Cisco, Juniper, Fortinet, PAN-OS, Arista, SONiC)
-docker-compose.yml  Full self-hosted stack
-Makefile            up / down / reset / demo / fabric-* convenience targets
-```
+The platform supports optional Hyperledger Fabric integration for non-repudiation and immutable evidence anchoring.
 
-## What's intentionally scoped down for the MVP
-- **Auth**: Keycloak is wired into docker-compose and the architecture, but
-  the FastAPI routes are not yet gated behind a validated JWT — see
-  `app/main.py` CORS/middleware comment. Wiring `python-jose` token
-  validation against Keycloak's JWKS endpoint is the next step before any
-  non-demo deployment.
-- **Live device collection** (Scrapli/Netmiko/ncclient/RESTCONF/PySNMP) is
-  designed for in the architecture but the MVP ships with file-upload
-  ingestion only; the parser layer is agnostic to how bytes arrive, so
-  wiring a `services/collectors.py` that calls Netmiko and feeds the same
-  `run_pipeline()` is additive, not a redesign.
-- **OpenTelemetry instrumentation** is not yet emitting spans/metrics from
-  the FastAPI app; VictoriaMetrics/Grafana containers are running and ready
-  to receive them (`docs/observability-todo.md`).
-- **MinIO** is provisioned in docker-compose for raw config/evidence/report
-  storage per the architecture, but the MVP currently keeps the baseline
-  JSON in Postgres and streams reports directly to the client rather than
-  persisting them to a bucket first — swapping in a MinIO write in
-  `services/reports.py` is a small addition.
+## Prerequisites
 
-These are flagged explicitly rather than silently omitted so a reviewer can
-see exactly what's demo-ready today versus what's next on the roadmap.
-
-## Batfish — network-behavior analysis engine
-
-`backend/app/services/batfish_service.py` integrates the official
-`batfish/allinone` Docker image (pinned, see `docker-compose.yml`) via
-PyBatfish to answer the question OPA structurally can't: *given this
-config, what can actually reach what?*
-
-**Pipeline placement**: runs immediately after OPA (`pipeline.py` stage 5),
-before the risk engine and correlation layer. Its output — a list of
-behavioral findings plus a `critical_violation` flag — feeds directly into
-`risk_engine.calculate_risk()` and `change_validation_service.correlate()`,
-which already had the parameters wired for this from the OPA phase.
-
-**What it checks, at minimum, per scan**: Guest→Management reachability,
-Internet→Management reachability, User→Server reachability, management
-VLAN isolation from Guest/User/Internet, ACL reachability/shadowed-rule
-analysis, and default-route presence. Zone membership (which
-interfaces/VLANs are "Guest" vs "Management" etc.) is inferred from
-interface descriptions and VLAN naming conventions in the raw config text
-(`batfish_service.infer_zones`) — when a zone can't be located for a given
-vendor/config, that specific check reports `BATFISH_UNSUPPORTED` rather
-than being skipped silently or reported as a pass.
-
-**Explicit status contract** (RULE 13 — a Batfish-unsupported or
--unavailable result is never reported as compliant):
-
-| Status | Meaning |
-|---|---|
-| `BATFISH_PASS` | Behavior matched the expected policy (e.g. Guest genuinely cannot reach Management). |
-| `BATFISH_FAIL` | A behavioral violation was found — feeds `risk_engine` and can escalate `correlate()` to BLOCK. |
-| `BATFISH_UNSUPPORTED` | Vendor (Fortinet/PAN-OS) or zone data isn't available for this check. |
-| `BATFISH_UNAVAILABLE` | The Batfish coordinator container couldn't be reached. |
-| `BATFISH_ERROR` | Batfish ran but the query itself raised. |
-| `NOT_INTEGRATED` | `BATFISH_ENABLED=false`. |
-
-**Snapshots**: each scan gets its own working directory under
-`BATFISH_SNAPSHOT_ROOT/scan-<id>/candidate/configs/` (never overwriting the
-originally uploaded file), cleaned up after analysis completes.
-`BATFISH_REQUIRED=true` makes an unsupported/unavailable result escalate
-the final compliance decision to REVIEW even if OPA alone would PASS.
-
-**Backend endpoints**: `GET /api/scans/{id}/batfish` (full result: nodes,
-interfaces, routes, reachability checks, init issues) and `GET
-/api/scans/{id}/opa` (policy decision detail), both backing new frontend
-pages.
-
-**Frontend**: `frontend/src/pages/BatfishAnalysis.tsx` (linked from Scan
-Detail's new OPA/Batfish/Risk summary row) shows network/snapshot identity,
-node count, the critical-violation flag, every reachability/behavioral
-check with source→destination zone and PASS/FAIL/UNSUPPORTED state, and
-every Batfish initialization issue (parser warnings are always visible,
-never hidden).
-
-**Tests**: `backend/tests/test_batfish_service.py` covers vendor-support
-detection, zone inference, the disabled/unavailable/unsupported/error
-short-circuit paths, reachability PASS/FAIL/ERROR outcomes, init-issue
-surfacing, and that `correlate()` correctly escalates to BLOCK on a
-critical Batfish violation and to REVIEW-or-PASS (per
-`BATFISH_REQUIRED`) on an unsupported result.
-
-**Still open for a future phase**: before/after (CURRENT vs PROPOSED)
-snapshot comparison wired into the pipeline (the `compare_snapshots()`
-function exists in the service but isn't yet called from `pipeline.py`,
-since today's pipeline only evaluates a single uploaded config rather than
-a proposed-change diff), and OpenTelemetry-style structured metrics for
-`batfish_analysis_duration`/`batfish_failures`/`batfish_unsupported`.
-
-## Hyperledger Fabric — immutable evidence anchor
-
-`backend/app/services/fabric_service.py` never talks to Fabric directly.
-It calls an internal-only bridge, `fabric-gateway/` (Node.js/TypeScript,
-`@hyperledger/fabric-gateway`), which holds the actual peer connection,
-MSP identity, and TLS material. FastAPI/the browser never see Fabric
-certificates or private keys (section 18/35).
-
-**Chaincode**: `fabric/chaincode/compliance-evidence/` (Go,
-`fabric-contract-api-go`) implements `CreateEvidence` (idempotent —
-re-anchoring the same `evidenceId` returns the original anchor rather than
-erroring or duplicating), `GetEvidence`, `VerifyEvidence`,
-`GetEvidenceHistory`, `GetEvidenceByScan`, and `GetEvidenceByHash`. The
-on-chain `EvidenceAnchor` asset holds only hashes, decisions, and ids —
-never raw configuration text or credentials (RULE 11).
-
-**Network**: `fabric/scripts/up.sh` bootstraps a local network using the
-official `hyperledger/fabric-samples` test-network (pinned Fabric/CA
-versions, TLS + CouchDB enabled), creates the `compliance-audit-channel`
-channel, and exports the connection/crypto material `fabric-gateway` needs
-into `fabric/network/`. `fabric/scripts/deploy-chaincode.sh` packages,
-installs, approves, and commits the chaincode via the network's own
-multi-org approval flow. `down.sh`/`reset.sh`/`health.sh` round out the
-lifecycle (section 36); `make fabric-up`, `make fabric-deploy`, `make
-demo` wrap these at the repo root.
-
-**Pipeline placement**: after evidence is built, canonicalized, hashed,
-and stored off-chain (`pipeline.py` stage 8), the pipeline anchors it —
-best-effort, never blocking the scan result. If `FABRIC_ENABLED=false`
-(the default), evidence stays fully valid off-chain with
-`fabric_status=NOT_ANCHORED`. If Fabric is enabled but `fabric-gateway`
-is unreachable, the record is marked `FABRIC_UNAVAILABLE` — the pipeline
-never reports a false "anchored" status or a fabricated transaction id
-(section 19, RULE 15).
-
-**Verification**: `POST /api/evidence/{id}/verify` recomputes the SHA-256
-of the stored evidence JSON (off-chain check, always run) and — when
-Fabric is enabled and the record was anchored — additionally asks
-`fabric-gateway` to compare that hash against the on-chain `evidenceHash`
-(on-chain check). Either side reporting a mismatch flips the result to
-`INTEGRITY_FAILURE`. The Evidence Ledger UI
-(`frontend/src/pages/EvidenceLedger.tsx`) shows Stored Hash vs Calculated
-Hash side by side plus the on-chain match result, and the existing
-**Simulate Evidence Tampering** / **Restore** actions only ever touch the
-off-chain PostgreSQL record — never Fabric — so tampering is reliably
-caught by the on-chain comparison even if someone edits the database
-directly (section 30).
-
-**Enabling it**:
 ```bash
-make fabric-up        # clones+builds fabric-samples test-network on first run (needs internet)
-make fabric-deploy     # packages/installs/commits the compliance-evidence chaincode
-docker compose --profile fabric up --build -d fabric-gateway
-# then set FABRIC_ENABLED=true in .env (or export it) and restart the backend
+sudo apt update
+sudo apt install -y golang
+go version
 ```
 
-**Tests**: `backend/tests/test_fabric_service.py` covers the
-disabled/not-configured path, gateway-unreachable-after-retries, a 5xx
-gateway response never being reported as a successful anchor, and
-verify/history round-trips against a mocked gateway (`respx`).
+## Start Fabric
 
-**Known limitation**: the Fabric network bring-up (`fabric/scripts/up.sh`)
-and `fabric-gateway`'s live gRPC connection to a real peer have not been
-executed end-to-end in this environment (no Docker daemon / no access to
-Fabric's binary distribution host from this sandbox) — the chaincode,
-gateway service, and Python client were built and, where the environment
-allowed, compiled/type-checked and unit-tested against a mocked gateway,
-but a full `make demo` run against real Fabric peers is unverified. Please
-run it in a normal Docker-enabled environment and report back if
-`up.sh`/`deploy-chaincode.sh` need adjustment for your Fabric version.
+```bash
+make fabric-up
+make fabric-deploy
+```
 
+Start the gateway:
+
+```bash
+FABRIC_ENABLED=true docker compose --profile fabric up --build -d fabric-gateway
+```
+
+Configure:
+
+```env
+FABRIC_ENABLED=true
+```
+
+in `.env`.
+
+---
+
+# 🏗️ Technical Architecture
+
+For the complete architecture covering:
+
+- Configuration ingestion
+- Vendor parsing
+- Deterministic normalization
+- DistilBERT intent classification
+- MiniLM semantic retrieval
+- pgvector
+- Qwen3-8B normalization/remediation
+- OPA policy evaluation
+- Batfish network simulation
+- Human-in-the-loop review
+- Compliance standards
+- Asynchronous processing
+- Evidence generation
+- Hyperledger Fabric
+
+see:
+
+```text
+ARCHITECTURE.md
+```
+
+---
+
+## AI Architecture Summary
+
+```text
+┌─────────────────────────────────────────────┐
+│          NetSecAuditor AI Server            │
+│                                             │
+│  DistilBERT v0.6                           │
+│  Intent Classification                      │
+│                                             │
+│  MiniLM v0.2                               │
+│  384-d Embeddings / Retrieval               │
+│                                             │
+│  Qwen3-8B                                  │
+│  Normalization / Remediation                │
+│                                             │
+│              NVIDIA GPU                     │
+└──────────────────────┬──────────────────────┘
+                       │
+                       │ HTTP
+                       ▼
+┌─────────────────────────────────────────────┐
+│           NetSecAuditor Backend             │
+│                                             │
+│ FastAPI + PostgreSQL + pgvector             │
+│ OPA + Batfish + Background Workers          │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## Removed from the Old Architecture
+
+The following Ollama configuration is no longer required:
+
+```text
+Ollama
+compliance-ollama
+ollama pull qwen3:8b
+ollama pull bge-m3
+OLLAMA_BASE_URL
+OLLAMA_HOST_URL
+```
+
+The current AI stack is:
+
+```text
+Qwen3-8B
+    +
+DistilBERT v0.6
+    +
+MiniLM v0.2
+    ↓
+Unified FastAPI AI Server
+    ↓
+NetSecAuditor Backend
+```

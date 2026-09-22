@@ -106,7 +106,20 @@ async def interpret_unknown_lines(
                 },
             )
             resp.raise_for_status()
-            parsed = json.loads(resp.json().get("response", "{}"))
+            
+            text = resp.json().get("response", "{}")
+            import re
+            # Remove reasoning content if present (common in Qwen/Llama variations)
+            text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+            
+            # Robust JSON extraction to bypass markdown fences
+            start_obj = text.find('{')
+            if start_obj != -1:
+                end_obj = text.rfind('}')
+                if end_obj != -1 and end_obj >= start_obj:
+                    text = text[start_obj:end_obj+1]
+                    
+            parsed = json.loads(text)
     except Exception as e:  # noqa: BLE001 -- offline/unreachable Ollama, bad JSON, etc.
         logger.info("topology LLM fallback unavailable/failed: %r", e)
         return out

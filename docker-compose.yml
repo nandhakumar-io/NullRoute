@@ -2,7 +2,6 @@ version: "3.9"
 
 x-common-env: &common-env
   DATABASE_URL: postgresql+psycopg2://compliance:compliance@postgres:5432/compliance
-  JOB_SIGNING_SECRET: "netsecauditor-dev-secret-key-12345"
   NATS_URL: nats://nats:4222
   OPA_URL: http://opa:8181
   OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
@@ -17,11 +16,6 @@ x-common-env: &common-env
   BATFISH_TIMEOUT: "120"
   BATFISH_SNAPSHOT_ROOT: /tmp/batfish/snapshots
   MINIO_ENDPOINT: minio:9000
-  # Hyperledger Fabric (RULE 5). Disabled by default: the demo/test stack
-  # runs fully without a Fabric network. Bring one up with
-  # fabric/scripts/up.sh && fabric/scripts/deploy-chaincode.sh, then flip
-  # FABRIC_ENABLED to "true" here (and start the fabric-gateway service
-  # below) to anchor evidence for real.
   FABRIC_ENABLED: "true"
   FABRIC_GATEWAY_URL: http://fabric-gateway:8080
   FABRIC_CHANNEL: compliance-audit-channel
@@ -29,9 +23,6 @@ x-common-env: &common-env
   FABRIC_ASYNC_ANCHOR: "true"
   FABRIC_REQUIRED_FOR_CRITICAL_CHANGES: "false"
   FABRIC_MAX_RETRIES: "5"
-  # Phase 1: trained-AI pipeline (DistilBERT classifier + all-MiniLM-L6-v2
-  # embeddings). Optional — app/ai falls back to deterministic heuristics
-  # when these paths/deps aren't present, same pattern as OLLAMA_HOST above.
   AI_ENABLED: "true"
   AI_CLASSIFIER_MODEL_PATH: ""
   AI_EMBEDDING_MODEL_PATH: ""
@@ -40,32 +31,21 @@ x-common-env: &common-env
   AI_CLASSIFIER_CONFIDENCE_THRESHOLD: "0.75"
   AI_SEMANTIC_THRESHOLD: "0.60"
   AI_MODEL_VERSION: "unversioned"
-  # Local username/password login (POST /api/auth/login) alongside Keycloak.
-  # AUTH_ENABLED=false is the explicit demo mode only (every request becomes an
-  # implicit admin) -- set it in .env only for throwaway local demos.
-  AUTH_ENABLED: ${AUTH_ENABLED:-true}
-  # Required whenever AUTH_ENABLED=true: signs local login tokens.
-  # Generate one with: openssl rand -hex 32
-  AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?set AUTH_JWT_SECRET in .env (openssl rand -hex 32)}
-  # First-boot admin (only created while the users table is empty). If left
-  # blank a random password is printed ONCE in the backend log.
-  BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
-  BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
-  # An admin's own approve/correct also counts as the dataset validation gate.
-  HITL_ADMIN_AUTO_VALIDATE: ${HITL_ADMIN_AUTO_VALIDATE:-true}
-  # Fine-tuned model artifacts: shared volume so the API can load a promoted
-  # model that the training worker wrote.
-  TRAINING_ARTIFACT_DIR: /training_artifacts
+  AUTH_ENABLED: "true"
+  AUTH_JWT_SECRET: "${AUTH_JWT_SECRET}"
   GATEWAY_MOCK_CONNECTOR: "false"
   KEYCLOAK_ISSUER: http://keycloak:8080/realms/netsecauditor
   KEYCLOAK_AUDIENCE: netsecauditor-backend
   KEYCLOAK_JWKS_CACHE_TTL: "3600"
+  JOB_SIGNING_SECRET: "netsecauditor-dev-secret-key-12345"
+
 
 services:
   # ---------------------------------------------------------------- data ---
   postgres:
     image: pgvector/pgvector:pg16
     container_name: compliance-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: compliance
       POSTGRES_PASSWORD: compliance
@@ -82,6 +62,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: compliance-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: compliance
@@ -99,6 +80,7 @@ services:
   nats:
     image: nats:2.10-alpine
     container_name: compliance-nats
+    restart: unless-stopped
     command: ["-js", "-m", "8222"]
     ports: ["4222:4222", "8222:8222"]
     healthcheck:
@@ -111,6 +93,7 @@ services:
   opa:
     image: openpolicyagent/opa:latest-envoy
     container_name: compliance-opa
+    restart: unless-stopped
     command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
     volumes:
       - ./policies:/policies:ro
@@ -121,14 +104,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Batfish: the network-behavior analysis engine (RULE 3). Pinned to a
-  # specific tested release, never `latest`, per section 4/RULE 15-adjacent
-  # reproducibility requirements. Only 9996/9997 are exposed, and only for
-  # local dev convenience (e.g. debugging via `pybatfish` from the host) —
-  # nothing outside the compose network needs to reach it in production.
   batfish:
     image: batfish/allinone:test-2024.07.22.1569
     container_name: compliance-batfish
+    restart: unless-stopped
     ports: ["9996:9996", "9997:9997"]
     healthcheck:
       test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('localhost', 9996))"]
@@ -136,23 +115,13 @@ services:
       timeout: 5s
       retries: 10
 
-
-
-
   # ---------------------------------------------------------- security -----
-
-  # Hyperledger Fabric evidence-anchoring bridge (sections 14, 18-19).
-  # Internal-only: no port is published to the host by default because
-  # nothing outside the compose network needs to reach it (RULE: internal-
-  # only Fabric Gateway). Requires a Fabric network to already be up via
-  # fabric/scripts/up.sh + deploy-chaincode.sh, with crypto material
-  # exported to fabric/network/crypto/org1 (that script does this for you).
-  # Only actually used once FABRIC_ENABLED=true above.
   fabric-gateway:
     build:
       context: ./fabric-gateway
       dockerfile: Dockerfile
     container_name: compliance-fabric-gateway
+    restart: unless-stopped
     environment:
       PORT: "8080"
       FABRIC_CHANNEL: compliance-audit-channel
@@ -166,9 +135,6 @@ services:
       - "127.0.0.1:3002:8080"
     volumes:
       - ./fabric/network/crypto/org1:/crypto/org1:ro
-    # Reaches the Fabric peer container started by fabric/scripts/up.sh
-    # (test-network's own compose network, "fabric_test"). Join it here so
-    # this container can resolve peer0.org1.example.com by name.
     networks:
       - default
       - fabric_test
@@ -185,13 +151,9 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: compliance-backend
+    restart: unless-stopped
     environment:
       <<: *common-env
-      # Dedicated worker containers (scheduler, training-worker,
-      # metrics-poller, vuln-sync-worker, evidence-verification-worker,
-      # network-scan-worker) already run every background loop below. Keep
-      # the API process from also starting them in-process, or each due
-      # schedule / queued job would be picked up and executed twice.
       RUN_EMBEDDED_WORKERS: "false"
     depends_on:
       postgres: { condition: service_healthy }
@@ -201,8 +163,18 @@ services:
     volumes:
       - ./policies:/app/policies:ro
       - batfishdata:/tmp/batfish
-      - trainingartifacts:/training_artifacts:ro
       - ./data:/app/data:ro
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.entrypoints=http"
+      - "traefik.http.routers.backend.rule=Host(`nullroute-api.notoriousdev.in`)"
+      - "traefik.http.routers.backend.service=backend"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      - "traefik.docker.network=proxy"
+
 
   seed:
     build:
@@ -217,12 +189,6 @@ services:
         condition: service_started
     restart: "no"
 
-  # Phase 12 -- executes scheduled audits (AuditSchedule rows) on its own
-  # poll loop, completely separate from the `backend` uvicorn process so a
-  # slow/hung device collection never blocks API request handling. See
-  # app/workers/scheduler_worker.py's module docstring, which documents
-  # this exact service. Without this service running, schedules are saved
-  # correctly and show up in the UI, but nothing ever executes them.
   scheduler:
     build:
       context: .
@@ -240,10 +206,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # Periodic device health-metrics poller (app/workers/metrics_poller_worker.py)
-  # -- same "own process, never blocks the API" rationale as `scheduler`
-  # above, but on its own interval since metrics polling and audit
-  # scheduling are unrelated cadences...
   metrics-poller:
     build:
       context: .
@@ -261,9 +223,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # Background worker for CVE feed sync + vulnerability correlation
-  # (app/workers/vuln_sync_worker.py) -- same "own process" rationale as
-  # `scheduler` above. Was previously never started by this compose file.
   vuln-sync-worker:
     build:
       context: .
@@ -279,10 +238,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # Re-verifies Fabric-anchored evidence on its own cadence
-  # (app/workers/evidence_verification_worker.py) so integrity failures on
-  # already-anchored evidence surface without waiting for someone to open
-  # the Evidence Ledger and click Verify. Was previously never started.
   evidence-verification-worker:
     build:
       context: .
@@ -297,27 +252,14 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # Executes QUEUED TrainingJob rows (app/workers/training_worker.py --
-  # Loop 2 offline DistilBERT fine-tuning). Previously absent from this
-  # compose file: training_service.py/training_worker.py were fully
-  # implemented, but nothing ran the worker, so a job created via
-  # POST /api/training/jobs would sit at QUEUED forever (section 22 of the
-  # integration brief). CPU fine-tuning is deliberate (see
-  # training_service.py's module docstring) -- no GPU reservation needed
-  # for the demo dataset size.
   training-worker:
     build:
       context: .
       dockerfile: backend/Dockerfile
-      args:
-        # torch + transformers (CPU wheels) -- not in the API image.
-        INSTALL_ML: "true"
     container_name: compliance-training-worker
     command: ["python", "-m", "app.workers.training_worker"]
     environment:
       <<: *common-env
-    volumes:
-      - trainingartifacts:/training_artifacts
     depends_on:
       postgres: { condition: service_healthy }
       backend:
@@ -329,16 +271,28 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: compliance-frontend
+    restart: unless-stopped
     environment:
       VITE_API_BASE_URL: ""
       VITE_BACKEND_URL: http://backend:8000
     ports: ["5173:5173"]
     depends_on: [backend]
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.entrypoints=http"
+      - "traefik.http.routers.frontend.rule=Host(`nullroute.notoriousdev.in`)"
+      - "traefik.http.routers.frontend.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=5173"
+      - "traefik.docker.network=proxy"  
 
   # ------------------------------------------------------------ observ ----
   victoriametrics:
     image: victoriametrics/victoria-metrics:latest
     container_name: compliance-victoriametrics
+    restart: unless-stopped
     ports: ["8428:8428"]
     volumes:
       - vmdata:/victoria-metrics-data
@@ -346,6 +300,7 @@ services:
   grafana:
     image: grafana/grafana-oss:latest
     container_name: compliance-grafana
+    restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_AUTH_ANONYMOUS_ENABLED: "true"
@@ -356,7 +311,6 @@ services:
 
 volumes:
   pgdata:
-  trainingartifacts:
   miniodata:
   ollamadata:
   vmdata:
@@ -365,10 +319,9 @@ volumes:
 
 networks:
   default: {}
-  # Created by the Hyperledger test-network's own docker-compose (see
-  # fabric/scripts/up.sh). Marked external + not required so `docker compose
-  # up` still works with the default profile (no Fabric) when this network
-  # doesn't exist yet; only the `fabric` profile (fabric-gateway) needs it.
+  proxy:
+    external: true
+    name: proxy
   fabric_test:
     external: true
     name: fabric_test

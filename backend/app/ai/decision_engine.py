@@ -45,10 +45,10 @@ def decide(
     model_version: str,
     inference_latency_ms: float,
 ) -> AIAnalysisResult:
-    classifier_unknown = classifier.intent == UNKNOWN_INTENT
-    semantic_unknown = embedding.nearest_intent == UNKNOWN_INTENT or embedding.similarity < thresholds.semantic_similarity
+    classifier_unknown = classifier.intent.upper() == UNKNOWN_INTENT
+    semantic_unknown = embedding.nearest_intent.upper() == UNKNOWN_INTENT or embedding.similarity < thresholds.semantic_similarity
 
-    models_agree = (not classifier_unknown) and (not semantic_unknown) and (classifier.intent == embedding.nearest_intent)
+    models_agree = (not classifier_unknown) and (not semantic_unknown) and (classifier.intent.upper() == embedding.nearest_intent.upper())
 
     # Rule 1: both UNKNOWN
     if classifier_unknown and semantic_unknown:
@@ -65,7 +65,7 @@ def decide(
             "Classifier and semantic model disagree on whether this intent is known (one predicts UNKNOWN).",
         )
     # Rule 4: both known, but disagree on which known class
-    elif classifier.intent != embedding.nearest_intent:
+    elif classifier.intent.upper() != embedding.nearest_intent.upper():
         decision, requires_review, reason = (
             "REQUIRES_REVIEW",
             True,

@@ -362,6 +362,7 @@ The platform supports optional Hyperledger Fabric integration for non-repudiatio
 ```bash
 sudo apt update
 sudo apt install -y golang
+sudo apt install make
 go version
 ```
 

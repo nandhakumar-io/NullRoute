@@ -42,6 +42,8 @@ x-common-env: &common-env
   KEYCLOAK_AUDIENCE: netsecauditor-backend
   KEYCLOAK_JWKS_CACHE_TTL: "3600"
   JOB_SIGNING_SECRET: "netsecauditor-dev-secret-key-12345"
+  BOOTSTRAP_ADMIN_USERNAME: "${BOOTSTRAP_ADMIN_USERNAME:-admin}"
+  BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
 
 
 services:

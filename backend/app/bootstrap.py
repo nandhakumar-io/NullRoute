@@ -63,6 +63,25 @@ def ensure_bootstrap_admin() -> None:
                 if changed_auth:
                     db.commit()
                     logger.info("Bootstrap admin '%s' unlocked and password updated from BOOTSTRAP_ADMIN_PASSWORD.", username)
+            elif not admin and password:
+                # The requested bootstrap username does not exist, but the DB has users.
+                # E.g. default 'admin' was generated because env vars were missing on first boot.
+                # Create this requested user so they can get in.
+                from app.models.db import Tenant
+                from app.auth.dependencies import DEMO_TENANT_NAME
+                tenant = db.query(Tenant).filter(Tenant.name == DEMO_TENANT_NAME).first()
+                if tenant:
+                    from app.auth.passwords import hash_password
+                    user = User(
+                        tenant_id=tenant.id,
+                        username=username,
+                        password_hash=hash_password(password),
+                        roles=["admin"],
+                        is_active=True,
+                    )
+                    db.add(user)
+                    db.commit()
+                    logger.info("Created missing bootstrap admin '%s' because other users exist but they don't.", username)
             return  # already bootstrapped (or an admin manages users now)
         tenant = db.query(Tenant).filter(Tenant.name == DEMO_TENANT_NAME).first()
         if not tenant:

@@ -4,6 +4,7 @@ import {
   endpoints, Device, NetworkInterface, NetworkRoute, Scan, DriftEvent,
   ConfigSnapshot, SecurityDriftFinding, CompliancePostureHistory,
 } from "../api";
+import { useToast } from "../lib/toast";
 import { PageHeader, Loading, EmptyState, StatusBadge } from "../components/ui";
 
 const DRIFT_TYPE_STYLE: Record<string, string> = {
@@ -35,6 +36,7 @@ function extractGatewayError(e: any, fallback: string): string {
 
 export default function DeviceDetail() {
   const { deviceId } = useParams<{ deviceId: string }>();
+  const toast = useToast();
   const [device, setDevice] = useState<Device | null>(null);
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [routes, setRoutes] = useState<NetworkRoute[]>([]);
@@ -85,9 +87,9 @@ export default function DeviceDetail() {
     setScanning(true);
     try {
       await endpoints.collectAndScanDevice(deviceId, "ALL", device?.protocol || undefined);
-      await reload();
+      toast.success("Scan pipeline initiated. You can monitor progress in the top navbar.");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "Scan request failed");
+      toast.error(e?.response?.data?.detail || "Scan request failed");
     } finally {
       setScanning(false);
     }
@@ -98,10 +100,9 @@ export default function DeviceDetail() {
     setScanning(true);
     try {
       await endpoints.collectAndScanDevice(deviceId, "ALL", device?.protocol || undefined);
-      await reload();
-      alert("Backup successfully collected.");
+      toast.success("Backup initiated in the background. It will appear in history shortly.");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "Backup request failed");
+      toast.error(e?.response?.data?.detail || "Backup request failed");
     } finally {
       setScanning(false);
     }

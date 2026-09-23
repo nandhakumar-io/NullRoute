@@ -355,7 +355,7 @@ class DashboardMetrics(BaseModel):
     timeseries: List[DashboardMetricPoint]
 
 class NetworkScanJobCreate(BaseModel):
-    name: str
+    name: Optional[str] = None  # auto-generated if omitted
     run_discovery: bool = False
     target_cidr: Optional[str] = None
     discovery_ports: Optional[List[int]] = None

@@ -93,7 +93,16 @@ function ScanJobsTab({ devices }: { devices: Device[] }) {
       const r = await endpoints.createNetworkScan(payload);
       navigate(`/network-scans/${r.data.id}`);
     } catch (err: any) {
-      setFormError(err?.response?.data?.detail || String(err));
+      const detail = err?.response?.data?.detail;
+      // FastAPI 422 validation errors return detail as an array of objects like
+      // [{type, loc, msg, input}] — rendering that directly crashes React.
+      const message =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+          ? detail.map((e: any) => `${e.loc?.slice(-1)?.[0] ?? "field"}: ${e.msg}`).join("; ")
+          : String(err);
+      setFormError(message);
       setSubmitting(false);
     }
   };

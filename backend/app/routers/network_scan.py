@@ -76,7 +76,7 @@ def create_scan_job(
 
     job = NetworkScanJob(
         tenant_id=tenant_id,
-        name=payload.name,
+        name=payload.name or f"Scan {__import__('datetime').datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
         run_discovery=payload.run_discovery,
         target_cidr=payload.target_cidr if payload.run_discovery else None,
         discovery_ports=payload.discovery_ports,

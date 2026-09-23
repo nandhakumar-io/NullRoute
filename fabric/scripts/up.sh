@@ -28,20 +28,41 @@ fi
 cd "$WORK_DIR"
 
 if [ ! -d "bin" ] || [ ! -f "bin/peer" ]; then
-  echo "-- installing Fabric binaries + Docker images ($FABRIC_VERSION / CA $FABRIC_CA_VERSION) --"
-  # raw.githubusercontent.com is unreachable on some networks (TLS handshake timeout).
-  # Work around by doing a sparse git checkout of just the install script from the
-  # main hyperledger/fabric repo, which goes through github.com (git) instead.
-  if [ ! -f "install-fabric.sh" ]; then
-    _tmp_clone="$(mktemp -d)"
-    git clone --depth 1 --no-checkout --filter=blob:none \
-      https://github.com/hyperledger/fabric.git "$_tmp_clone" 2>/dev/null
-    git -C "$_tmp_clone" checkout HEAD -- scripts/install-fabric.sh
-    cp "$_tmp_clone/scripts/install-fabric.sh" ./install-fabric.sh
-    rm -rf "$_tmp_clone"
-  fi
-  chmod +x install-fabric.sh
-  ./install-fabric.sh --fabric-version "$FABRIC_VERSION" --ca-version "$FABRIC_CA_VERSION" docker binary
+  echo "-- pulling Fabric Docker images + extracting binaries ($FABRIC_VERSION / CA $FABRIC_CA_VERSION) --"
+  # GitHub CDN subdomains (raw.githubusercontent.com, release-assets.githubusercontent.com)
+  # are TLS-blocked on this host, so install-fabric.sh cannot download the tarballs.
+  # Work-around: pull the official Docker images (Docker Hub is reachable) and copy the
+  # CLI binaries out of the containers.  This produces the exact same binaries that
+  # install-fabric.sh would have unpacked.
+  mkdir -p bin config
+
+  # Peer binary
+  docker pull "hyperledger/fabric-peer:${FABRIC_VERSION}" >/dev/null
+  docker run --rm --entrypoint cat "hyperledger/fabric-peer:${FABRIC_VERSION}" /usr/local/bin/peer > bin/peer
+  chmod +x bin/peer
+
+  # Orderer binary
+  docker pull "hyperledger/fabric-orderer:${FABRIC_VERSION}" >/dev/null
+  docker run --rm --entrypoint cat "hyperledger/fabric-orderer:${FABRIC_VERSION}" /usr/local/bin/orderer > bin/orderer
+  chmod +x bin/orderer
+
+  # Admin tools (configtxgen, configtxlator, discover, osnadmin) live in fabric-tools
+  docker pull "hyperledger/fabric-tools:${FABRIC_VERSION}" >/dev/null
+  for _bin in configtxgen configtxlator discover osnadmin; do
+    docker run --rm --entrypoint cat "hyperledger/fabric-tools:${FABRIC_VERSION}" "/usr/local/bin/${_bin}" > "bin/${_bin}"
+    chmod +x "bin/${_bin}"
+  done
+  # Copy default config files from tools image
+  docker run --rm --entrypoint tar "hyperledger/fabric-tools:${FABRIC_VERSION}" \
+    -cC /etc/hyperledger/fabric . | tar -xC config 2>/dev/null || true
+
+  # Fabric CA client + server
+  docker pull "hyperledger/fabric-ca:${FABRIC_CA_VERSION}" >/dev/null
+  docker run --rm --entrypoint cat "hyperledger/fabric-ca:${FABRIC_CA_VERSION}" /usr/local/bin/fabric-ca-client > bin/fabric-ca-client
+  docker run --rm --entrypoint cat "hyperledger/fabric-ca:${FABRIC_CA_VERSION}" /usr/local/bin/fabric-ca-server > bin/fabric-ca-server
+  chmod +x bin/fabric-ca-client bin/fabric-ca-server
+
+  echo "-- Fabric binaries extracted from Docker images --"
 fi
 
 export PATH="$WORK_DIR/bin:$PATH"

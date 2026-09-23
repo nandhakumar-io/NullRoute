@@ -29,7 +29,17 @@ cd "$WORK_DIR"
 
 if [ ! -d "bin" ] || [ ! -f "bin/peer" ]; then
   echo "-- installing Fabric binaries + Docker images ($FABRIC_VERSION / CA $FABRIC_CA_VERSION) --"
-  curl -sSLO https://raw.githubusercontent.com/hyperledger/fabric/main/scripts/install-fabric.sh
+  # raw.githubusercontent.com is unreachable on some networks (TLS handshake timeout).
+  # Work around by doing a sparse git checkout of just the install script from the
+  # main hyperledger/fabric repo, which goes through github.com (git) instead.
+  if [ ! -f "install-fabric.sh" ]; then
+    _tmp_clone="$(mktemp -d)"
+    git clone --depth 1 --no-checkout --filter=blob:none \
+      https://github.com/hyperledger/fabric.git "$_tmp_clone" 2>/dev/null
+    git -C "$_tmp_clone" checkout HEAD -- scripts/install-fabric.sh
+    cp "$_tmp_clone/scripts/install-fabric.sh" ./install-fabric.sh
+    rm -rf "$_tmp_clone"
+  fi
   chmod +x install-fabric.sh
   ./install-fabric.sh --fabric-version "$FABRIC_VERSION" --ca-version "$FABRIC_CA_VERSION" docker binary
 fi

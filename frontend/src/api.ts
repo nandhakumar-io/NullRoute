@@ -1903,6 +1903,10 @@ export const endpoints = {
   stopGns3Lab: (serverId: string, labId: string) => api.post(`/api/gns3/servers/${serverId}/labs/${labId}/stop`),
   importGns3Lab: (serverId: string, labId: string, nodeIds?: string[]) =>
     api.post(`/api/gns3/servers/${serverId}/labs/${labId}/import`, { node_ids: nodeIds ?? null }),
+  startGns3Node: (serverId: string, labId: string, nodeId: string) =>
+    api.post(`/api/gns3/servers/${serverId}/labs/${labId}/nodes/${nodeId}/start`),
+  stopGns3Node: (serverId: string, labId: string, nodeId: string) =>
+    api.post(`/api/gns3/servers/${serverId}/labs/${labId}/nodes/${nodeId}/stop`),
 
   // --- Unified Control Library ---
   controls: (params?: { domain?: string; status?: string; limit?: number; offset?: number }) =>

@@ -1,6 +1,6 @@
 # 🏗️ Deep Technical Architecture
 
-This document breaks down the structural design and critical technical decisions powering the NetSecAuditor compliance platform.
+This document breaks down the structural design and critical technical decisions powering the NullRoute compliance platform.
 
 ```text
 React (Vite/TS/Tailwind/Monaco)
@@ -41,7 +41,7 @@ A significant element of the pipeline is executing dynamically simulated reachab
 - **Inherent Threat Escalation**: It evaluates cross-vlan boundaries dynamically (e.g., verifying if the Guest VLAN can route to the Management VLAN despite OSPF boundaries). If Batfish registers a critical constraint failure (`BATFISH_FAIL`), it directly correlates into the `risk_engine`, overriding general policy findings and instituting a hard pipeline `BLOCK`.
 
 ## 3. Structural Parsing & Topology Fallback
-- **Dual Pipeline Extraction:** NetSecAuditor splits factual parameter extraction (like `ssh.enabled`) from structural extraction (like VLAN definitions). `structure_parser.py` maps known hierarchical or flattened topology syntax (`EXTRACTED_VLAN`, `EXTRACTED_INTERFACE`) into memory.
+- **Dual Pipeline Extraction:** NullRoute splits factual parameter extraction (like `ssh.enabled`) from structural extraction (like VLAN definitions). `structure_parser.py` maps known hierarchical or flattened topology syntax (`EXTRACTED_VLAN`, `EXTRACTED_INTERFACE`) into memory.
 - **LLM Topology Fallback:** Any line that evades the deterministic structural regex is dynamically analyzed by `topology_llm_fallback.py` (which leverages robust JSON parsing against `<think>` tags). These facts securely append into `baseline.vlans` and the `NetworkInterface` SQL database.
 
 ## 4. Decentralized and Immutable Evidence Anchoring

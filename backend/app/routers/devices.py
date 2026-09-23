@@ -303,7 +303,7 @@ class DiscoverImportRequest(BaseModel):
 
 
 @router.post("/discover")
-def start_discovery(
+async def start_discovery(
     payload: DiscoverRequest,
     tenant_id: str = Depends(get_current_tenant),
 ):

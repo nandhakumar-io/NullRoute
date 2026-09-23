@@ -123,6 +123,26 @@ export default function Gns3Integration() {
     }
   }
 
+  async function handleNodeAction(labId: string, nodeId: string, action: 'start' | 'stop', e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!selectedServer) return;
+    setActionLoading(`${action}-node-${nodeId}`);
+    try {
+      if (action === 'start') {
+        await endpoints.startGns3Node(selectedServer, labId, nodeId);
+      } else {
+        await endpoints.stopGns3Node(selectedServer, labId, nodeId);
+      }
+      // Re-fetch topology to update statuses
+      const res = await endpoints.gns3Topology(selectedServer, labId);
+      setTopology(res.data);
+    } catch {
+      alert(`Failed to ${action} node`);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handleImportSelected() {
     if (!selectedServer || !selectedLab) return;
     setImporting(true);
@@ -319,9 +339,31 @@ export default function Gns3Integration() {
                                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" /></svg>
                                   )}
                                 </div>
-                                <div className="pr-8">
-                                  <div className="font-bold text-slate-200">{node.name}</div>
-                                  <div className="text-xs text-slate-400 capitalize">{node.node_type}</div>
+                                <div className="pr-8 flex-grow">
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <div className="font-bold text-slate-200">{node.name}</div>
+                                      <div className="text-xs text-slate-400 capitalize">{node.node_type}</div>
+                                    </div>
+                                    <div className="flex bg-slate-800/80 rounded-lg p-1 border border-slate-700/50">
+                                      <button
+                                        onClick={(e) => handleNodeAction(selectedLab, node.node_id, 'start', e)}
+                                        disabled={actionLoading !== null || node.status === 'started'}
+                                        title="Start Node"
+                                        className={`p-1.5 rounded transition-colors ${node.status === 'started' ? 'text-emerald-500/50 cursor-not-allowed' : 'text-slate-400 hover:text-emerald-400 hover:bg-slate-700 disabled:opacity-50'}`}
+                                      >
+                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" /></svg>
+                                      </button>
+                                      <button
+                                        onClick={(e) => handleNodeAction(selectedLab, node.node_id, 'stop', e)}
+                                        disabled={actionLoading !== null || node.status === 'stopped'}
+                                        title="Stop Node"
+                                        className={`p-1.5 rounded transition-colors ${node.status === 'stopped' ? 'text-rose-500/50 cursor-not-allowed' : 'text-slate-400 hover:text-rose-400 hover:bg-slate-700 disabled:opacity-50'}`}
+                                      >
+                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
+                                      </button>
+                                    </div>
+                                  </div>
                                   
                                   <div className="flex flex-wrap gap-2 mt-3 items-center">
                                     <span className={`flex flex-row items-center px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider ${node.status === 'started' ? 'bg-emerald-900/40 text-emerald-400' : 'bg-slate-700/50 text-slate-400'}`}>

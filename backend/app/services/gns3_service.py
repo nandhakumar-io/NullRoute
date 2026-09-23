@@ -112,6 +112,26 @@ class Gns3Service:
             return {"status": "stopped", "project_id": project_id}
 
     @staticmethod
+    async def start_node(db: Session, server_id: str, project_id: str, node_id: str) -> Dict:
+        server = db.query(Gns3Server).filter(Gns3Server.id == server_id).first()
+        if not server:
+            raise ValueError("GNS3 server not found")
+        async with _client(server) as client:
+            resp = await client.post(f"{server.url}/v2/projects/{project_id}/nodes/{node_id}/start")
+            resp.raise_for_status()
+            return {"status": "started", "node_id": node_id}
+
+    @staticmethod
+    async def stop_node(db: Session, server_id: str, project_id: str, node_id: str) -> Dict:
+        server = db.query(Gns3Server).filter(Gns3Server.id == server_id).first()
+        if not server:
+            raise ValueError("GNS3 server not found")
+        async with _client(server) as client:
+            resp = await client.post(f"{server.url}/v2/projects/{project_id}/nodes/{node_id}/stop")
+            resp.raise_for_status()
+            return {"status": "stopped", "node_id": node_id}
+
+    @staticmethod
     async def import_gns3_project(
         db: Session, server_id: str, project_id: str, tenant_id: str,
         node_ids: Optional[List[str]] = None,

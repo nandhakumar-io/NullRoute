@@ -138,6 +138,38 @@ async def stop_lab(
         raise HTTPException(500, str(e))
 
 
+@router.post("/servers/{server_id}/labs/{lab_id}/nodes/{node_id}/start")
+async def start_node(
+    server_id: str,
+    lab_id: str,
+    node_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    _ = Depends(require_permission(Permission.SCAN)),
+):
+    """Start a specific node."""
+    try:
+        return await Gns3Service.start_node(db, server_id, lab_id, node_id)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@router.post("/servers/{server_id}/labs/{lab_id}/nodes/{node_id}/stop")
+async def stop_node(
+    server_id: str,
+    lab_id: str,
+    node_id: str,
+    db: Session = Depends(get_db),
+    tenant_id: str = Depends(get_current_tenant),
+    _ = Depends(require_permission(Permission.SCAN)),
+):
+    """Stop a specific node."""
+    try:
+        return await Gns3Service.stop_node(db, server_id, lab_id, node_id)
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @router.post("/servers/{server_id}/labs/{lab_id}/import")
 async def import_lab(
     server_id: str,

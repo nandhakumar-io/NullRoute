@@ -111,10 +111,10 @@ The first startup downloads the models. Later startups use the Hugging Face cach
 
 ## Start the AI Server
 
-Place the unified `server.py` at:
+Place the unified `ai_server.py` at:
 
 ```text
-~/nullroute/server.py
+~/nullroute/ai_server.py
 ```
 
 Start it with:
@@ -122,13 +122,46 @@ Start it with:
 ```bash
 cd ~/nullroute
 source .venv/bin/activate
-uvicorn server:app --host 0.0.0.0 --port 8000
+uvicorn ai_server:app --host 0.0.0.0 --port 8000
 ```
 
 The AI server is available at:
 
 ```text
 http://<AI_SERVER_IP>:8000
+```
+
+## Run as a Persistent systemd Service (Recommended)
+
+A ready-made systemd unit file is included in the repo at `deploy/netsec-ai.service`.
+
+This keeps the AI server running across reboots and restarts it automatically if it crashes.
+
+```bash
+# 1. Copy the service file to the system directory
+sudo cp deploy/netsec-ai.service /etc/systemd/system/netsec-ai.service
+
+# 2. Edit the file if your username or path differs from the defaults
+#    (default: User=mine, WorkingDirectory=/home/mine/nullroute)
+sudo nano /etc/systemd/system/netsec-ai.service
+
+# 3. Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable netsec-ai
+sudo systemctl start netsec-ai
+
+# Check status
+sudo systemctl status netsec-ai
+
+# Watch live logs
+sudo journalctl -u netsec-ai -f
+```
+
+To stop or restart manually:
+
+```bash
+sudo systemctl stop netsec-ai
+sudo systemctl restart netsec-ai
 ```
 
 ---

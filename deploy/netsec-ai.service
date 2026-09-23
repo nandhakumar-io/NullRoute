@@ -1,0 +1,24 @@
+[Unit]
+Description=NullRoute AI Server (Qwen3-8B + DistilBERT + MiniLM)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mine
+WorkingDirectory=/home/mine/nullroute
+ExecStart=/home/mine/nullroute/.venv/bin/uvicorn ai_server:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# GPU models take time to load — allow up to 2 minutes before systemd marks startup failed
+TimeoutStartSec=120
+
+# Pass your Hugging Face token so models can be verified/downloaded on first run
+# Either set it here or export it into /etc/environment
+# Environment=HF_TOKEN=your_token_here
+
+[Install]
+WantedBy=multi-user.target

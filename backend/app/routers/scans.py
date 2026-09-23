@@ -200,7 +200,7 @@ def list_scans(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Scan)
+    q = db.query(Scan).filter(Scan.framework != "NONE")
     if device_id:
         q = q.filter(Scan.device_id == device_id)
     return q.order_by(Scan.created_at.desc()).limit(limit).all()
@@ -225,7 +225,7 @@ def list_running_scans(db: Session = Depends(get_db)):
         db.rollback()
     return (
         db.query(Scan)
-        .filter(~Scan.status.in_(TERMINAL_SCAN_STATUSES))
+        .filter(~Scan.status.in_(TERMINAL_SCAN_STATUSES), Scan.framework != "NONE")
         .order_by(Scan.created_at.desc())
         .limit(100)
         .all()

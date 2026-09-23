@@ -467,7 +467,7 @@ def collect_configuration(
         raise HTTPException(404, "Device not found")
 
     try:
-        credentials = _resolve_credentials(db, device, tenant_id)
+        credentials = _resolve_credentials(db, device, tenant_id, transport=device.protocol)
     except (ValueError, openbao_service.OpenBaoError) as e:
         device.collection_status = "FAILED"
         device.last_collection_error = f"Could not resolve device credentials: {e}"

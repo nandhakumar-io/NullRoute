@@ -233,7 +233,7 @@ export function DecisionPipeline({
   const labelSize = size === "lg" ? "text-xs" : "text-[10px]";
   const reveal = revealedCount === undefined ? steps.length : revealedCount;
   return (
-    <div className="flex items-center w-full">
+    <div className="flex items-center w-full overflow-x-auto py-2">
       {steps.map((step, i) => {
         const isRevealed = i < reveal;
         const isNext = i === reveal;

@@ -501,7 +501,8 @@ def _read_blob(key: Optional[str]) -> Optional[str]:
         return None
     try:
         return minio_service.get_object(key).decode("utf-8", errors="replace")
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to read blob {key}: {e}")
         return None
 
 

@@ -97,7 +97,7 @@ export default function DeviceDetail() {
     if (!deviceId) return;
     setScanning(true);
     try {
-      await endpoints.collectDeviceConfig(deviceId, device?.protocol || undefined);
+      await endpoints.collectAndScanDevice(deviceId, "ALL", device?.protocol || undefined);
       await reload();
       alert("Backup successfully collected.");
     } catch (e: any) {

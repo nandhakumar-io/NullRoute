@@ -92,6 +92,10 @@ def init_db():
     stack isn't worth the friction for a throwaway file.
     """
     SessionLocal.refresh()
+    
+    # Ensure all models are registered with Base.metadata before create_all.
+    # Essential for standalone scripts (like seed.py) that might not import all routers.
+    from app.models import alerting, backup, baseline, compliance_baseline, config_drift, golden_config
     if engine.url.get_backend_name() == "sqlite":
         Base.metadata.create_all(bind=engine)
         _ensure_sqlite_columns()
@@ -112,22 +116,29 @@ def init_db():
     except Exception:
         pass
     finally:
-        # Create pgvector since alembic is disabled
         if engine.url.get_backend_name() == "postgresql":
-            try:
-                from sqlalchemy import text
-                with engine.begin() as conn:
-                    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            except Exception as e:
-                import logging
-                logging.warning(f"Could not create pgvector extension: {e}")
+            from sqlalchemy import text
+            # Use an advisory transaction lock to serialize the various
+            # concurrently starting containers (backend, seed, workers)
+            # that all call init_db(). This prevents 'create_all()' from
+            # hitting concurrent Postgres index/type constraint violation
+            # deadlocks ('pg_type_typname_nsp_index' etc).
+            with engine.begin() as lock_conn:
+                lock_conn.execute(text("SELECT pg_advisory_xact_lock(26155)"))
+                
+                # Create pgvector since alembic is disabled
+                try:
+                    with engine.begin() as conn:
+                        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Could not create pgvector extension: {e}")
 
-        # Always ensure missing tables are created gracefully
-        Base.metadata.create_all(bind=engine)
-
-        if engine.url.get_backend_name() == "postgresql":
-            _run_postgres_migrations()
-
+                # Always ensure missing tables are created gracefully
+                Base.metadata.create_all(bind=engine)
+                _run_postgres_migrations()
+        else:
+            Base.metadata.create_all(bind=engine)
 
 # Idempotent, additive DDL applied at startup (Alembic upgrade is disabled
 # above). Each statement runs in its OWN transaction: on Postgres a failed

@@ -165,6 +165,7 @@ services:
       postgres: { condition: service_healthy }
       nats: { condition: service_healthy }
       batfish: { condition: service_healthy }
+      minio: { condition: service_healthy }
     ports: ["8000:8000"]
     volumes:
       - ./policies:/app/policies:ro

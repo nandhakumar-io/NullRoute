@@ -10,6 +10,7 @@ import {
   BackupFleetSummary,
 } from "../api";
 import { PageHeader, Loading, EmptyState, StatCard } from "../components/ui";
+import { useToast } from "../lib/toast";
 
 type Tab = "snapshots" | "destinations" | "jobs";
 
@@ -168,6 +169,7 @@ function SnapshotsTab({ onExported }: { onExported: () => void }) {
   const [exporting, setExporting] = useState(false);
   const [exportSelection, setExportSelection] = useState<Record<string, boolean>>({});
   const [exportResult, setExportResult] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     Promise.all([
@@ -216,9 +218,9 @@ function SnapshotsTab({ onExported }: { onExported: () => void }) {
       // a "snapshot" IS a Scan with raw_config_path set) and triggers
       // auto-export to any configured remote destinations.
       await endpoints.collectAndScanDevice(selectedDeviceId, "NONE", device?.protocol || undefined);
-      loadSnapshots(selectedDeviceId);
+      toast.success("Backup initiated in the background. It will appear in history shortly.");
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "Backup request failed");
+      toast.error(e?.response?.data?.detail || "Backup request failed");
     } finally {
       setBackingUp(false);
     }

@@ -281,6 +281,15 @@ async def run_pipeline(
             db.commit()
             await events.publish("config.uploaded", {"scan_id": scan.id, "device_id": scan.device_id})
 
+            if framework == "NONE":
+                scan.status = "completed"
+                scan.final_decision = "PASS"
+                scan.compliance_score = 100
+                scan.final_reason = "Configuration backup completed (no compliance checks requested)"
+                scan.control_state = "RUNNING"
+                db.commit()
+                return scan
+
             # 2. Deterministic parsing ----------------------------------------------
             # A review_required guess never reaches parse_config with a vendor
             # name — "Unknown" routes the whole config through block-preservation

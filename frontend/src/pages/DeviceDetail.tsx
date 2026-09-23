@@ -99,7 +99,7 @@ export default function DeviceDetail() {
     if (!deviceId) return;
     setScanning(true);
     try {
-      await endpoints.collectAndScanDevice(deviceId, "ALL", device?.protocol || undefined);
+      await endpoints.collectAndScanDevice(deviceId, "NONE", device?.protocol || undefined);
       toast.success("Backup initiated in the background. It will appear in history shortly.");
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || "Backup request failed");

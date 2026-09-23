@@ -29,7 +29,7 @@ openssl rand -base64 32
 
 Install docker and compose
 
-sudo apt install docker.io docker-compose
+sudo apt install docker.io docker-compose-v2
 
 docker compose up --build -d
 ```

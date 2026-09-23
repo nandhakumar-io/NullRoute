@@ -328,7 +328,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     "4. Respond ONLY with a valid JSON array of strings containing the commands."
                 )
                 user_prompt = (
-                    f"Device: {device_target}\n"
+                    f"/no_think Device: {device_target}\n"
                     f"Issue: {f.title}\n"
                     f"Guidance: {f.remediation}\n"
                     f"Actual Value: {f.actual_value}\n\n"

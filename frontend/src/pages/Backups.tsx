@@ -215,7 +215,7 @@ function SnapshotsTab({ onExported }: { onExported: () => void }) {
       // an archived, listable Scan row (see routers/backups.py's docstring:
       // a "snapshot" IS a Scan with raw_config_path set) and triggers
       // auto-export to any configured remote destinations.
-      await endpoints.collectAndScanDevice(selectedDeviceId, "ALL", device?.protocol || undefined);
+      await endpoints.collectAndScanDevice(selectedDeviceId, "NONE", device?.protocol || undefined);
       loadSnapshots(selectedDeviceId);
     } catch (e: any) {
       alert(e?.response?.data?.detail || "Backup request failed");

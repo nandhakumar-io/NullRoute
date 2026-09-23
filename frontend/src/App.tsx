@@ -207,75 +207,72 @@ export default function App() {
       {/* Nav */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-hidden rail-scroll space-y-0.5">
         {filteredNavGroups.map((group) => {
-          const isClosed = (!collapsed || mobile) && closedGroups[group.key];
+          // In pinned-collapsed mode (icon rail), never show sub-items.
+          // They only appear when expanded (hover or pinned-open).
+          const isRail = collapsed && !mobile;
+          const isClosed = !isRail && closedGroups[group.key];
+
           return (
             <div key={group.key}>
               {/* Group header */}
-              <button
-                type="button"
-                onClick={() => (!collapsed || mobile) && toggleGroup(group.key)}
-                className={clsx(
-                  "relative group/tip w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-rail-textDim hover:text-rail-text hover:bg-white/[0.05] transition-colors",
-                  (collapsed && !mobile) && "justify-center"
-                )}
-                title={group.label}
-              >
-                <Icon name={group.icon} className="w-[18px] h-[18px] shrink-0" />
-                {(!collapsed || mobile) ? (
-                  <>
-                    <span className="rail-nav-group-label flex-1 text-left text-[13px] font-medium">{group.label}</span>
-                    <Icon
-                      name="chevron"
-                      className={clsx("w-3.5 h-3.5 shrink-0 transition-transform", isClosed && "-rotate-90")}
-                    />
-                  </>
-                ) : (
-                  <NavTooltip label={group.label} />
-                )}
-              </button>
-
-              {/* Group items */}
-              {!isClosed && (
-                <div
-                  className={clsx(
-                    "space-y-0.5",
-                    (collapsed && !mobile)
-                      ? "mt-0.5"
-                      : "mt-0.5 ml-[13px] pl-[19px] border-l border-rail-border"
-                  )}
+              {isRail ? (
+                /* Collapsed: group icon navigates to first item in group */
+                <NavLink
+                  to={group.items[0].to}
+                  end={group.items[0].end}
+                  className={({ isActive }) =>
+                    clsx(
+                      "relative group/tip w-full flex items-center justify-center w-10 h-10 mx-auto rounded-md transition-colors",
+                      isActive
+                        ? "bg-seal/20 text-seal"
+                        : "text-rail-textDim hover:text-rail-text hover:bg-white/[0.07]"
+                    )
+                  }
+                  title={group.label}
                 >
+                  <Icon name={group.icon} className="w-[18px] h-[18px] shrink-0" />
+                  <NavTooltip label={group.label} />
+                </NavLink>
+              ) : (
+                /* Expanded: collapsible group header */
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.key)}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-rail-textDim hover:text-rail-text hover:bg-white/[0.05] transition-colors"
+                >
+                  <Icon name={group.icon} className="w-[18px] h-[18px] shrink-0" />
+                  <span className="rail-nav-group-label flex-1 text-left text-[13px] font-medium">{group.label}</span>
+                  <Icon
+                    name="chevron"
+                    className={clsx("w-3.5 h-3.5 shrink-0 transition-transform", isClosed && "-rotate-90")}
+                  />
+                </button>
+              )}
+
+              {/* Sub-items — only in expanded mode */}
+              {!isRail && !isClosed && (
+                <div className="mt-0.5 ml-[13px] pl-[19px] border-l border-rail-border space-y-0.5">
                   {group.items.map((item) => (
                     <NavLink
                       key={item.to}
                       to={item.to}
                       end={item.end}
-                      title={(collapsed && !mobile) ? item.label : undefined}
                       className={({ isActive }) =>
                         clsx(
-                          "relative group/tip flex items-center gap-2 rounded-md text-[13px] transition-colors",
-                          isActive ? "active" : "",
-                          (collapsed && !mobile)
-                            ? "mx-auto w-9 h-9 justify-center"
-                            : "px-2.5 py-1.5",
+                          "relative flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] transition-colors",
                           isActive
-                            ? (collapsed && !mobile)
-                              ? "bg-seal/20 text-seal"
-                              : "bg-white/[0.08] text-white"
-                            : (collapsed && !mobile)
-                            ? "text-rail-textDim hover:bg-white/[0.06] hover:text-rail-text"
+                            ? "bg-white/[0.08] text-white"
                             : "text-rail-textDim hover:bg-white/[0.06] hover:text-rail-text"
                         )
                       }
                     >
                       {({ isActive }) => (
                         <>
-                          {/* Active pill – expanded */}
-                          {(!collapsed || mobile) && isActive && (
+                          {isActive && (
                             <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-seal -ml-[19px]" />
                           )}
-                          <Icon name={item.icon} className={clsx("shrink-0", (collapsed && !mobile) ? "w-[18px] h-[18px]" : "w-[15px] h-[15px]")} />
-                          {(!collapsed || mobile) && <span>{item.label}</span>}
-                          {(collapsed && !mobile) && <NavTooltip label={item.label} />}
+                          <Icon name={item.icon} className="w-[15px] h-[15px] shrink-0" />
+                          <span>{item.label}</span>
                         </>
                       )}
                     </NavLink>

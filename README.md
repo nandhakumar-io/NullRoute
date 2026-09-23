@@ -72,34 +72,95 @@ Qwen3-8B uses **4-bit quantization** to reduce GPU memory usage. Qwen generation
 
 ## AI Server Requirements
 
-Recommended:
-
-- Ubuntu Linux
-- NVIDIA GPU
-- NVIDIA driver with CUDA support
-- Python 3.12+
+- Ubuntu 22.04 / 24.04 LTS (recommended)
+- NVIDIA GPU with ≥ 8 GB VRAM (16 GB recommended for Qwen3-8B)
+- NVIDIA driver ≥ 525 and **CUDA 12.x**
+- Python 3.10 – 3.12
 - Python virtual environment
-- Hugging Face token for the private DistilBERT and MiniLM repositories
+- Hugging Face token (only needed for private/gated repos)
+
+---
+
+## 1 — Install NVIDIA Driver & CUDA Toolkit
+
+> Skip this section if `nvidia-smi` already shows CUDA 12.x.
 
 ```bash
+# Verify your current driver / CUDA version
+nvidia-smi
+
+# --- Ubuntu 22.04 / 24.04 ---
+
+# Add the official NVIDIA CUDA repo keyring
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
 sudo apt update
-sudo apt install -y python3 python3-venv
+
+# Install CUDA 12.4 toolkit (includes compiler, libraries, cuDNN stub)
+sudo apt install -y cuda-toolkit-12-4
+
+# Install cuDNN 9 (required by PyTorch for GPU acceleration)
+sudo apt install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12
+
+# Reload PATH so nvcc is found
+echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+
+# Confirm
+nvcc --version
 nvidia-smi
 ```
 
-## Create the AI Server Environment
+> **Reboot** after a fresh driver install before proceeding:
+> ```bash
+> sudo reboot
+> ```
+
+---
+
+## 2 — Create the AI Server Python Environment
 
 ```bash
 mkdir -p ~/nullroute
 cd ~/nullroute
 
-apt install python3.12-venv # if venv is not installed
+# Install venv support if missing
+sudo apt install -y python3.12-venv
 
 python3 -m venv .venv
 source .venv/bin/activate
 
-pip install torch transformers accelerate bitsandbytes sentence-transformers fastapi uvicorn huggingface_hub
+# Upgrade pip first
+pip install --upgrade pip
+
+# Install PyTorch with CUDA 12.4 wheels (matches the toolkit above)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# Install remaining AI server dependencies
+pip install \
+  transformers \
+  accelerate \
+  bitsandbytes \
+  sentence-transformers \
+  fastapi \
+  uvicorn \
+  huggingface_hub
+
+# Verify CUDA is visible to PyTorch
+python3 -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None')"
 ```
+
+Expected output:
+```
+CUDA available: True
+GPU: NVIDIA GeForce RTX ...
+```
+
+If `CUDA available: False`:
+- Check `nvidia-smi` is working (driver issue)
+- Confirm the `torch` wheel matches your CUDA version (`cu124` above)
+- See [PyTorch Get Started](https://pytorch.org/get-started/locally/) for other CUDA versions
 
 ## Configure Hugging Face Authentication
 

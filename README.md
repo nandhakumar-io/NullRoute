@@ -10,11 +10,13 @@ A deployed instance of NetSecAuditor is available for evaluation:
 
 https://nullroute.notoriousdev.in 
 
-## 🛠️ Local Setup
+## 🛠️ Full Local Capability & Air-Gapped Setup
 
-The platform uses a dedicated **local AI server** as a supplementary heuristic analyzer for unrecognized or ambiguous configurations.
+NullRoute is designed with **100% Full Local Capability**. The entire application stack—including the database, backend, frontend, policy engine, and all AI processing—runs strictly local on your own hardware via Docker Compose.
 
-The AI server provides:
+**Absolutely no data sends external to your network.** The AI models are run through a dedicated on-premise inference server, making it fully suitable for highly secure, strictly air-gapped environments.
+
+The local AI server provides:
 
 - **DistilBERT** — intent classification
 - **MiniLM** — semantic embeddings and retrieval

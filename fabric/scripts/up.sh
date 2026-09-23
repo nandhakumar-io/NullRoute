@@ -70,7 +70,8 @@ export PATH="$WORK_DIR/bin:$PATH"
 cd "$WORK_DIR/test-network"
 
 echo "-- starting test-network with CAs --"
-./network.sh up createChannel -ca -c "$CHANNEL_NAME" -s couchdb
+IMAGETAG="${FABRIC_VERSION}" CA_IMAGETAG="${FABRIC_CA_VERSION}" \
+  ./network.sh up createChannel -ca -c "$CHANNEL_NAME" -s couchdb
 
 echo "-- exporting connection profile + identity material for fabric-gateway --"
 mkdir -p "$FABRIC_DIR/network/connection-profile"

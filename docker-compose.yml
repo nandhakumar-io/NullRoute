@@ -314,3 +314,4 @@ networks:
   default: {}
   fabric_test:
     name: fabric_test
+    external: true

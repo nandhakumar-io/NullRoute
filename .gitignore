@@ -4,3 +4,4 @@
 cloudflared/*.json
 *.zip
 *.pyc
+*/.env*

@@ -42,9 +42,28 @@ def ensure_bootstrap_admin() -> None:
 
     db = SessionLocal()
     try:
-        if db.query(User).count() > 0:
-            return  # already bootstrapped (or an admin manages users now)
+        username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", DEFAULT_BOOTSTRAP_USERNAME).strip() or DEFAULT_BOOTSTRAP_USERNAME
+        password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "").strip()
 
+        if db.query(User).count() > 0:
+            # Check if this bootstrap admin exists; if BOOTSTRAP_ADMIN_PASSWORD
+            # is set, verify/overwrite their password and explicitly clear lockouts
+            admin = db.query(User).filter(User.username == username).first()
+            if admin and password:
+                from app.auth.passwords import verify_password
+                changed_auth = False
+                if not verify_password(password, admin.password_hash):
+                    admin.password_hash = hash_password(password)
+                    changed_auth = True
+                if admin.failed_login_count > 0 or admin.locked_until is not None:
+                    admin.failed_login_count = 0
+                    admin.locked_until = None
+                    changed_auth = True
+                    
+                if changed_auth:
+                    db.commit()
+                    logger.info("Bootstrap admin '%s' unlocked and password updated from BOOTSTRAP_ADMIN_PASSWORD.", username)
+            return  # already bootstrapped (or an admin manages users now)
         tenant = db.query(Tenant).filter(Tenant.name == DEMO_TENANT_NAME).first()
         if not tenant:
             tenant = Tenant(name=DEMO_TENANT_NAME)
@@ -52,8 +71,6 @@ def ensure_bootstrap_admin() -> None:
             db.commit()
             db.refresh(tenant)
 
-        username = os.getenv("BOOTSTRAP_ADMIN_USERNAME", DEFAULT_BOOTSTRAP_USERNAME).strip() or DEFAULT_BOOTSTRAP_USERNAME
-        password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "").strip()
         generated = False
         if not password:
             password = _generate_password()

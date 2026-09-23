@@ -16,8 +16,6 @@ x-common-env: &common-env
   BATFISH_TIMEOUT: "120"
   BATFISH_SNAPSHOT_ROOT: /tmp/batfish/snapshots
   MINIO_ENDPOINT: minio:9000
-  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
-  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
   FABRIC_ENABLED: "true"
   FABRIC_GATEWAY_URL: http://fabric-gateway:8080
   FABRIC_CHANNEL: compliance-audit-channel
@@ -44,8 +42,6 @@ x-common-env: &common-env
   KEYCLOAK_AUDIENCE: netsecauditor-backend
   KEYCLOAK_JWKS_CACHE_TTL: "3600"
   JOB_SIGNING_SECRET: "netsecauditor-dev-secret-key-12345"
-  BOOTSTRAP_ADMIN_USERNAME: "${BOOTSTRAP_ADMIN_USERNAME:-admin}"
-  BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-}"
 
 
 services:
@@ -167,7 +163,6 @@ services:
       postgres: { condition: service_healthy }
       nats: { condition: service_healthy }
       batfish: { condition: service_healthy }
-      minio: { condition: service_healthy }
     ports: ["8000:8000"]
     volumes:
       - ./policies:/app/policies:ro
@@ -253,6 +248,36 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  network-scan-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-network-scan-worker
+    command: ["python", "-m", "app.workers.network_scan_worker"]
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  network-scan-worker:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: compliance-network-scan-worker
+    command: ["python", "-m", "app.workers.network_scan_worker"]
+    environment:
+      <<: *common-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_healthy }
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
   training-worker:
     build:
       context: .
@@ -314,4 +339,3 @@ networks:
   default: {}
   fabric_test:
     name: fabric_test
-    external: true

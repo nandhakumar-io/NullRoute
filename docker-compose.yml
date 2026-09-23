@@ -327,5 +327,4 @@ networks:
     external: true
     name: proxy
   fabric_test:
-    external: true
     name: fabric_test

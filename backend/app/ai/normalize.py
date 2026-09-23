@@ -361,23 +361,6 @@ async def interpret_block(vendor: str, block_text: str, retrieved_knowledge: Opt
 
     return BlockInterpretationResult(vendor=vendor, block_text=block_text, facts=facts, unknown_lines=unknown_lines)
 
-    if not facts:
-        if block_text:
-            fallback = AIInterpretation(
-                raw_command=block_text,
-                normalized_parameter="extra_parameters.unknown_evidence",
-                value=block_text,
-                confidence=0.2,
-                retrieved_knowledge=[],
-                model_version="offline-heuristic-v1",
-                needs_human_review=True,
-                reasoning="non-empty block retained as unknown evidence",
-            )
-            facts.append(fallback)
-            unknown_lines.append(block_text)
-
-    return BlockInterpretationResult(vendor=vendor, block_text=block_text, facts=facts, unknown_lines=unknown_lines)
-
 
 def to_normalized_parameter(
     interp: AIInterpretation, vendor: Optional[str] = None, ai_provenance: Optional[Dict[str, Any]] = None,

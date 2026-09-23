@@ -299,7 +299,20 @@ async def run_pipeline(
                 })
             baseline.device.hostname = baseline.device.hostname or device.hostname
             baseline.device.model = device.model
-            baseline.device.version = device.version
+            # Prefer the version the parser just read out of THIS config's
+            # `version ...` / `set version ...` line (services/parsers.py) --
+            # that's the device's real, current firmware, not whatever was
+            # last recorded on the Device row. Only fall back to the stored
+            # value when this config didn't carry a version string at all
+            # (e.g. a partial config snippet), so remediation still has
+            # something rather than nothing.
+            baseline.device.version = baseline.device.version or device.version
+            # Persist it back onto the device record too, so the next scan's
+            # "stored" value (and anything else that reads Device.version
+            # directly, e.g. remediation_service) reflects reality instead of
+            # going stale the moment firmware is upgraded.
+            if baseline.device.version:
+                device.version = baseline.device.version
             baseline.device.serial_number = device.serial_number
             baseline.raw_config_hash = scan.raw_config_hash
             await events.publish("config.parsed", {"scan_id": scan.id, "matched_params": len(baseline.provenance)})
@@ -439,7 +452,7 @@ async def run_pipeline(
                     baseline.provenance.append(norm_param)
                     if interp.needs_human_review:
                         _queue_for_training(db, interp_vendor, interp)
-                    else:
+                    if not interp.needs_human_review or interp.normalized_parameter == "extra_parameters.unknown_evidence":
                         _apply_to_baseline(baseline, norm_param)
             db.commit()
             if unknown_lines:

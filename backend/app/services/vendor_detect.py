@@ -63,8 +63,12 @@ QUICK_HINTS = [
     (re.compile(r"^enable\s+secret|^ip\s+ssh\s+version", re.I | re.M), "Cisco", "IOS-XE"),
     # Cloud-native
     (re.compile(r'"AWSTemplateFormatVersion"|"AWS::EC2::SecurityGroup"', re.I), "AWS", "AWS-CloudFormation"),
+    (re.compile(r'"AWS::EC2::NetworkAcl"|"NetworkAcls"\s*:', re.I), "AWS", "AWS-CloudFormation"),
+    (re.compile(r'"AWS::NetworkFirewall::(?:FirewallPolicy|RuleGroup)"', re.I), "AWS", "AWS-NetworkFirewall"),
     (re.compile(r'"Microsoft\.Network\/networkSecurityGroups"', re.I), "Azure", "Azure-ARM"),
+    (re.compile(r'"Microsoft\.Network\/azureFirewalls"', re.I), "Azure", "Azure-Firewall"),
     (re.compile(r'"compute#firewall"', re.I), "GCP", "GCP-API"),
+    (re.compile(r'"compute#firewallPolicy"|"kind"\s*:\s*"compute#firewallPolicyList"', re.I), "GCP", "GCP-FirewallPolicy"),
     # MikroTik RouterOS
     (re.compile(r"^/ip\s+firewall\s+filter|^/ip\s+address|^/interface\s+ethernet", re.I | re.M), "MikroTik", "RouterOS"),
     # CheckPoint Gaia
@@ -89,11 +93,25 @@ QUICK_HINTS = [
 
 # Vendors the demonstration target explicitly supports as first-class,
 # high-confidence parser targets (spec section 4). Anything else detected by
-# QUICK_HINTS (cloud templates, other NOS families, etc.) is a real, useful
-# guess for provenance/UX but is NOT one of these seven, so it always carries
+# QUICK_HINTS (other NOS families, etc.) is a real, useful guess for
+# provenance/UX but is NOT one of these, so it always carries
 # review_required=True regardless of confidence — there is no deterministic
 # parser for it yet and it must flow through the unknown-block/AI path.
-SUPPORTED_VENDORS = {"Cisco", "Juniper", "Fortinet", "Palo Alto Networks", "Arista", "SONiC"}
+#
+# AWS/Azure/GCP were previously left OUT of this set even though
+# services/parsers.py has a real structural parser for them
+# (_parse_cloud_firewall_rules, covering Security Groups / NSGs / firewall
+# rules, Azure Firewall rule collections, AWS Network ACLs, and GCP
+# hierarchical firewall policies). Leaving them out meant every cloud config
+# was unconditionally marked review_required=True regardless of detection
+# confidence, which forces services/pipeline.py to call parse_config with
+# vendor="Unknown" (see its effective_vendor line) -- so the cloud parser
+# was dead code in production and every cloud device fell through to the
+# generic unknown-line/AI path (which, for a JSON document, means it tries
+# to interpret pretty-printed JSON fragments as if they were CLI lines).
+# Including them here lets a confident cloud detection actually reach the
+# structural cloud parser.
+SUPPORTED_VENDORS = {"Cisco", "Juniper", "Fortinet", "Palo Alto Networks", "Arista", "SONiC", "AWS", "Azure", "GCP"}
 
 
 def detect_vendor(raw_text: str) -> VendorGuess:

@@ -242,7 +242,327 @@ VENDOR_RULES = {
     "Aruba": _rules_aruba(),
     "SONiC": _rules_sonic(),
     "Sophos": _rules_sophos(),
+    # Cloud network devices (security groups / NSGs / firewall rules) are
+    # JSON, not line-oriented CLI, so they have no regex Rule tuples here --
+    # they're parsed structurally in _parse_cloud_firewall_rules below. The
+    # empty list just documents that these are first-class vendors (see
+    # SUPPORTED_VENDORS in vendor_detect.py), not an oversight.
+    "AWS": [],
+    "Azure": [],
+    "GCP": [],
 }
+
+CLOUD_VENDORS = {"AWS", "Azure", "GCP"}
+
+# Default OS family for each on-prem vendor's rule set (see remediation_
+# templates.py, which keys CLI templates by (control_id, vendor, os_family)).
+# Previously the parser always left baseline.device.os == "unknown" for
+# every on-prem vendor and only device.version (e.g. "17.9") got captured,
+# so remediation_service's os_family lookup never had a real OS family to
+# match against -- it only ever worked by accident, via the
+# _SINGLE_OS_FAMILY fallback in remediation_templates.get_template(), which
+# silently breaks the moment a second OS family is registered for the same
+# vendor. Setting the real family here makes the (control_id, vendor,
+# os_family) lookup exact, so the CLI handed back always matches the
+# device's actual syntax family -- not just "whichever one happened to be
+# the only one registered".
+VENDOR_OS_FAMILY = {
+    "Cisco": "IOS-XE",
+    "Juniper": "Junos",
+    "Fortinet": "FortiOS",
+    "Palo Alto Networks": "PAN-OS",
+    "Arista": "EOS",
+    "Aruba": "AOS-CX",
+    "SONiC": "SONiC",
+    "Sophos": "XGS",
+}
+
+
+def _open_to_internet(cidrs: List[str]) -> bool:
+    return any(c.strip() in ("0.0.0.0/0", "::/0") for c in cidrs)
+
+
+def _parse_cloud_firewall_rules(baseline: SecurityBaselineModel, vendor: str, raw_text: str) -> bool:
+    """Structural parser for cloud network devices: AWS Security Groups
+    (CloudFormation `AWS::EC2::SecurityGroup` or `describe-security-groups`
+    JSON), Azure NSGs (ARM `Microsoft.Network/networkSecurityGroups` or the
+    `az network nsg rule list` shape), and GCP firewall rules (Compute API
+    `compute#firewall`, single object or `{"items": [...]}`).
+
+    Every rule found is normalized into the same vendor-neutral
+    FirewallPolicy the on-prem firewall parsers already populate (see
+    class docstring in models/baseline.py) so compliance controls like
+    "no rule allows 0.0.0.0/0" run identically across on-prem and cloud.
+    Returns False (and leaves the baseline untouched) if raw_text isn't
+    parseable JSON at all, so the caller can fall through to the normal
+    unknown-line/AI path instead of silently producing nothing.
+    """
+    import json as _json
+
+    try:
+        doc = _json.loads(raw_text)
+    except (ValueError, TypeError):
+        return False
+
+    def _add_policy(name, action, direction, protocol, ports, cidrs, raw_obj):
+        policy = FirewallPolicy(
+            name=name or "unnamed",
+            action=(action or "allow").lower(),
+            source_zone=direction,
+            service=[p for p in ([protocol] if protocol else []) + (ports or []) if p] or None,
+            source=cidrs or None,
+            logging_enabled=None,
+            enabled=True,
+        )
+        baseline.firewall_policies.append(policy)
+        raw_snippet = _json.dumps(raw_obj, sort_keys=True)[:300]
+        baseline.provenance.append(
+            NormalizedParameter(
+                raw_command=raw_snippet,
+                normalized_parameter="firewall_policies",
+                value=policy.model_dump(),
+                confidence=1.0,
+                source="parser",
+                vendor=vendor,
+                parser_version=PARSER_VERSION,
+                human_validated=True,
+            )
+        )
+        if _open_to_internet(cidrs or []):
+            baseline.extra_parameters.setdefault("open_to_internet_rules", [])
+            baseline.extra_parameters["open_to_internet_rules"].append(name or "unnamed")
+
+    found_any = False
+
+    if vendor == "AWS":
+        # CloudFormation-style: {"Resources": {"LogicalId": {"Type": "AWS::EC2::SecurityGroup", "Properties": {...}}}}
+        resources = doc.get("Resources") if isinstance(doc, dict) else None
+        if isinstance(resources, dict):
+            for logical_id, res in resources.items():
+                if not isinstance(res, dict):
+                    continue
+                res_type = res.get("Type")
+                props = res.get("Properties", {}) or {}
+                if res_type == "AWS::EC2::SecurityGroup":
+                    baseline.device.hostname = baseline.device.hostname or props.get("GroupName") or logical_id
+                    for direction, key in (("ingress", "SecurityGroupIngress"), ("egress", "SecurityGroupEgress")):
+                        for rule in props.get(key, []) or []:
+                            cidrs = [rule[k] for k in ("CidrIp", "CidrIpv6") if rule.get(k)]
+                            ports = []
+                            if rule.get("FromPort") is not None:
+                                to_port = rule.get("ToPort", rule.get("FromPort"))
+                                ports = [f"{rule['FromPort']}-{to_port}" if to_port != rule["FromPort"] else str(rule["FromPort"])]
+                            _add_policy(f"{logical_id}:{direction}", "allow", direction,
+                                        rule.get("IpProtocol"), ports, cidrs, rule)
+                            found_any = True
+                elif res_type == "AWS::EC2::NetworkAcl":
+                    baseline.device.hostname = baseline.device.hostname or logical_id
+                # `AWS::EC2::NetworkAclEntry` resources reference their NACL via
+                # NetworkAclId (usually a {"Ref": "..."} to the NACL resource
+                # above) rather than nesting inside it, so they're handled as
+                # their own top-level resources below rather than as children.
+                elif res_type == "AWS::EC2::NetworkAclEntry":
+                    nacl_ref = props.get("NetworkAclId")
+                    nacl_id = nacl_ref.get("Ref") if isinstance(nacl_ref, dict) else nacl_ref
+                    cidrs = [c for c in (props.get("CidrBlock"), props.get("Ipv6CidrBlock")) if c]
+                    proto = props.get("Protocol")
+                    port_range = props.get("PortRange") or {}
+                    ports = []
+                    if port_range.get("From") is not None:
+                        to_p = port_range.get("To", port_range.get("From"))
+                        ports = [f"{port_range['From']}-{to_p}" if to_p != port_range["From"] else str(port_range["From"])]
+                    direction = "egress" if props.get("Egress") else "ingress"
+                    _add_policy(f"{nacl_id or 'nacl'}:{direction}:{props.get('RuleNumber', logical_id)}",
+                                props.get("RuleAction"), direction, proto, ports, cidrs, props)
+                    found_any = True
+        # `aws ec2 describe-security-groups` output: {"SecurityGroups": [...]}
+        for sg in doc.get("SecurityGroups", []) if isinstance(doc, dict) else []:
+            baseline.device.hostname = baseline.device.hostname or sg.get("GroupName") or sg.get("GroupId")
+            for direction, key in (("ingress", "IpPermissions"), ("egress", "IpPermissionsEgress")):
+                for perm in sg.get(key, []) or []:
+                    cidrs = [r.get("CidrIp") for r in perm.get("IpRanges", []) or []]
+                    cidrs += [r.get("CidrIpv6") for r in perm.get("Ipv6Ranges", []) or []]
+                    cidrs = [c for c in cidrs if c]
+                    from_p, to_p = perm.get("FromPort"), perm.get("ToPort")
+                    ports = [f"{from_p}-{to_p}" if from_p != to_p else str(from_p)] if from_p is not None else []
+                    _add_policy(f"{sg.get('GroupId', 'sg')}:{direction}", "allow", direction,
+                                perm.get("IpProtocol"), ports, cidrs, perm)
+                    found_any = True
+        # `aws ec2 describe-network-acls` output: {"NetworkAcls": [...]}
+        for nacl in doc.get("NetworkAcls", []) if isinstance(doc, dict) else []:
+            nacl_id = nacl.get("NetworkAclId", "nacl")
+            baseline.device.hostname = baseline.device.hostname or nacl_id
+            for entry in nacl.get("Entries", []) or []:
+                cidrs = [c for c in (entry.get("CidrBlock"), entry.get("Ipv6CidrBlock")) if c]
+                port_range = entry.get("PortRange") or {}
+                ports = []
+                if port_range.get("From") is not None:
+                    to_p = port_range.get("To", port_range.get("From"))
+                    ports = [f"{port_range['From']}-{to_p}" if to_p != port_range["From"] else str(port_range["From"])]
+                direction = "egress" if entry.get("Egress") else "ingress"
+                _add_policy(f"{nacl_id}:{direction}:{entry.get('RuleNumber', 'rule')}",
+                            entry.get("RuleAction"), direction, entry.get("Protocol"), ports, cidrs, entry)
+                found_any = True
+        # AWS Network Firewall rule groups (5-tuple stateful rules or
+        # stateless rules with match attributes), either CloudFormation
+        # `AWS::NetworkFirewall::RuleGroup` or `describe-rule-group` output.
+        rule_group_props = None
+        if isinstance(resources, dict):
+            for res in resources.values():
+                if isinstance(res, dict) and res.get("Type") == "AWS::NetworkFirewall::RuleGroup":
+                    rule_group_props = ((res.get("Properties") or {}).get("RuleGroup") or {})
+                    break
+        if rule_group_props is None and isinstance(doc, dict) and "RuleGroup" in doc:
+            rule_group_props = doc.get("RuleGroup") or {}
+        if rule_group_props:
+            rules_source = (rule_group_props.get("RulesSource") or {})
+            for i, rule in enumerate(rules_source.get("StatefulRules", []) or []):
+                header = rule.get("Header", {}) or {}
+                cidrs = [c for c in (header.get("Source"),) if c and c != "ANY"]
+                action = "allow" if str(rule.get("Action", "")).upper() == "PASS" else "deny"
+                _add_policy(f"stateful-rule-{i}", action, "any", header.get("Protocol"),
+                            [header.get("DestinationPort")] if header.get("DestinationPort") else [],
+                            cidrs, rule)
+                found_any = True
+        # `aws network-firewall describe-rule-group` output nests the same
+        # shape one level deeper: {"RuleGroup": {"RuleGroup": {...}}}
+        elif isinstance(doc, dict) and isinstance(doc.get("RuleGroup"), dict) and isinstance(doc["RuleGroup"].get("RuleGroup"), dict):
+            inner = doc["RuleGroup"]["RuleGroup"]
+            rules_source = inner.get("RulesSource") or {}
+            for i, rule in enumerate(rules_source.get("StatefulRules", []) or []):
+                header = rule.get("Header", {}) or {}
+                cidrs = [c for c in (header.get("Source"),) if c and c != "ANY"]
+                action = "allow" if str(rule.get("Action", "")).upper() == "PASS" else "deny"
+                _add_policy(f"stateful-rule-{i}", action, "any", header.get("Protocol"),
+                            [header.get("DestinationPort")] if header.get("DestinationPort") else [],
+                            cidrs, rule)
+                found_any = True
+
+    elif vendor == "Azure":
+        # ARM template: {"resources": [{"type": "Microsoft.Network/networkSecurityGroups", "name": ..., "properties": {"securityRules": [...]}}]}
+        for res in doc.get("resources", []) if isinstance(doc, dict) else []:
+            if not isinstance(res, dict):
+                continue
+            res_type = (res.get("type") or "").lower()
+            if "networksecuritygroups" in res_type:
+                baseline.device.hostname = baseline.device.hostname or res.get("name")
+                for rule in (res.get("properties", {}) or {}).get("securityRules", []) or []:
+                    rp = rule.get("properties", rule)
+                    cidrs = [rp.get("sourceAddressPrefix")] if rp.get("sourceAddressPrefix") else []
+                    cidrs += rp.get("sourceAddressPrefixes") or []
+                    ports = [rp.get("destinationPortRange")] if rp.get("destinationPortRange") else []
+                    _add_policy(rule.get("name"), rp.get("access"), (rp.get("direction") or "").lower(),
+                                rp.get("protocol"), ports, [c for c in cidrs if c], rule)
+                    found_any = True
+            elif "azurefirewalls" in res_type:
+                # Azure Firewall: {"properties": {"networkRuleCollections": [
+                #   {"name": ..., "properties": {"action": {"type": "Allow"|"Deny"},
+                #    "rules": [{"name":..,"protocols":[..],"sourceAddresses":[..],
+                #               "destinationAddresses":[..],"destinationPorts":[..]}]}}]}}
+                baseline.device.hostname = baseline.device.hostname or res.get("name")
+                fw_props = res.get("properties", {}) or {}
+                for coll_key in ("networkRuleCollections", "applicationRuleCollections"):
+                    for coll in fw_props.get(coll_key, []) or []:
+                        coll_props = coll.get("properties", coll) or {}
+                        action = ((coll_props.get("action") or {}).get("type") or "allow")
+                        for rule in coll_props.get("rules", []) or []:
+                            cidrs = rule.get("sourceAddresses") or []
+                            dest = rule.get("destinationAddresses") or rule.get("targetFqdns") or []
+                            ports = rule.get("destinationPorts") or []
+                            protocols = rule.get("protocols") or []
+                            proto = protocols[0] if protocols and isinstance(protocols[0], str) else (
+                                protocols[0].get("protocolType") if protocols else None)
+                            policy_name = rule.get("name") or coll.get("name")
+                            svc = [p for p in ([proto] if proto else []) + list(ports) + list(dest) if p] or None
+                            policy = FirewallPolicy(
+                                name=policy_name or "unnamed", action=(action or "allow").lower(),
+                                source_zone=coll_key.replace("RuleCollections", ""),
+                                service=svc, source=cidrs or None, logging_enabled=None, enabled=True,
+                            )
+                            baseline.firewall_policies.append(policy)
+                            baseline.provenance.append(NormalizedParameter(
+                                raw_command=_json.dumps(rule, sort_keys=True)[:300],
+                                normalized_parameter="firewall_policies", value=policy.model_dump(),
+                                confidence=1.0, source="parser", vendor=vendor,
+                                parser_version=PARSER_VERSION, human_validated=True,
+                            ))
+                            if _open_to_internet(cidrs):
+                                baseline.extra_parameters.setdefault("open_to_internet_rules", [])
+                                baseline.extra_parameters["open_to_internet_rules"].append(policy_name or "unnamed")
+                            found_any = True
+        # `az network nsg rule list` output: {"name": "...", "securityRules": [...]} or a bare list of rules
+        rule_list = doc.get("securityRules") if isinstance(doc, dict) else (doc if isinstance(doc, list) else None)
+        if isinstance(rule_list, list) and not found_any:
+            if isinstance(doc, dict):
+                baseline.device.hostname = baseline.device.hostname or doc.get("name")
+            for rule in rule_list:
+                if not isinstance(rule, dict):
+                    continue
+                cidrs = [rule.get("sourceAddressPrefix")] if rule.get("sourceAddressPrefix") else []
+                ports = [rule.get("destinationPortRange")] if rule.get("destinationPortRange") else []
+                _add_policy(rule.get("name"), rule.get("access"), (rule.get("direction") or "").lower(),
+                            rule.get("protocol"), ports, [c for c in cidrs if c], rule)
+                found_any = True
+        # `az network firewall network-rule list` output: bare list/{"rules": [...]} of Azure Firewall rules
+        af_rule_list = doc.get("rules") if isinstance(doc, dict) and not found_any else None
+        if isinstance(af_rule_list, list):
+            for rule in af_rule_list:
+                if not isinstance(rule, dict):
+                    continue
+                cidrs = rule.get("sourceAddresses") or []
+                ports = rule.get("destinationPorts") or []
+                protocols = rule.get("protocols") or []
+                proto = protocols[0] if protocols and isinstance(protocols[0], str) else None
+                _add_policy(rule.get("name"), "allow", "any", proto, list(ports), cidrs, rule)
+                found_any = True
+
+    elif vendor == "GCP":
+        # Single firewall resource, or a collection: {"items": [...]}
+        items = doc.get("items") if isinstance(doc, dict) and "items" in doc else (
+            [doc] if isinstance(doc, dict) and doc.get("kind") == "compute#firewall" else
+            (doc if isinstance(doc, list) else [])
+        )
+        for fw in items:
+            if not isinstance(fw, dict):
+                continue
+            baseline.device.hostname = baseline.device.hostname or fw.get("name")
+            cidrs = fw.get("sourceRanges") or fw.get("destinationRanges") or []
+            direction = (fw.get("direction") or "INGRESS").lower()
+            rule_set = fw.get("allowed") or fw.get("denied") or []
+            action = "allow" if fw.get("allowed") else "deny"
+            if not rule_set:
+                _add_policy(fw.get("name"), action, direction, None, [], cidrs, fw)
+                found_any = True
+            for entry in rule_set:
+                ports = entry.get("ports") or []
+                _add_policy(fw.get("name"), action, direction, entry.get("IPProtocol"), ports, cidrs, fw)
+                found_any = True
+        # Hierarchical Firewall Policy: {"kind": "compute#firewallPolicy",
+        # "rules": [{"action": "allow"|"deny"|"goto_next", "direction": "INGRESS",
+        #            "match": {"srcIpRanges": [..], "layer4Configs": [{"ipProtocol":..,"ports":[..]}]}}]}
+        # or a list response: {"kind": "compute#firewallPolicyList", "items": [{...policy...}]}
+        policies = []
+        if isinstance(doc, dict) and doc.get("kind") == "compute#firewallPolicy":
+            policies = [doc]
+        elif isinstance(doc, dict) and doc.get("kind") == "compute#firewallPolicyList":
+            policies = [p for p in doc.get("items", []) or [] if isinstance(p, dict)]
+        for policy_doc in policies:
+            baseline.device.hostname = baseline.device.hostname or policy_doc.get("displayName") or policy_doc.get("name")
+            for rule in policy_doc.get("rules", []) or []:
+                match = rule.get("match", {}) or {}
+                cidrs = match.get("srcIpRanges") or match.get("destIpRanges") or []
+                l4_configs = match.get("layer4Configs") or []
+                if not l4_configs:
+                    _add_policy(f"rule-{rule.get('priority', 'n')}", rule.get("action"),
+                                (rule.get("direction") or "INGRESS").lower(), None, [], cidrs, rule)
+                    found_any = True
+                for l4 in l4_configs:
+                    ports = l4.get("ports") or []
+                    _add_policy(f"rule-{rule.get('priority', 'n')}", rule.get("action"),
+                                (rule.get("direction") or "INGRESS").lower(), l4.get("ipProtocol"), ports, cidrs, rule)
+                    found_any = True
+
+    return found_any
 
 
 def _set_dotted(model: SecurityBaselineModel, dotted_path: str, value) -> bool:
@@ -296,12 +616,27 @@ def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -
     by a rule is collected as an 'unknown' candidate for the AI/RAG pipeline
     (see ai/normalize.py) and, if confidence stays low, the Training Center.
     """
-    baseline = SecurityBaselineModel(device={"vendor": vendor, "os": "unknown"})
+    baseline = SecurityBaselineModel(device={"vendor": vendor, "os": VENDOR_OS_FAMILY.get(vendor, "unknown")})
     rules = VENDOR_RULES.get(vendor, [])
     raw_lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     baseline.extra_parameters["_input_lines"] = raw_lines
     baseline.extra_parameters["_unknown_lines"] = []
     baseline.extra_parameters["_unknown_blocks"] = []
+
+    if vendor in CLOUD_VENDORS:
+        # Cloud devices ship as one JSON document, not line-oriented CLI --
+        # a per-line regex pass over pretty-printed JSON would either match
+        # nothing or match garbage. Parse it structurally instead; every
+        # physical line of a *successfully* parsed document is considered
+        # covered (its content lives in the FirewallPolicy entries + raw
+        # provenance snippets above) so it doesn't get duplicated into
+        # _unknown_lines and shipped wholesale to the AI/RAG pipeline.
+        if _parse_cloud_firewall_rules(baseline, vendor, raw_text):
+            baseline.device.os = vendor
+            return baseline
+        # Not a recognized cloud shape (or not valid JSON) -- fall through to
+        # the normal unknown-line handling below so it still reaches the
+        # AI/RAG pipeline rather than being silently dropped.
 
     matched_lines = set()
 
@@ -337,12 +672,54 @@ def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -
             )
         )
 
+    # Character-offset index of every non-blank physical line in raw_text,
+    # used below to find exactly which physical line(s) a regex match spans
+    # -- see the note at the finditer loop for why this replaced using
+    # match.group(0) directly.
+    _line_spans: List[Tuple[int, int, str]] = []
+    _pos = 0
+    for _raw_line in raw_text.splitlines(True):
+        _stripped_line = _raw_line.strip()
+        _end = _pos + len(_raw_line)
+        if _stripped_line:
+            _line_spans.append((_pos, _end, _stripped_line))
+        _pos = _end
+
+    def _lines_covering(start: int, end: int) -> List[str]:
+        return [text for (a, b, text) in _line_spans if a < end and b > start]
+
     for pattern, param, value_fn in rules:
         for match in pattern.finditer(raw_text):
             value = value_fn(match)
             _set_dotted(baseline, param, value)
-            add_provenance(param, value, match.group(0).strip())
-            matched_lines.add(match.group(0).strip())
+            # BUG FIX: this used to record only `match.group(0).strip()` --
+            # for rules whose regex captures a *prefix* of the line (e.g.
+            # `^enable secret`, `^banner (?:motd|login)`,
+            # `^aaa authentication login default (\S+)` which stops at the
+            # first token), group(0) is shorter than the actual physical
+            # line. That truncated string then never equals the real entry
+            # in raw_lines, so:
+            #   1. provenance/raw_command silently lost everything after the
+            #      matched prefix (the secret hash, banner text, AAA method
+            #      list, etc.) even though a rule "handled" the line.
+            #   2. the final unknown-line loop below used to re-run
+            #      `pattern.match(line)` against the FULL line as a
+            #      fallback, which *did* match (regex .match() only
+            #      anchors the start, not the end) -- so the full line was
+            #      wrongly treated as "already covered" and silently
+            #      dropped: not recorded with its full content, and never
+            #      forwarded to the AI/RAG pipeline either. That was the
+            #      root cause of most real config lines effectively being
+            #      discarded by normalization.
+            # Fix: resolve the match's character span back to the actual
+            # physical line(s) it falls within and use THAT full text for
+            # both provenance and matched-line tracking.
+            covered = _lines_covering(match.start(), match.end())
+            full_text = "\n".join(covered) if covered else match.group(0).strip()
+            add_provenance(param, value, full_text)
+            matched_lines.update(covered)
+            if not covered:
+                matched_lines.add(match.group(0).strip())
 
     if vendor == "Cisco":
         lines = raw_text.splitlines()
@@ -573,7 +950,18 @@ def parse_config(vendor: str, raw_text: str, model_version: str = "parser-v1") -
             add_provenance("firewall_policies", policy.model_dump(), f"set rulebase security rules {name} ...")
 
     for line in raw_lines:
-        if line in matched_lines or any(pattern.match(line) for pattern, _, _ in rules):
+        # NOTE: this used to also skip a line whenever `pattern.match(line)`
+        # succeeded for ANY rule, as a "belt and suspenders" check. Because
+        # `.match()` only anchors at the start of the string, that silently
+        # treated every line sharing a rule's keyword prefix as "already
+        # matched" even when no actual finditer() match had captured it
+        # (e.g. a second, differently-valued `enable secret ...` line, or
+        # any line starting with a matched rule's first few tokens) -- so it
+        # discarded real lines instead of forwarding them to the AI/RAG
+        # pipeline. matched_lines (built from actual regex matches, mapped
+        # back to full physical lines above) is the accurate source of
+        # truth; nothing else is needed here.
+        if line in matched_lines:
             continue
         baseline.extra_parameters["_unknown_lines"].append(line)
     baseline.extra_parameters["_unknown_blocks"] = list(baseline.extra_parameters["_unknown_lines"])

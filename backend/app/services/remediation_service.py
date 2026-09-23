@@ -201,6 +201,12 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
     vendor = (device.vendor if device else None) or "Unknown"
     os_family = (device.os if device else None) or "Unknown"
     device_model = (device.model if device else None) or None
+    # The exact firmware/OS release string parsers.py pulled out of the
+    # device's own config (e.g. "17.9.4a", not just the "IOS-XE" family).
+    # Command syntax genuinely differs across releases of the same OS
+    # family, so this needs to reach the LLM prompt and the reviewer-facing
+    # payload, not just sit unused on the Device row.
+    device_version = (device.version if device else None) or None
 
     # Task 3 -- Vulnerability Management pipeline integration. Computed once
     # for the whole scan (it's a device-level fact, not per-finding), then
@@ -236,6 +242,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                 "severity": f.severity,
                 "vendor": vendor,
                 "os_family": os_family,
+                "device_version": device_version,
                 "cli_available": True,
                 "description": "AI Generated Synthesized CLI Remediation",
                 "cli_steps": cli_steps,
@@ -274,6 +281,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                 "severity": f.severity,
                 "vendor": template.vendor,
                 "os_family": template.os_family,
+                "device_version": device_version,
                 "cli_available": True,
                 "description": template.description,
                 "cli_steps": cli_steps,
@@ -302,17 +310,20 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
             v_name = vendor if vendor not in ("Unknown", "Ad-Hoc", None) else "a network device"
             # Build a specific device identifier string: "Cisco Catalyst 9300 IOS-XE"
             # vs just "Cisco IOS-XE" so the LLM produces model-accurate commands.
+            os_label = f"{os_family} {device_version}" if device_version and device_version != "Unknown" else os_family
             if device_model and device_model not in ("Unknown", os_family, vendor):
-                device_target = f"{v_name} {device_model} ({os_family})"
+                device_target = f"{v_name} {device_model} ({os_label})"
             else:
-                device_target = f"{v_name} {os_family}"
+                device_target = f"{v_name} {os_label}"
             try:
                 system_prompt = (
                     "You are a network security engineering assistant. "
                     "You write vendor-specific configuration CLI commands to fix security findings. "
                     "RULES:\n"
                     "1. Provide the FULL, exact CLI command(s) needed to apply the configuration, not just the isolated value. (e.g. ['set system syslog host 1.2.3.4 any'], NOT ['1.2.3.4'] or ['any'])\n"
-                    "2. Use the exact CLI syntax specific to the requested model and OS. Do not guess generic commands.\n"
+                    "2. Use the exact CLI syntax specific to the requested model, OS, and firmware/software version given in 'Device:'. "
+                    "If a version is given, match syntax to that specific release (older/newer releases of the same OS can differ) -- "
+                    "do not default to the newest release's syntax. Do not guess generic commands.\n"
                     "3. Do not include markdown fences, explanations, or introductory text.\n"
                     "4. Respond ONLY with a valid JSON array of strings containing the commands."
                 )
@@ -401,6 +412,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     "severity": f.severity,
                     "vendor": vendor,
                     "os_family": os_family,
+                    "device_version": device_version,
                     "device_model": device_model,
                     "cli_available": True,
                     "description": "AI Generated Synthesized CLI Remediation",
@@ -433,6 +445,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
                     "severity": f.severity,
                     "vendor": vendor,
                     "os_family": os_family,
+                    "device_version": device_version,
                     "device_model": device_model,
                     "cli_available": bool(firmware_lines),
                     "description": "Firmware advisory only -- no network CLI fix available" if firmware_lines else None,
@@ -478,6 +491,7 @@ async def generate_remediation_cli_for_scan(db: Session, scan: Scan) -> Dict[str
         "device_id": scan.device_id,
         "vendor": vendor,
         "os_family": os_family,
+        "device_version": device_version,
         "device_model": device_model,
         "finding_count": len(remediations),
         "cli_generated_count": sum(1 for r in remediations if r["cli_available"]),

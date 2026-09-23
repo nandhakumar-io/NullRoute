@@ -19,7 +19,18 @@ The AI server provides:
 ## 🚀 Quick Start — Docker Compose
 
 ```bash
+git clone https://github.com/nandhakumar-io/Tesseract.git
+cd Tesseract
 cp .env.example .env
+
+For a strong random MinIO secret key, run:
+
+openssl rand -base64 32
+
+Install docker and compose
+
+sudo apt install docker.io docker-compose
+
 docker compose up --build -d
 ```
 

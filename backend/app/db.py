@@ -128,15 +128,15 @@ def init_db():
                 
                 # Create pgvector since alembic is disabled
                 try:
-                    with engine.begin() as conn:
-                        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+                    with lock_conn.begin_nested():
+                        lock_conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
                 except Exception as e:
                     import logging
                     logging.warning(f"Could not create pgvector extension: {e}")
 
                 # Always ensure missing tables are created gracefully
-                Base.metadata.create_all(bind=engine)
-                _run_postgres_migrations()
+                Base.metadata.create_all(bind=lock_conn)
+                _run_postgres_migrations(lock_conn)
         else:
             Base.metadata.create_all(bind=engine)
 
@@ -266,14 +266,14 @@ def _ensure_sqlite_columns() -> None:
             logging.warning("SQLite column check skipped for %s.%s: %s", table, column, e)
 
 
-def _run_postgres_migrations() -> None:
+def _run_postgres_migrations(conn) -> None:
     import logging
 
     from sqlalchemy import text
 
     for stmt in _POSTGRES_MIGRATIONS:
         try:
-            with engine.begin() as conn:
+            with conn.begin_nested():
                 conn.execute(text(stmt))
         except Exception as e:  # noqa: BLE001 - one bad statement must not skip the rest
             logging.warning("Startup migration skipped (%s): %s", stmt[:80], str(e).splitlines()[0] if str(e) else e)

@@ -170,14 +170,6 @@ services:
       - ./data:/app/data:ro
     networks:
       - default
-      - proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.backend.entrypoints=http"
-      - "traefik.http.routers.backend.rule=Host(`nullroute-api.notoriousdev.in`)"
-      - "traefik.http.routers.backend.service=backend"
-      - "traefik.http.services.backend.loadbalancer.server.port=8000"
-      - "traefik.docker.network=proxy"
 
 
   seed:
@@ -283,14 +275,6 @@ services:
     depends_on: [backend]
     networks:
       - default
-      - proxy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.frontend.entrypoints=http"
-      - "traefik.http.routers.frontend.rule=Host(`nullroute.notoriousdev.in`)"
-      - "traefik.http.routers.frontend.service=frontend"
-      - "traefik.http.services.frontend.loadbalancer.server.port=5173"
-      - "traefik.docker.network=proxy"  
 
   # ------------------------------------------------------------ observ ----
   victoriametrics:
@@ -323,8 +307,5 @@ volumes:
 
 networks:
   default: {}
-  proxy:
-    external: true
-    name: proxy
   fabric_test:
     name: fabric_test

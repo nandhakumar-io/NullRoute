@@ -533,7 +533,7 @@ async def _background_collect_and_scan(scan_id: str, device_id: str, tenant_id: 
             return
             
         try:
-            credentials = _resolve_credentials(db, device, tenant_id)
+            credentials = _resolve_credentials(db, device, tenant_id, transport=device.protocol)
         except (ValueError, openbao_service.OpenBaoError) as e:
             scan.status = "failed"
             scan.error = f"Could not resolve credentials: {e}"
